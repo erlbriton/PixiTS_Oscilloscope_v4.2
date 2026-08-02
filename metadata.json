@@ -1,0 +1,6 @@
+{
+  "name": "Web Serial & PixiJS Oscilloscope",
+  "description": "Real-time Web Serial and PixiJS signal oscilloscope and channel adjuster with half-window left alignment layout.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
