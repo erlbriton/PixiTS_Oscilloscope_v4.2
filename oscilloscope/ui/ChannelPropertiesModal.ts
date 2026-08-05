@@ -71,7 +71,7 @@ export class ChannelPropertiesModal {
                     </div>
                     <div class="form-group" style="flex:1; margin-bottom:0;">
                         <label style="color:#aaa; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px; display:block;">Высота строки (px)</label>
-                        <input type="number" id="prop-height" class="form-input" value="${this.channel.rowHeight}" ${disabledAttr} style="background:#1a1a1d; border-color:#3a3a3d; ${readonlyStyle}" />
+                        <input type="number" id="prop-height" class="form-input" value="${this.channel.rowHeight}" ${disabledAttr} style="background:#1a1a1d; border-color:#3a3a3d; padding: 8px 12px; box-sizing: border-box; ${readonlyStyle}" />
                     </div>
                 </div>
 
