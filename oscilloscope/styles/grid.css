@@ -1,0 +1,207 @@
+/* --- Table Header & Columns --- */
+#header {
+    height: 30px;
+    display: grid;
+    grid-template-columns:
+        var(--col-name)
+        var(--col-description)
+        var(--col-value)
+        var(--col-unit)
+        1fr;
+    border-bottom: 2px solid #4a4a52;
+    background-color: #0f0f11;
+    position: relative;
+    user-select: none;
+}
+
+#header > div {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-right: 2px solid #4a4a52;
+    font-size: 11px;
+    font-weight: 700;
+    color: #c8f1e0;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    position: relative;
+    text-align: center;
+}
+
+#header > div:last-child {
+    border-right: none;
+}
+
+.col-resizer {
+    position: absolute;
+    right: -3px;
+    top: 0;
+    width: 7px;
+    height: 100%;
+    cursor: col-resize;
+    z-index: 20;
+    background-color: transparent;
+}
+
+.col-resizer:hover, .col-resizer.resizing {
+    background-color: var(--accent-blue);
+}
+
+/* --- Channel Rows Container --- */
+#channelRows {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    background-color: var(--bg-main);
+}
+
+.channel-row {
+    display: grid;
+    grid-template-columns:
+        var(--col-name)
+        var(--col-description)
+        var(--col-value)
+        var(--col-unit)
+        1fr;
+    height: var(--row-height);
+    border-bottom: none;
+    transition: height 0.05s linear, background-color 0.15s ease;
+    cursor: pointer;
+}
+
+.channel-row:hover {
+    background-color: rgba(255, 255, 255, 0.03);
+}
+
+.channel-row.selected {
+    background-color: rgba(74, 222, 128, 0.35) !important;
+    box-shadow: inset 4px 0 0 #4ade80;
+}
+
+.channel-row.selected .col-graph {
+    background-color: var(--bg-main) !important;
+}
+
+.channel-row.selected .col-graph::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(74, 222, 128, 0.35);
+    pointer-events: none;
+    z-index: 5;
+}
+
+.channel-row > div {
+    padding: 0 6px;
+    display: flex;
+    align-items: center;
+    border-right: none;
+    font-size: var(--font-size, 13px);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    line-height: 1;
+}
+
+.col-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.channel-color-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+.channel-title {
+    font-weight: 700;
+    color: #e0e0e0;
+    font-size: var(--font-size, 13px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.col-description {
+    color: #a0a0a5;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: calc(var(--font-size, 13px) + 1px);
+    justify-content: center;
+    text-align: center;
+}
+
+.col-value {
+    color: #00d2ff;
+    font-weight: 700;
+    font-size: var(--font-size, 13px);
+    justify-content: center;
+    text-align: center;
+}
+
+.discrete-value-square {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: max(17px, calc(var(--font-size, 13px) + 5px));
+    height: max(17px, calc(var(--font-size, 13px) + 5px));
+    border-radius: 3px;
+    font-weight: 800;
+    font-size: var(--font-size, 13px);
+    line-height: 1;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+    user-select: none;
+}
+
+.col-unit {
+    color: #b4cff3;
+    font-size: var(--font-size, 13px);
+    justify-content: center;
+    text-align: center;
+}
+
+.channel-row .col-graph {
+    padding: 0;
+    position: relative;
+    background-color: #050505;
+    overflow: hidden;
+    width: 100%;
+    height: 100%;
+}
+
+/* --- Cursors Info Footer --- */
+#footer {
+    height: 28px;
+    background-color: #0f0f11;
+    border-top: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    font-size: 11px;
+    font-family: monospace;
+    color: #a0a0a5;
+}
+
+.cursor-stat {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.cursor-stat-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.cursor-stat-item span {
+    color: #00d2ff;
+    font-weight: 700;
+}
