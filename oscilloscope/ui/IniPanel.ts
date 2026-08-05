@@ -36,6 +36,29 @@ export class IniPanel {
         });
     }
 
+    public selectFileById(id: string): void {
+        const file = this.files.find(f => f.id === id);
+        if (file) {
+            this.selectedFileId = id;
+            this.render();
+            if (this.onFileSelectCallback) {
+                this.onFileSelectCallback(file);
+            }
+        }
+    }
+
+    public setExternalFiles(files: IniFileItem[]): void {
+        this.files = files;
+        if (this.files.length > 0 && !this.selectedFileId) {
+            this.selectedFileId = this.files[0].id;
+        }
+        this.render();
+        const selected = this.getSelectedFile();
+        if (selected && this.onFileSelectCallback) {
+            this.onFileSelectCallback(selected);
+        }
+    }
+
     public openFilePicker(): void {
         this.fileInput.click();
     }

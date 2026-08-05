@@ -16,16 +16,6 @@ export class IniPanelRenderer {
                     <span>📑 Выбранные INI файлы</span>
                     <span class="ini-count-badge">${files.length} файлов</span>
                 </div>
-                <div style="display: flex; gap: 8px;">
-                    ${files.length > 0 ? `
-                        <button class="toolbar-btn" id="ini-clear-btn" title="Очистить список" style="padding: 6px 10px; font-size: 12px;">
-                            🗑️ Очистить
-                        </button>
-                    ` : ''}
-                    <button class="toolbar-btn primary" id="ini-add-btn" style="font-weight: 600; padding: 6px 14px;">
-                        ➕ Выбрать .ini файлы
-                    </button>
-                </div>
             </div>
 
             <div class="ini-panel-body">
@@ -35,11 +25,8 @@ export class IniPanelRenderer {
                             <div style="font-size: 44px; margin-bottom: 16px;">📂</div>
                             <div style="font-weight: 600; font-size: 15px; margin-bottom: 8px; color: #f1f5f9;">Список файлов пуст</div>
                             <div style="font-size: 13px; color: #94a3b8; max-width: 320px; line-height: 1.5; margin: 0 auto 20px;">
-                                Нажмите на кнопку <strong>«📁 Выбрать .ini файлы»</strong> сверху, чтобы выбрать один или несколько <code>.ini</code> файлов.
+                                Ожидание загрузки файлов из основного проекта...
                             </div>
-                            <button class="toolbar-btn primary" id="ini-empty-add-btn" style="padding: 8px 18px; font-weight: 600;">
-                                📁 Выбрать файлы .ini
-                            </button>
                         </div>
                     ` : `
                         <div class="ini-file-list">

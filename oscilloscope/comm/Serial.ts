@@ -46,6 +46,24 @@ export class Serial {
         return 'serial' in navigator;
     }
 
+    /**
+     * Attaches an externally opened SerialPort to the oscilloscope.
+     * @param externalPort The SerialPort object from navigator.serial (must be open)
+     */
+    public async attachPort(externalPort: any): Promise<void> {
+        this.port = externalPort;
+        this.setState('connected', 'External COM-port attached');
+        this.lastResponseTime = Date.now();
+        this.hasReceivedData = false;
+        
+        // If the port is not open, we should try to open it if requested, 
+        // but typically the main project should open it.
+        // We'll assume it's either open or we need to start the reader loop.
+        
+        this.startReading();
+        this.startModbusPolling();
+    }
+
     public async connect(baudRate: number = 115200): Promise<boolean> {
         this.baudRate = baudRate;
         if (!this.isWebSerialSupported()) {
@@ -152,6 +170,7 @@ export class Serial {
         try {
             while (this.port.readable && this.state === 'connected') {
                 this.reader = this.port.readable.getReader();
+                
                 try {
                     while (true) {
                         const { value, done } = await this.reader.read();

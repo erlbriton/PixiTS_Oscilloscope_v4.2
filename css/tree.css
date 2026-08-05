@@ -1,0 +1,110 @@
+/* ==========================================================================
+   КОМПОНЕНТ СТРУКТУРНОГО ДЕРЕВА УСТРОЙСТВ (tree.css)
+   ========================================================================== */
+
+/* Левая навигационная колонка */
+.left-sidebar-column {
+    width: 220px; 
+    height: 100%;
+    background-color: #ffffff;
+    box-sizing: border-box;
+    flex-shrink: 0;
+    padding-left: 6px;     /* ДОБАВЛЕНО: Аккуратный зазор от левого края окна */
+}
+
+/* Название текущей папки конфигураций (Локации) */
+.tree-location-title {
+    height: 16px;          /* Вертикальный интервал уменьшен до минимума */
+    display: flex;
+    align-items: center;
+    font-size: 13px;       /* Плотный шрифт для компактного отображения */
+    font-weight: 600;      
+    cursor: pointer;
+    margin: 0;
+    padding: 0;
+}
+
+/* Список вложенных ID (схлопывание стандартных отступов списков) */
+.tree-id-list {
+    margin: 0;             
+    padding-top: 0px;      /* Убраны все лишние зазоры сверху и снизу */
+    padding-bottom: 0px;
+    padding-left: 12px;    /* Компактный отступ для визуальной иерархии вложенности */
+    list-style: none;      
+}
+
+/* Конкретная нода устройства в дереве */
+.tree-id-item {
+    height: 16px;          
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-sizing: border-box;
+    font-size: 13px;       
+    font-weight: normal;
+    line-height: 16px;     
+    margin: 0;
+    padding: 0;
+    cursor: pointer;
+}
+
+/* ==========================================================================
+   КЛАСТЕР КНОПОК ДЕРЕВА (Синхронизировано с <details> и <summary>)
+   ========================================================================== */
+
+/* Хитрый трюк: скрываем стандартный треугольник раскрытия браузера у summary */
+.tree-location-title::-webkit-details-marker {
+    display: none;
+}
+.tree-location-title {
+    list-style: none; /* Для современных браузеров */
+}
+
+/* Базовый квадратный контейнер кнопки перед именем Локации */
+.tree-location-title::before {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    
+    width: 9px;                /* Строгий маленький квадрат */
+    height: 9px;
+    border: 1px solid #808080; /* Серая рамка окна */
+    background-color: #ffffff; /* Белый фон внутри квадрата */
+    
+    font-size: 9px;            /* Размер под мелкий квадрат */
+    font-family: monospace;    /* Чтобы плюс/минус встали ровно по центру */
+    line-height: 1;
+    color: #000000;
+    
+    margin-right: 6px;
+    flex-shrink: 0;
+    box-sizing: border-box;
+}
+
+/* Если локация СВЕРНУТА (у details нет атрибута open) — показываем плюс */
+.tree-location:not([open]) .tree-location-title::before {
+    content: "+";
+}
+
+/* Если локация РАЗВЕРНУТА (у details есть атрибута open) — меняем на минус */
+.tree-location[open] .tree-location-title::before {
+    content: "−";              /* Математический знак минуса */
+}
+
+/* Конечные узлы устройств (листья) — полностью убираем маркер, как на скриншоте */
+.tree-id-item.is-leaf::before {
+    display: none;             
+}
+
+/* Дополнительный отступ для текста конечных устройств, чтобы компенсировать */
+/* отсутствие квадратика и красиво выстроить иерархию */
+.tree-id-item.is-leaf {
+    padding-left: 15px;        
+}
+
+/* ДОБАВЛЕНО: Голубая прозрачная полоска-индикатор для активного ini-файла */
+.tree-id-item.is-selected {
+    background-color: rgba(0, 120, 215, 0.18); /* Прозрачный системный синий */
+}

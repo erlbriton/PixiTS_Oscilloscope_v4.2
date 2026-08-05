@@ -11,17 +11,13 @@ export class Toolbar {
     private recorder: Recorder;
     private serial: Serial;
 
-    private connectBtn!: HTMLButtonElement;
     private autoscaleBtn!: HTMLButtonElement;
     private cursorBtn!: HTMLButtonElement;
-    private generatorBtn!: HTMLButtonElement;
     private propertiesBtn!: HTMLButtonElement;
     private exportBtn!: HTMLButtonElement;
     private windowSizeBtn!: HTMLButtonElement;
     private statusBadge!: HTMLSpanElement;
 
-    private onOpenGeneratorModalCallback?: () => void;
-    private onOpenWebSerialModalCallback?: () => void;
     private onOpenPropertiesCallback?: () => void;
     private onToggleWindowSizeCallback?: (isHalf: boolean) => void;
 
@@ -37,14 +33,6 @@ export class Toolbar {
         this.serial = serial;
     }
 
-    public onOpenGeneratorModal(cb: () => void): void {
-        this.onOpenGeneratorModalCallback = cb;
-    }
-
-    public onOpenWebSerialModal(cb: () => void): void {
-        this.onOpenWebSerialModalCallback = cb;
-    }
-
     public onOpenProperties(cb: () => void): void {
         this.onOpenPropertiesCallback = cb;
     }
@@ -56,7 +44,7 @@ export class Toolbar {
     public initialize(): void {
         this.container.innerHTML = '';
 
-        // Group 1: Connection & Brand
+        // Group 1: Brand & Status
         const groupLeft = document.createElement('div');
         groupLeft.className = 'toolbar-group';
 
@@ -64,11 +52,13 @@ export class Toolbar {
         title.className = 'toolbar-title';
         title.innerHTML = `⚡ PixiTS Oscilloscope v4.1`;
 
-        this.connectBtn = ToolbarComponents.createButton('🔌', 'primary', () => this.handleConnectClick(), 'Подключить Web Serial');
+        this.statusBadge = document.createElement('span');
+        this.statusBadge.className = 'status-badge disconnected';
+        this.statusBadge.textContent = 'DISCONNECTED';
 
-        groupLeft.append(title, this.connectBtn);
+        groupLeft.append(title, this.statusBadge);
 
-        // Group 2: Controls & INI File Selection
+        // Group 2: Controls
         const groupCenter = document.createElement('div');
         groupCenter.className = 'toolbar-group';
 
@@ -84,11 +74,7 @@ export class Toolbar {
             if (footer) footer.style.display = this.settings.enableCursors ? 'flex' : 'none';
         }, 'Курсоры измерения (Cursors)');
 
-        this.generatorBtn = ToolbarComponents.createButton('📁', 'primary', () => {
-            if (this.onOpenGeneratorModalCallback) this.onOpenGeneratorModalCallback();
-        }, 'Выбрать .ini файлы');
-
-        groupCenter.append(this.autoscaleBtn, this.cursorBtn, this.generatorBtn);
+        groupCenter.append(this.autoscaleBtn, this.cursorBtn);
 
         // Group 3: Window Size & Export
         const groupRight = document.createElement('div');
@@ -120,11 +106,7 @@ export class Toolbar {
             window.dispatchEvent(new CustomEvent('oscilloscope-export-csv'));
         }, 'Экспорт CSV');
 
-        this.statusBadge = document.createElement('span');
-        this.statusBadge.className = 'status-badge disconnected';
-        this.statusBadge.textContent = 'DISCONNECTED';
-
-        groupRight.append(this.windowSizeBtn, this.propertiesBtn, this.exportBtn, this.statusBadge);
+        groupRight.append(this.windowSizeBtn, this.propertiesBtn, this.exportBtn);
 
         this.container.append(groupLeft, groupCenter, groupRight);
 
@@ -132,39 +114,14 @@ export class Toolbar {
             if (state === 'connected') {
                 this.statusBadge.className = 'status-badge connected';
                 this.statusBadge.textContent = 'SERIAL CONNECTED';
-                this.connectBtn.innerHTML = `🔌`;
-                this.connectBtn.title = 'Отключить Web Serial';
             } else if (state === 'error') {
                 this.statusBadge.className = 'status-badge disconnected';
                 this.statusBadge.textContent = 'ERROR';
-                this.connectBtn.innerHTML = `🔌`;
-                this.connectBtn.title = 'Подключить Web Serial';
             } else {
                 this.statusBadge.className = 'status-badge disconnected';
                 this.statusBadge.textContent = 'DISCONNECTED';
-                this.connectBtn.innerHTML = `🔌`;
-                this.connectBtn.title = 'Подключить Web Serial';
             }
         });
-    }
-
-    private async handleConnectClick(): Promise<void> {
-        if (this.serial.getState() === 'connected') {
-            await this.serial.disconnect();
-            return;
-        }
-
-        const isIframe = window.self !== window.top;
-        if (isIframe && this.onOpenWebSerialModalCallback) {
-            this.onOpenWebSerialModalCallback();
-            return;
-        }
-
-        const baud = 115200;
-        const success = await this.serial.connect(baud);
-        if (!success && this.onOpenWebSerialModalCallback) {
-            this.onOpenWebSerialModalCallback();
-        }
     }
 
     public updateRecordTimer(): void {

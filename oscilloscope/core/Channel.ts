@@ -76,30 +76,16 @@ export class Channel {
         this.customMax = config.customMax !== undefined ? config.customMax : this.max;
     }
 
-    public updateRawValue(rawDec: number): void {
-        this.rawDecValue = rawDec;
-        if (this.isBit) {
-            this.rawDecValue = rawDec > 0 ? 1 : 0;
-            this.hexValue = this.rawDecValue === 1 ? '0x0001' : '0x0000';
-            this.scaledValue = this.rawDecValue;
-        } else {
-            const typeUpper = (this.dataType || '').toUpperCase();
-            if (typeUpper === 'TFLOAT' || typeUpper === 'TFLOAT32' || typeUpper === 'FLOAT' || typeUpper === 'REAL') {
-                this.scaledValue = Math.round((rawDec * this.scale) * 1000) / 1000;
-                const buf = new ArrayBuffer(4);
-                const view = new DataView(buf);
-                view.setFloat32(0, rawDec, false);
-                const uintVal = view.getUint32(0, false);
-                this.hexValue = '0x' + uintVal.toString(16).toUpperCase().padStart(8, '0');
-            } else if (typeUpper === 'TDWORD' || typeUpper === 'TLONG' || typeUpper === 'TINT32') {
-                this.scaledValue = Math.round((rawDec * this.scale) * 1000) / 1000;
-                this.hexValue = '0x' + (rawDec >>> 0).toString(16).toUpperCase().padStart(8, '0');
-            } else {
-                this.scaledValue = Math.round((rawDec * this.scale) * 1000) / 1000;
-                this.hexValue = '0x' + (Math.round(rawDec) & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
-            }
-        }
+    public updateRawValue(val: number): void {
+        this.rawDecValue = val;
+        this.hexValue = '0x' + (val & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
+        this.scaledValue = this.applyScale(val);
         this.value = this.scaledValue;
+    }
+
+    private applyScale(val: number): number {
+        if (this.isBit) return val > 0 ? 1 : 0;
+        return val * this.scale;
     }
 
     public getNumericValue(): number {

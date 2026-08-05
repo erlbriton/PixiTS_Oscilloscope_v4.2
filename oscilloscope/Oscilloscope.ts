@@ -9,7 +9,6 @@ import { Table } from './ui/Table';
 import { Toolbar } from './ui/Toolbar';
 import { Resizer } from './ui/Resizer';
 import { Layout } from './ui/Layout';
-import { WebSerialModal } from './ui/WebSerialModal';
 import { IniPanel, IniFileItem } from './ui/IniPanel';
 import { Renderer } from './graphics/Renderer';
 import { PixiView } from './graphics/PixiView';
@@ -33,19 +32,31 @@ export class Oscilloscope {
     private pixiViews: Map<string, PixiView> = new Map();
     private isRunning: boolean = false;
     private lastFrameTime: number = 0;
-    private webSerialModal!: WebSerialModal;
     private propertiesModal!: PropertiesModal;
+
+    private animFrameId: number | null = null;
+    private targetRoot: HTMLElement | null = null;
 
     constructor() {
         this.settings = new Settings();
-        this.archive = new Archive(50000);
-        this.recorder = new Recorder(this.archive);
+        this.archive = new Archive();
         this.serial = new Serial(this.archive);
+        this.recorder = new Recorder(this.archive);
         this.renderer = new Renderer(this.settings, this.archive);
     }
 
-    public async initialize(): Promise<void> {
-        const rootElement = document.getElementById('root') || document.body;
+    public async initialize(targetContainer?: HTMLElement | string): Promise<void> {
+        let rootElement: HTMLElement | null = null;
+        if (typeof targetContainer === 'string') {
+            rootElement = document.querySelector(targetContainer);
+        } else if (targetContainer instanceof HTMLElement) {
+            rootElement = targetContainer;
+        }
+        if (!rootElement) {
+            rootElement = document.getElementById('root') || document.body;
+        }
+        this.targetRoot = rootElement;
+
         this.settings.applyCSSTemplateVariables();
 
         const layoutElements = Layout.createSkeleton(rootElement);
@@ -58,7 +69,6 @@ export class Oscilloscope {
         this.resizer = new Resizer(this.settings, layoutElements.headerContainer);
         this.resizer.initialize();
 
-        this.webSerialModal = new WebSerialModal(this.serial);
         this.iniPanel = new IniPanel(layoutElements.iniPanelContainer);
         this.propertiesModal = new PropertiesModal();
         
@@ -66,12 +76,64 @@ export class Oscilloscope {
 
         this.isRunning = true;
         this.lastFrameTime = performance.now();
-        requestAnimationFrame((t) => this.loop(t));
+        this.loop(this.lastFrameTime);
+    }
+
+    /**
+     * Minimal bridge to allow parent project to push data samples.
+     * @param data Object mapping channel IDs to their new numeric values.
+     */
+    public draw(data: Record<string, number>): void {
+        const now = Date.now();
+        this.allChannels.forEach(ch => {
+            if (data[ch.id] !== undefined) {
+                const val = data[ch.id];
+                ch.updateRawValue(val);
+                this.archive.addSample(ch.id, now, ch.scaledValue);
+            }
+        });
+    }
+
+    /**
+     * Injects an externally opened SerialPort into the oscilloscope.
+     * @param port The SerialPort object from navigator.serial
+     */
+    public setSerialPort(port: any): void {
+        if (this.serial && typeof (this.serial as any).attachPort === 'function') {
+            (this.serial as any).attachPort(port);
+        }
+    }
+
+    /**
+     * Injects INI files from the main project.
+     * @param files Array of IniFileItem objects
+     */
+    public setIniFiles(files: IniFileItem[]): void {
+        if (this.iniPanel) this.iniPanel.setExternalFiles(files);
+    }
+
+    /**
+     * Switches to a specific INI file by ID.
+     * @param id The ID of the INI file
+     */
+    public setActiveIni(id: string): void {
+        if (this.iniPanel) this.iniPanel.selectFileById(id);
+    }
+
+    public destroy(): void {
+        this.isRunning = false;
+        if (this.animFrameId !== null) {
+            cancelAnimationFrame(this.animFrameId);
+            this.animFrameId = null;
+        }
+        this.pixiViews.forEach(view => view.destroy());
+        this.pixiViews.clear();
+        if (this.targetRoot) {
+            this.targetRoot.innerHTML = '';
+        }
     }
 
     private bindEvents(): void {
-        this.toolbar.onOpenGeneratorModal(() => this.iniPanel.openFilePicker());
-        this.toolbar.onOpenWebSerialModal(() => this.webSerialModal.open());
         this.toolbar.onOpenProperties(() => this.propertiesModal.open(this.allChannels, this.visibleChannels));
 
         this.toolbar.onToggleWindowSize((isHalf) => {
@@ -211,7 +273,7 @@ export class Oscilloscope {
             console.error('Oscilloscope loop error:', err);
         }
 
-        requestAnimationFrame((t) => this.loop(t));
+        this.animFrameId = requestAnimationFrame((t) => this.loop(t));
     }
 
     private updateCursorsFooter(): void {
@@ -261,18 +323,10 @@ export class Oscilloscope {
             </div>
             <h2 style="margin-bottom: 15px; color: #fff;">Обрыв связи</h2>
             <p style="color: #ccc; line-height: 1.5; margin-bottom: 25px;">${message}</p>
-            <button id="reconnect-btn" class="toolbar-btn primary" style="width: 100%; padding: 12px; background: linear-gradient(135deg, #ff4d4d 0%, #b30000 100%);">
-                Подключиться снова
-            </button>
+            <div style="color: #94a3b8; font-size: 13px;">Ожидание переподключения в основном проекте...</div>
         `;
 
         overlay.appendChild(modal);
         document.body.appendChild(overlay);
-
-        const btn = modal.querySelector('#reconnect-btn');
-        btn?.addEventListener('click', () => {
-            document.body.removeChild(overlay);
-            this.webSerialModal.open();
-        });
     }
 }
