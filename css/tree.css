@@ -10,14 +10,14 @@
     box-sizing: border-box;
     flex-shrink: 0;
     padding-left: 6px;     /* ДОБАВЛЕНО: Аккуратный зазор от левого края окна */
-    color: #000000 !important;
+    color: #000000;
 }
 
-.left-sidebar-column *,
-.sidebar-tree-container,
-.sidebar-tree-container * {
-    color: #000000 !important;
-    font-size: 14px !important;
+.left-sidebar-column,
+.sidebar-tree-container {
+    color: #000000;
+    font-size: 14px;
+    font-family: Arial, sans-serif;
 }
 
 .tree-location-title {
@@ -26,7 +26,7 @@
     align-items: center;
     font-size: 14px;       /* Плотный шрифт для компактного отображения */
     font-weight: 600;      
-    color: #000000 !important;        /* ДОБАВЛЕНО: Явный черный цвет текста */
+    color: #000000;        /* ДОБАВЛЕНО: Явный черный цвет текста */
     cursor: pointer;
     margin: 0;
     padding: 0;
@@ -52,7 +52,7 @@
     box-sizing: border-box;
     font-size: 14px;       
     font-weight: normal;
-    color: #000000 !important;        /* ДОБАВЛЕНО: Явный черный цвет текста */
+    color: #000000;        /* ДОБАВЛЕНО: Явный черный цвет текста */
     line-height: 16px;     
     margin: 0;
     padding: 0;

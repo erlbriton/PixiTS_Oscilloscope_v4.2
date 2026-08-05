@@ -1,4 +1,5 @@
-:root {
+#osc-container,
+#app-viewport {
     --col-name: 100px;
     --col-description: 50px;
     --col-value: 90px;
@@ -15,20 +16,15 @@
     --accent-amber: #f59e0b;
     --text-primary: #e0e0e0;
     --text-muted: #a0a0a5;
-}
-
-* {
-    box-sizing: border-box;
-}
-
-html, body {
-    margin: 0;
-    padding: 0;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
     background-color: #050507;
     color: var(--text-primary);
     font-family: 'Inter', 'Roboto', system-ui, -apple-system, sans-serif;
     user-select: none;
+    box-sizing: border-box;
 }
+
+#osc-container *,
+#app-viewport * {
+    box-sizing: border-box;
+}
+

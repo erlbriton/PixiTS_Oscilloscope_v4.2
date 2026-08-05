@@ -12,23 +12,19 @@
     position: relative;
 }
 
-.modbus-grid {
+.table-wrapper .modbus-grid {
     table-layout: fixed; /* ВЕРНУЛИ FIXED: это критично для работы JS-ресайзера */
     width: 100%;         
     border-collapse: separate; 
     border-spacing: 0;         
-    font-size: 14px !important;
+    font-size: 14px;
+    font-family: Arial, sans-serif;
     background-color: #ffffff;
-    color: #000000 !important;
+    color: #000000;
 }
 
-.modbus-grid * {
-    color: #000000 !important;
-    font-size: 14px !important;
-}
-
-.modbus-grid th, 
-.modbus-grid td {
+.table-wrapper .modbus-grid th, 
+.table-wrapper .modbus-grid td {
     border-bottom: none; 
     border-right: 1px solid #1d1b1a; 
     border-left: none;
@@ -38,18 +34,37 @@
     box-sizing: border-box;
     overflow: hidden;
     text-overflow: ellipsis;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    font-weight: normal;
+    color: #000000;
 }
 
-.modbus-grid th:first-child,
-.modbus-grid td:first-child {
+.table-wrapper .modbus-grid th {
+    font-weight: bold;
+}
+
+.table-wrapper .modbus-grid td .prm-val-display,
+.table-wrapper .modbus-grid td .param-name,
+.table-wrapper .modbus-grid td .param-desc,
+.table-wrapper .modbus-grid td .hex-val,
+.table-wrapper .modbus-grid td input,
+.table-wrapper .modbus-grid td select {
+    color: #000000;
+    font-size: 14px;
+    font-family: Arial, sans-serif;
+}
+
+.table-wrapper .modbus-grid th:first-child,
+.table-wrapper .modbus-grid td:first-child {
     border-left: 1px solid #a0a0a0;
 }
 
-.modbus-grid td {
+.table-wrapper .modbus-grid td {
     height: 24px;
 }
 
-.modbus-grid .main-group { 
+.table-wrapper .modbus-grid .main-group { 
     background-color: #a6a6a6; 
 }
 
@@ -57,35 +72,36 @@
    ФИКСАЦИЯ ШАПКИ
    ================================================================= */
 
-.modbus-grid thead th {
+.table-wrapper .modbus-grid thead th {
     position: sticky;
     background-color: #a8a7a7; 
     z-index: 10; /* Увеличили Z-index */
+    color: #000000;
 }
 
-.modbus-grid thead tr:nth-child(1) th {
+.table-wrapper .modbus-grid thead tr:nth-child(1) th {
     top: 0;
     z-index: 11;
     background-color: #dbdada;
 }
 
 /* ИЗМЕНЕНО: top уменьшен до 26px, чтобы убрать зазор между рядами шапки */
-.modbus-grid thead tr:nth-child(2) th {
+.table-wrapper .modbus-grid thead tr:nth-child(2) th {
     top: 26px;
     z-index: 10;
 }
 
 /* РАМКА ДЛЯ ВСЕЙ СТРОКИ "ПАРАМЕТРЫ" (второй ряд шапки) */
-.modbus-grid thead tr:nth-child(2) th {
+.table-wrapper .modbus-grid thead tr:nth-child(2) th {
     border-top: 1px solid #000000;
     border-bottom: 1px solid #000000;
 }
 
-.modbus-grid thead tr:nth-child(2) th:first-child {
+.table-wrapper .modbus-grid thead tr:nth-child(2) th:first-child {
     border-left: 1px solid #000000;
 }
 
-.modbus-grid thead tr:nth-child(2) th:last-child {
+.table-wrapper .modbus-grid thead tr:nth-child(2) th:last-child {
     border-right: 1px solid #000000;
 }
 
@@ -93,7 +109,7 @@
    РЕСАЙЗЕРЫ (Сделали их активными поверх всего)
    ================================================================= */
 
-.table-resizer {
+.table-wrapper .table-resizer {
     position: absolute;
     top: 0;
     right: -4px; 
@@ -106,24 +122,24 @@
     pointer-events: auto;
 }
 
-.modbus-grid thead tr:nth-child(2) .table-resizer {
+.table-wrapper .modbus-grid thead tr:nth-child(2) .table-resizer {
     height: 24px; /* Корректируем высоту ресайзера, чтобы не перекрывал рамку */
 }
 
-.table-resizer:hover, 
-.table-resizer.active {
-    background-color: #0055ff !important;
+.table-wrapper .table-resizer:hover, 
+.table-wrapper .table-resizer.active {
+    background-color: #0055ff;
 }
 
 /* Выделение строки */
-.modbus-grid tbody tr.is-selected,
-.modbus-grid tbody tr.is-selected td {
-    background-color: rgba(0, 255, 0, 0.2) !important;
+.table-wrapper .modbus-grid tbody tr.is-selected,
+.table-wrapper .modbus-grid tbody tr.is-selected td {
+    background-color: rgba(0, 255, 0, 0.2);
 }
 
 /* Глобальное состояние загрузки */
 .loading-state {
-    cursor: wait !important;
+    cursor: wait;
     pointer-events: none; /* Блокирует клики на всем, пока идет загрузка */
 }
 

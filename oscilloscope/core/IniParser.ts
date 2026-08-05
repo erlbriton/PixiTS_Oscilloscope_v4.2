@@ -16,6 +16,7 @@ export interface ParsedRamParam {
 export interface ParsedIniResult {
     vars: Record<string, number>;
     ramParams: ParsedRamParam[];
+    frameParamIds: string[];
 }
 
 export class IniParser {
@@ -23,6 +24,7 @@ export class IniParser {
         const lines = content.split(/\r?\n/);
         const vars: Record<string, number> = {};
         const ramParams: ParsedRamParam[] = [];
+        const frameParamIds: string[] = [];
 
         let currentSection: string | null = null;
 
@@ -47,12 +49,12 @@ export class IniParser {
                         vars[key] = numVal;
                     }
                 }
-            } else if (currentSection === 'RAM') {
+            } else if (currentSection && currentSection.startsWith('RAM')) {
                 const eqIdx = line.indexOf('=');
                 if (eqIdx !== -1) {
                     const paramId = line.substring(0, eqIdx).trim(); // p00600
                     const right = line.substring(eqIdx + 1).trim();
-                    const parts = right.split('/');
+                    const parts = right.split(/[\/,]/);
 
                     if (parts.length >= 3) {
                         const name = parts[0]?.trim() || paramId;
@@ -98,9 +100,18 @@ export class IniParser {
                         });
                     }
                 }
+            } else if (currentSection === 'FRAME') {
+                // В секции FRAME просто список ID параметров по одному на строку
+                // или через запятую (поддержим оба варианта)
+                if (line.includes(',')) {
+                    const ids = line.split(',').map(s => s.trim()).filter(s => !!s);
+                    frameParamIds.push(...ids);
+                } else {
+                    frameParamIds.push(line);
+                }
             }
         }
 
-        return { vars, ramParams };
+        return { vars, ramParams, frameParamIds };
     }
 }
