@@ -4,6 +4,7 @@
 
 body { 
     font-family: Arial, sans-serif; 
+    font-size: 14px !important;
     background: #b8b8b8; 
     margin: 0;
     padding: 0;

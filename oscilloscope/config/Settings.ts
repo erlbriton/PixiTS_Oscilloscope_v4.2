@@ -17,7 +17,7 @@ export class Settings {
 
     public minRowHeight: number = 25; // minimum line height in px
     public rowHeight: number = 25; // height in px of each channel row (min 25px)
-    public fontSize: number = 13; // font height/size in px corresponding to 25px row height
+    public fontSize: number = 14; // font height/size in px corresponding to 25px row height
     public timeWindowMs: number = 2000; // total duration visible on screen (ms) (2s default)
     public showGrid: boolean = true;
     public gridDivisionsX: number = 10;

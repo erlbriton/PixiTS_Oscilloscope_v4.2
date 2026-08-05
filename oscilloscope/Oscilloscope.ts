@@ -46,6 +46,8 @@ export class Oscilloscope {
     }
 
     public async initialize(targetContainer?: HTMLElement | string): Promise<void> {
+        if (this.targetRoot) return; // Prevent double initialization
+        
         let rootElement: HTMLElement | null = null;
         if (typeof targetContainer === 'string') {
             rootElement = document.querySelector(targetContainer);
@@ -224,6 +226,8 @@ export class Oscilloscope {
     }
 
     private async renderVisibleChannels(): Promise<void> {
+        if (!this.table) return; // Wait for initialization
+        
         this.pixiViews.forEach(view => view.destroy());
         
         const tempPixiViews: Map<string, PixiView> = new Map();
@@ -246,7 +250,7 @@ export class Oscilloscope {
     }
 
     private loop(now: number): void {
-        if (!this.isRunning) return;
+        if (!this.isRunning || !this.table) return;
 
         this.lastFrameTime = now;
 

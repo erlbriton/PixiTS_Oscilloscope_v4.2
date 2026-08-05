@@ -32,6 +32,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Инициализируем реальный осциллограф
         const osc = new Oscilloscope();
         (window as any).osc = osc;
+        await osc.initialize(oscContainer!);
 
         const serial = new SerialConnection();
         const parser = new ModbusParser();

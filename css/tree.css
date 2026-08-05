@@ -10,15 +10,23 @@
     box-sizing: border-box;
     flex-shrink: 0;
     padding-left: 6px;     /* ДОБАВЛЕНО: Аккуратный зазор от левого края окна */
+    color: #000000 !important;
 }
 
-/* Название текущей папки конфигураций (Локации) */
+.left-sidebar-column *,
+.sidebar-tree-container,
+.sidebar-tree-container * {
+    color: #000000 !important;
+    font-size: 14px !important;
+}
+
 .tree-location-title {
     height: 16px;          /* Вертикальный интервал уменьшен до минимума */
     display: flex;
     align-items: center;
-    font-size: 13px;       /* Плотный шрифт для компактного отображения */
+    font-size: 14px;       /* Плотный шрифт для компактного отображения */
     font-weight: 600;      
+    color: #000000 !important;        /* ДОБАВЛЕНО: Явный черный цвет текста */
     cursor: pointer;
     margin: 0;
     padding: 0;
@@ -42,8 +50,9 @@
     overflow: hidden;
     text-overflow: ellipsis;
     box-sizing: border-box;
-    font-size: 13px;       
+    font-size: 14px;       
     font-weight: normal;
+    color: #000000 !important;        /* ДОБАВЛЕНО: Явный черный цвет текста */
     line-height: 16px;     
     margin: 0;
     padding: 0;

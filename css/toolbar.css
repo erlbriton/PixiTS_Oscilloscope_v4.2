@@ -12,6 +12,13 @@
     gap: 5px;
     box-sizing: border-box;
     flex-shrink: 0;
+    color: #000000 !important;
+    font-size: 14px !important;
+}
+
+.top-main-toolbar * {
+    color: #000000 !important;
+    font-size: 14px !important;
 }
 
 /* Универсальный стиль управляющих кнопок с двойным обрамлением */
@@ -30,7 +37,7 @@
     cursor: pointer;
     font-weight: bold;
     padding: 4px 12px;
-    font-size: 12px;
+    font-size: 14px;
     
     /* Двойное псевдо-обрамление */
     border: 1px solid #ffffff;      /* Наружный блик */
@@ -141,7 +148,7 @@
 
 .split-dropdown-item {
     padding: 5px 12px;
-    font-size: 12px;
+    font-size: 14px;
     color: #000000;
     cursor: pointer;
     text-align: left;
@@ -158,6 +165,7 @@
     height: 100%;            /* Ограничиваем высоту */
     overflow-y: auto;        /* Включает скроллбар при необходимости */
     background-color: #c6c6c6; 
+    color: #000000;          /* ДОБАВЛЕНО: Явный черный цвет текста */
     box-sizing: border-box;
 }
 

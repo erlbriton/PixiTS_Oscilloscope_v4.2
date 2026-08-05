@@ -17,9 +17,14 @@
     width: 100%;         
     border-collapse: separate; 
     border-spacing: 0;         
-    font-size: 12px;
+    font-size: 14px !important;
     background-color: #ffffff;
-    color: #000000;
+    color: #000000 !important;
+}
+
+.modbus-grid * {
+    color: #000000 !important;
+    font-size: 14px !important;
 }
 
 .modbus-grid th, 
