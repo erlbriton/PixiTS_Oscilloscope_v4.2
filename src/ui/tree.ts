@@ -1,7 +1,7 @@
 import { populateDeviceForm } from './ui.js';
-import { currentDeviceConfig, deviceRegistry, addDeviceToRegistry, parseRegisterAddress, hexToFloat32, float32ToHex } from './ini-manager/tree-core.js';
-import { clearAnyActiveCellEditors, initHexCellEditor, initPhysicalCellEditor } from './ini-manager/table-editor.js';
-import { updateRowValues } from './ini-manager/tree-ui.js';
+import { currentDeviceConfig, deviceRegistry, addDeviceToRegistry, parseRegisterAddress, hexToFloat32, float32ToHex } from '../ini-manager/tree-core.js';
+import { clearAnyActiveCellEditors, initHexCellEditor, initPhysicalCellEditor } from '../ini-manager/table-editor.js';
+import { updateRowValues } from '../ini-manager/tree-ui.js';
 
 // Объявление глобальной функции, вызываемой для ресайза колонок
 declare global {

@@ -1,7 +1,7 @@
-import { showIdModal, populateDeviceForm } from './ui.js';
-import { addDeviceToRegistry, deviceRegistry } from './ini-manager/tree-core.js';
-import { renderDeviceTree } from './ini-manager/tree-ui.js';
-import { renderModbusTable } from './tree.js';
+import { showIdModal, populateDeviceForm } from '../ui/ui.js';
+import { addDeviceToRegistry, deviceRegistry } from './tree-core.js';
+import { renderDeviceTree } from './tree-ui.js';
+import { renderModbusTable } from '../ui/tree.js';
 
 export function setupFileHandling(fileInput: HTMLInputElement, appState: any): void {
     fileInput.addEventListener('change', (event: Event) => {

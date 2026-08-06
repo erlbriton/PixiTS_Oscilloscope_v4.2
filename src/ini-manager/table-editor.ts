@@ -1,4 +1,4 @@
-import { serialManager, calculateCRC } from '../serial-actions.js';
+import { serialManager, calculateCRC } from '../serial/serial-actions.js';
 import { parseRegisterAddress, float32ToHex } from './tree-core.js';
 
 export interface TableEditorState {

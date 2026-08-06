@@ -1,6 +1,6 @@
 import { updateRowValues } from "../ini-manager/tree-ui.js";
 import { hexToFloat32, float32ToHex } from "../ini-manager/tree-core.js";
-import { calculateCRC, serialManager } from "../serial-actions.js";
+import { calculateCRC, serialManager } from "./serial-actions.js";
 
 declare global {
     interface Window {

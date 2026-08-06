@@ -1,7 +1,7 @@
 import { identifyUsbChip } from './usb.js';
-import { showIdModal, updateIdBanner, closeIdModal } from './ui.js';
-import { parseRegisterAddress, hexToFloat32, float32ToHex } from './ini-manager/tree-core.js';
-import { updateRowValues } from './ini-manager/tree-ui.js';
+import { showIdModal, updateIdBanner, closeIdModal } from '../ui/ui.js';
+import { parseRegisterAddress, hexToFloat32, float32ToHex } from '../ini-manager/tree-core.js';
+import { updateRowValues } from '../ini-manager/tree-ui.js';
 
 let currentLoopId = 0; 
 

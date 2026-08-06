@@ -1,4 +1,4 @@
-import { IniParser } from './iniParser.js';
+import { IniParser } from './ini-manager/iniParser.js';
 import { SerialConnection } from './serial/serial.js';
 import { initUI } from './ui/uiManager.js';
 import { ModbusParser } from './serial/modbus.js';
@@ -6,15 +6,14 @@ import { Oscilloscope } from './oscilloscope';
 import './ui/layout.js';
 
 // Импорты логики
-import { showIdModal } from './ui.js';
+import { showIdModal } from './ui/ui.js';
 import { updateDeviceRegisters } from './serial/device_updater.js';
-import { setupFileHandling } from './file-loader.js';
+import { setupFileHandling } from './ini-manager/file-loader.js';
 import { 
     updateComInterfaceName, 
     executeDeviceIdentification, 
     readLoop 
-} from './serial-actions.js';
-import './css/style.css';
+} from './serial/serial-actions.js';
 
 declare global {
     interface Window {

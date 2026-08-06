@@ -1,5 +1,5 @@
-import { populateDeviceForm } from '../ui.js';
-import { renderModbusTable } from '../tree.js';
+import { populateDeviceForm } from '../ui/ui.js';
+import { renderModbusTable } from '../ui/tree.js';
 import { deviceRegistry, setCurrentDeviceConfig, hexToFloat32, float32ToHex } from './tree-core.js';
 
 export function renderDeviceTree() {
