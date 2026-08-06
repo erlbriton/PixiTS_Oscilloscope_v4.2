@@ -2,7 +2,7 @@ import { IniParser } from './iniParser.js';
 import { SerialConnection } from './serial/serial.js';
 import { initUI } from './ui/uiManager.js';
 import { ModbusParser } from './serial/modbus.js';
-import { Oscilloscope } from '../index';
+import { Oscilloscope } from '../oscilloscope';
 import './ui/layout.js';
 
 // Импорты логики

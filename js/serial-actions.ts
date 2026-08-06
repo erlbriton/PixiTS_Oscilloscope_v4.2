@@ -1,12 +1,135 @@
-// oscilloscope/js/serial/read-loop.ts
+import { identifyUsbChip } from './usb.js';
+import { showIdModal, updateIdBanner, closeIdModal } from './ui.js';
+import { parseRegisterAddress, hexToFloat32, float32ToHex } from './ini-manager/tree-core.js';
+import { updateRowValues } from './ini-manager/tree-ui.js';
 
-import { serialManager, calculateCRC } from './serial-manager.js';
-import { parseRegisterAddress, hexToFloat32, float32ToHex } from '../ini-manager/tree-core.js';
-import { updateRowValues } from '../ini-manager/tree-ui.js';
+let currentLoopId = 0; 
+
+type ChunkHandler = (chunk: Uint8Array) => void;
+type CheckCompleteFn = (buffer: Uint8Array) => boolean;
 
 export interface RegisterBatch {
     start: number;
     count: number;
+}
+
+// === ЦЕНТРАЛЬНЫЙ МЕНЕДЖЕР ПОРТА (АРХИТЕКТУРА «ЕДИНЫЙ ЧИТАТЕЛЬ») ===
+class SerialManager {
+    public serial: any;
+    public readerPromise: Promise<void> | null;
+    public currentHandler: ChunkHandler | null;
+    private lock: Promise<void>;
+
+    constructor() {
+        this.serial = null;
+        this.readerPromise = null;
+        this.currentHandler = null;
+        this.lock = Promise.resolve();
+    }
+
+    public init(serial: any): void {
+        this.serial = serial;
+        this.startReader();
+    }
+
+    public startReader(): void {
+        if (this.readerPromise || !this.serial || !this.serial.isConnected) return;
+        
+        this.readerPromise = (async () => {
+            console.log("[SerialManager] Центральный единый ридер успешно запущен.");
+            while (this.serial && this.serial.isConnected) {
+                try {
+                    const chunk: Uint8Array | null = await this.serial.readChunk();
+                    if (chunk && chunk.length > 0) {
+                        if (this.currentHandler) {
+                            this.currentHandler(chunk);
+                        }
+                    } else {
+                        await new Promise((r) => setTimeout(r, 5));
+                    }
+                } catch (e) {
+                    console.error("[SerialManager] Критическая ошибка в едином ридере:", e);
+                    break;
+                }
+            }
+            this.readerPromise = null;
+            console.log("[SerialManager] Центральный единый ридер остановлен.");
+        })();
+    }
+
+    public async executeTransaction(
+        packet: Uint8Array,
+        checkCompleteFn: CheckCompleteFn,
+        timeoutMs: number = 1000
+    ): Promise<Uint8Array> {
+        const oldLock = this.lock;
+        let release: () => void = () => {};
+        this.lock = new Promise((r) => { release = r; });
+        await oldLock;
+
+        try {
+            this.startReader();
+
+            await this.serial.write(packet);
+
+            return await new Promise<Uint8Array>((resolve) => {
+                let buffer = new Uint8Array(0);
+                let timeoutId: any = null;
+
+                const cleanUp = () => {
+                    if (timeoutId) clearTimeout(timeoutId);
+                    if (this.currentHandler === handleChunk) {
+                        this.currentHandler = null;
+                    }
+                };
+
+                const handleChunk: ChunkHandler = (chunk: Uint8Array) => {
+                    let newBuffer = new Uint8Array(buffer.length + chunk.length);
+                    newBuffer.set(buffer);
+                    newBuffer.set(chunk, buffer.length);
+                    buffer = newBuffer;
+
+                    if (checkCompleteFn(buffer)) {
+                        cleanUp();
+                        resolve(buffer);
+                    }
+                };
+
+                this.currentHandler = handleChunk;
+
+                timeoutId = setTimeout(() => {
+                    cleanUp();
+                    resolve(buffer);
+                }, timeoutMs);
+            });
+        } catch (err) {
+            console.error("[SerialManager] Ошибка транзакции:", err);
+            throw err;
+        } finally {
+            release();
+        }
+    }
+}
+
+export const serialManager = new SerialManager();
+
+/**
+ * Вычисление Modbus RTU CRC16.
+ */
+export function calculateCRC(buffer: Uint8Array): number {
+    let crc = 0xFFFF;
+    for (let pos = 0; pos < buffer.length; pos++) {
+        crc ^= buffer[pos];
+        for (let i = 8; i !== 0; i--) {
+            if ((crc & 0x0001) !== 0) {
+                crc >>= 1;
+                crc ^= 0xA001;
+            } else {
+                crc >>= 1;
+            }
+        }
+    }
+    return crc;
 }
 
 /**
@@ -77,6 +200,57 @@ export function getOptimizedBatches(
     return batches;
 }
 
+export function updateComInterfaceName(serial: any, comSelect: HTMLSelectElement | null): string {
+    if (!comSelect) return "";
+    const portInfo = (serial.port && typeof serial.port.getInfo === 'function') 
+        ? serial.port.getInfo() 
+        : (typeof serial.getInfo === 'function' ? serial.getInfo() : {});
+    const chipName = identifyUsbChip(portInfo);
+    comSelect.innerHTML = `<option value="active">${chipName}</option>`;
+    comSelect.className = 'select-blue';
+    return chipName;
+}
+
+export async function executeDeviceIdentification(serial: any, comSelect: HTMLSelectElement | null, stateObj: any): Promise<void> {
+    try {
+        stateObj.isIdentifying = true; 
+        await serial.connect(115200);
+        serialManager.init(serial);
+        
+        updateComInterfaceName(serial, comSelect);
+        await new Promise((r) => setTimeout(r, 500));
+        showIdModal("Запрос ID устройства...");
+        
+        const packet = new Uint8Array([0x01, 0x11, 0xC0, 0x2C]);
+
+        const checkComplete: CheckCompleteFn = (buf: Uint8Array) => {
+            if (buf.length >= 3) {
+                const dataLength = buf[2]; 
+                return buf.length >= 3 + dataLength + 2 || buf.length >= 52;
+            }
+            return false;
+        };
+
+        const reply = await serialManager.executeTransaction(packet, checkComplete, 1500);
+
+        if (reply && reply.length >= 3) {
+            const dataLength = reply[2];
+            let idText = "";
+            for (let i = 3; i < Math.min(3 + dataLength, reply.length - 2); i++) {
+                if (reply[i] >= 32) idText += String.fromCharCode(reply[i]);
+            }
+            updateIdBanner(idText.trim());
+            closeIdModal();
+        } else {
+            showIdModal("Ошибка: Нет ответа от устройства");
+        }
+    } catch (error: any) {
+        showIdModal("Ошибка: " + error.message);
+    } finally {
+        stateObj.isIdentifying = false; 
+    }
+}
+
 export async function readLoop(serial: any, parser: any, view: any, buffers: any, stateObj: any): Promise<void> {
     if (stateObj.isLoopRunning) return;
     stateObj.isLoopRunning = true;
@@ -121,7 +295,7 @@ export async function readLoop(serial: any, parser: any, view: any, buffers: any
                 finalPacket[6] = crc & 0xFF;
                 finalPacket[7] = (crc >> 8) & 0xFF;
 
-                const checkComplete = (buf: Uint8Array) => buf.length >= 3 + (regCount * 2) + 2;
+                const checkComplete: CheckCompleteFn = (buf: Uint8Array) => buf.length >= 3 + (regCount * 2) + 2;
 
                 try {
                     const reply = await serialManager.executeTransaction(finalPacket, checkComplete, 500);

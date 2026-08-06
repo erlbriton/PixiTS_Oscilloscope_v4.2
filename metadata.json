@@ -1,6 +1,6 @@
 {
-  "name": "Modular PixiTS Oscilloscope",
-  "description": "A self-contained oscilloscope module for integration into larger Pure TS/JS industrial projects. Features Web Serial, Modbus, and PixiJS rendering.",
-  "requestFramePermissions": ["serial"],
+  "name": "Web Serial & PixiJS Oscilloscope",
+  "description": "Real-time Web Serial and PixiJS signal oscilloscope and channel adjuster with half-window left alignment layout.",
+  "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
