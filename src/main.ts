@@ -14,6 +14,7 @@ import {
     executeDeviceIdentification, 
     readLoop 
 } from './serial-actions.js';
+import './css/style.css';
 
 declare global {
     interface Window {
