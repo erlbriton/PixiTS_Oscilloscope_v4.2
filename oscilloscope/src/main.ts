@@ -1,7 +1,7 @@
 // src/main.ts
 // This is the "Main Project" logic demonstrating how to embed the Oscilloscope module.
 
-import { Oscilloscope } from '../oscilloscope';
+import { Oscilloscope } from '../index';
 
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('Main Industrial Application Initialized');

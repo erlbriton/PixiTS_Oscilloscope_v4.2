@@ -1,3 +1,5 @@
+import { initTableEditor } from '../ini-manager/table-editor.js';
+
 export interface UiManagerDeps {
     serial: any;
     appState: any;
@@ -120,5 +122,9 @@ export function initUI(deps: UiManagerDeps): void {
     
     document.addEventListener('click', () => folderDropdown?.classList.remove('show'));
 
+    // 5. Инициализация инлайн-редактора таблицы
+    initTableEditor('grid-data-rows', appState);
+
     console.log("UI Manager: Интерфейс и обработчики инициализированы.");
 }
+
