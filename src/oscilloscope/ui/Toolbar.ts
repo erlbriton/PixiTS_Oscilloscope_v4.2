@@ -50,7 +50,7 @@ export class Toolbar {
 
         const title = document.createElement('div');
         title.className = 'toolbar-title';
-        title.innerHTML = `⚡ PixiTS Oscilloscope v4.1`;
+        //title.innerHTML = `⚡ PixiTS Oscilloscope v4.1`;
 
         this.statusBadge = document.createElement('span');
         this.statusBadge.className = 'status-badge disconnected';
