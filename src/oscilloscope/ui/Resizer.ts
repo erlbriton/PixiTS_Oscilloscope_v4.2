@@ -32,23 +32,25 @@ export class Resizer {
         });
     }
 
-    private bindColumnResize(handle: HTMLElement, colKey: keyof ColumnWidths): void {
+        private bindColumnResize(handle: HTMLElement, colKey: keyof ColumnWidths): void {
         handle.addEventListener('mousedown', (e: MouseEvent) => {
             e.preventDefault();
             this.isResizing = true;
             handle.classList.add('resizing');
-
             const startX = e.clientX;
             const startWidth = this.settings.columnWidths[colKey];
+            let pendingWidth = startWidth;
 
             const onMouseMove = (moveEvent: MouseEvent) => {
                 if (!this.isResizing) return;
                 const deltaX = moveEvent.clientX - startX;
-                const newWidth = Math.max(35, startWidth + deltaX);
-                this.settings.updateColumnWidth(colKey, newWidth);
+                pendingWidth = Math.max(35, startWidth + deltaX);
             };
 
             const onMouseUp = () => {
+                if (this.isResizing) {
+                    this.settings.updateColumnWidth(colKey, pendingWidth);
+                }
                 this.isResizing = false;
                 handle.classList.remove('resizing');
                 window.removeEventListener('mousemove', onMouseMove);
