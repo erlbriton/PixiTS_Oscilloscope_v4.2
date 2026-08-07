@@ -19,11 +19,22 @@ export class Settings {
     public rowHeight: number = 25; // height in px of each channel row (min 25px)
     public fontSize: number = 14; // font height/size in px corresponding to 25px row height
     public timeWindowMs: number = 2000; // total duration visible on screen (ms) (2s default)
+    private baseTimeWindowMs: number = 2000;
+    // Горизонтальная развертка: коэффициент масштаба времени (1 = норма)
+    public timeScale: number = 1;
+    public readonly minTimeScale: number = 0.1;  // «−» в 2 раза
+    public readonly maxTimeScale: number = 10;    // «+» в 3 раза
+    // Включена ли регулировка развертки колесом мыши (кнопка «Развертка»)
+    public timeZoomEnabled: boolean = false;
+    public setTimeScale(z: number): void {
+        this.timeScale = Math.min(this.maxTimeScale, Math.max(this.minTimeScale, z));
+        this.timeWindowMs = Math.round(this.baseTimeWindowMs / this.timeScale);
+    }
     public showGrid: boolean = true;
     public gridDivisionsX: number = 10;
     public gridDivisionsY: number = 4;
     public autoScale: boolean = true;
-    
+
     // Cursors
     public enableCursors: boolean = false;
     public cursorX1Percent: number = 25; // % of graph width

@@ -13,13 +13,14 @@ export class Toolbar {
 
     private autoscaleBtn!: HTMLButtonElement;
     private cursorBtn!: HTMLButtonElement;
+    private sweepBtn!: HTMLButtonElement;
     private propertiesBtn!: HTMLButtonElement;
     private exportBtn!: HTMLButtonElement;
     private windowSizeBtn!: HTMLButtonElement;
     private statusBadge!: HTMLSpanElement;
-
     private onOpenPropertiesCallback?: () => void;
     private onToggleWindowSizeCallback?: (isHalf: boolean) => void;
+    private onToggleTimeZoomCallback?: (enabled: boolean) => void;
 
     constructor(
         container: HTMLElement,
@@ -36,9 +37,11 @@ export class Toolbar {
     public onOpenProperties(cb: () => void): void {
         this.onOpenPropertiesCallback = cb;
     }
-
     public onToggleWindowSize(cb: (isHalf: boolean) => void): void {
         this.onToggleWindowSizeCallback = cb;
+    }
+    public onToggleTimeZoom(cb: (enabled: boolean) => void): void {
+        this.onToggleTimeZoomCallback = cb;
     }
 
     public initialize(): void {
@@ -67,14 +70,30 @@ export class Toolbar {
             this.autoscaleBtn.classList.toggle('active', this.settings.autoScale);
         }, 'Автомасштабирование (Auto-Scale)');
 
-        this.cursorBtn = ToolbarComponents.createButton('📏', this.settings.enableCursors ? 'active' : '', () => {
-            this.settings.enableCursors = !this.settings.enableCursors;
-            this.cursorBtn.classList.toggle('active', this.settings.enableCursors);
-            const footer = document.getElementById('footer');
-            if (footer) footer.style.display = this.settings.enableCursors ? 'flex' : 'none';
-        }, 'Курсоры измерения (Cursors)');
-
-        groupCenter.append(this.autoscaleBtn, this.cursorBtn);
+             this.cursorBtn = ToolbarComponents.createButton('📏', this.settings.enableCursors ? 'active' : '', () => {
+         this.settings.enableCursors = !this.settings.enableCursors;
+         this.cursorBtn.classList.toggle('active', this.settings.enableCursors);
+         const footer = document.getElementById('footer');
+         if (footer) footer.style.display = this.settings.enableCursors ? 'flex' : 'none';
+     }, 'Курсоры измерения (Cursors)');
+     // Кнопка «Развертка»: включает регулировку развертки колесом мыши.
+     // Ширина = 2 × высоты (высота .toolbar-btn = 32px → ширина 64px).
+     const sweepIcon = `
+         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+             <path d="M3 5h18"/>
+             <path d="m6 2-3 3 3 3"/>
+             <path d="m18 2 3 3-3 3"/>
+             <path d="M3 17h2l2-5 3 10 3-8 2 3h6"/>
+         </svg>`;
+     this.sweepBtn = ToolbarComponents.createButton(sweepIcon, '', () => {
+         const enabled = !this.sweepBtn.classList.contains('active');
+         this.sweepBtn.classList.toggle('active', enabled);
+         if (this.onToggleTimeZoomCallback) {
+             this.onToggleTimeZoomCallback(enabled);
+         }
+     }, 'Развертка: колесо мыши над графиками растягивает / сжимает их по времени');
+     this.sweepBtn.style.width = '64px';
+     groupCenter.append(this.autoscaleBtn, this.cursorBtn, this.sweepBtn);
 
         // Group 3: Window Size & Export
         const groupRight = document.createElement('div');

@@ -76,9 +76,9 @@ export class Oscilloscope {
         this.iniPanel = new IniPanel(layoutElements.iniPanelContainer);
         this.propertiesModal = new PropertiesModal();
 
-        this.bindEvents();
-
-        this.isRunning = true;
+            this.bindEvents();
+     this.bindTimeZoomWheel();
+     this.isRunning = true;
         this.lastFrameTime = performance.now();
         this.animFrameId = requestAnimationFrame((t) => this.loop(t));
     }
@@ -217,10 +217,37 @@ export class Oscilloscope {
             this.loadIniContent(fileItem.content);
         });
 
-        window.addEventListener('oscilloscope-export-csv', () => {
-            this.recorder.downloadCSV(this.visibleChannels);
-        });
-    }
+            window.addEventListener('oscilloscope-export-csv', () => {
+         this.recorder.downloadCSV(this.visibleChannels);
+     });
+
+     this.toolbar.onToggleTimeZoom((enabled) => {
+         this.settings.timeZoomEnabled = enabled;
+     });
+ }
+
+ /**
+  * Колесо мыши над областью графиков = горизонтальная развертка.
+  * Работает ТОЛЬКО когда включена кнопка «Развертка» в тулбаре.
+  * Колесо вверх — растянуть (зум ×), колесо вниз — сжать.
+  */
+  private bindTimeZoomWheel(): void {
+     const rowsContainer = this.targetRoot?.querySelector<HTMLElement>('#channelRows');
+     if (!rowsContainer) return;
+
+     rowsContainer.addEventListener('wheel', (e: WheelEvent) => {
+         if (!this.settings.timeZoomEnabled) return;
+
+         const target = e.target as HTMLElement;
+         if (!target.closest('.col-graph')) return;
+
+         e.preventDefault();
+         e.stopPropagation();
+
+         const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+         this.settings.setTimeScale(this.settings.timeScale * factor);
+     }, { passive: false });
+ }
 
     /**
      * Главная точка входа для загрузки INI-контента.

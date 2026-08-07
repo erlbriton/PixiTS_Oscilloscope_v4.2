@@ -21,7 +21,8 @@ export class Renderer {
         if (width <= 0 || height <= 0) return;
 
         const now = Date.now();
-        const spacing = 40; 
+        // 1 деление маркеров = 1 секунда. Базовая скорость 40 px/с умножается на коэффициент развертки.
+        const spacing = 40 * this.settings.timeScale;
         const duration = (width / spacing) * 1000;
 
         this.renderGrid(view, width, height);
