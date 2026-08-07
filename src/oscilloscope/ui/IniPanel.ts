@@ -36,28 +36,59 @@ export class IniPanel {
         });
     }
 
-    public selectFileById(id: string): void {
-        const file = this.files.find(f => f.id === id);
-        if (file) {
-            this.selectedFileId = id;
-            this.render();
-            if (this.onFileSelectCallback) {
-                this.onFileSelectCallback(file);
-            }
-        }
+    // public selectFileById(id: string): void {//////////////////////////////////////////////
+    //     const file = this.files.find(f => f.id === id);
+    //     if (file) {
+    //         this.selectedFileId = id;
+    //         this.render();
+    //         if (this.onFileSelectCallback) {
+    //             this.onFileSelectCallback(file);
+    //         }
+    //     }
+    // }
+
+    // public setExternalFiles(files: IniFileItem[]): void {
+    //     this.files = files;
+    //     if (this.files.length > 0 && !this.selectedFileId) {
+    //         this.selectedFileId = this.files[0].id;
+    //     }
+    //     this.render();
+    //     const selected = this.getSelectedFile();
+    //     if (selected && this.onFileSelectCallback) {
+    //         this.onFileSelectCallback(selected);
+    //     }
+    // }///////////////////////////////////////////////////////////////////////
+
+    /**/////////////////////////////////////////////////////////////////////////////////////////////////////////
+//  * Программный выбор файла в панели.
+//  * Только подсвечивает файл в UI.
+//  * НЕ вызывает onFileSelectCallback.
+//  */
+public selectFileById(id: string): void {
+    const file = this.files.find(f => f.id === id);
+
+    if (!file) {
+        return;
     }
 
-    public setExternalFiles(files: IniFileItem[]): void {
-        this.files = files;
-        if (this.files.length > 0 && !this.selectedFileId) {
-            this.selectedFileId = this.files[0].id;
-        }
-        this.render();
-        const selected = this.getSelectedFile();
-        if (selected && this.onFileSelectCallback) {
-            this.onFileSelectCallback(selected);
-        }
+    this.selectedFileId = id;
+    this.render();
+}
+
+/**
+ * Программное обновление списка файлов из внешнего проекта.
+ * Только обновляет список и выделяет текущий файл.
+ * НЕ вызывает onFileSelectCallback.
+ */
+public setExternalFiles(files: IniFileItem[]): void {
+    this.files = files;
+
+    if (this.files.length > 0 && !this.selectedFileId) {
+        this.selectedFileId = this.files[0].id;
     }
+
+    this.render();
+}///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     public openFilePicker(): void {
         this.fileInput.click();

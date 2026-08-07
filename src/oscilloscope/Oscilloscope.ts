@@ -120,17 +120,38 @@ export class Oscilloscope {
         }
     }
 
-    /**
-     * Переключение активного INI-файла в панели.
-     */
-    public setActiveIni(id: string): void {
-        if (this.isDestroyed || !id) return;
-        if (this.currentIniId === id && this.allChannels.length > 0) return;
-        this.currentIniId = id;
-        if (this.iniPanel) {
-            this.iniPanel.selectFileById(id);
+    // /**
+    //  * Переключение активного INI-файла в панели.
+    //  */
+    // public setActiveIni(id: string): void {///////////////////////////////////////////,,,,,,,,,,,,,,,,,,,,,,,////////
+    //     if (this.isDestroyed || !id) return;
+    //     if (this.currentIniId === id && this.allChannels.length > 0) return;
+    //     this.currentIniId = id;
+    //     if (this.iniPanel) {
+    //         this.iniPanel.selectFileById(id);
+    //     }
+    // }//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    public setActiveIni(id: string, loadContent: boolean = true): void {////////////////////////////////////////////////////
+    if (this.isDestroyed || !id) return;
+
+    if (this.currentIniId === id && this.allChannels.length > 0 && !loadContent) {
+        return;
+    }
+
+    this.currentIniId = id;
+
+    if (this.iniPanel) {
+        this.iniPanel.selectFileById(id);
+    }
+
+    if (loadContent) {
+        const file = this.availableIniFiles.find(f => f.id === id);
+        if (file && typeof file.content === 'string') {
+            void this.loadIniContent(file.content);
         }
     }
+}/////////////////////////!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     public destroy(): void {
         this.isDestroyed = true;
@@ -208,10 +229,28 @@ export class Oscilloscope {
      */
     private static lastLoadedIniContent: string | null = null;
 
-public async loadIniContent(iniContent: string): Promise<void> {
+// public async loadIniContent(iniContent: string): Promise<void> {/////////////////////////////////////////////////////////////////////////
+//     if (this.isDestroyed || typeof iniContent !== 'string') return;
+
+//     if (this.allChannels.length > 0 && iniContent === Oscilloscope.lastLoadedIniContent) {
+//         console.log('[Oscilloscope] loadIniContent skipped: same content');
+//         return;
+//     }
+
+//     const parsed = IniParser.parse(iniContent);
+
+//     await this.applyParsedRamParams(parsed?.ramParams ?? []);
+
+//     Oscilloscope.lastLoadedIniContent = iniContent;
+// }//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+public async loadIniContent(iniContent: string): Promise<void> {/////////////////////////////////////////////////////////////////////////
     if (this.isDestroyed || typeof iniContent !== 'string') return;
 
-    if (this.allChannels.length > 0 && iniContent === Oscilloscope.lastLoadedIniContent) {
+    const lastLoadedIniContent = (this as any)._lastLoadedIniContent as string | null;
+
+    if (this.allChannels.length > 0 && iniContent === lastLoadedIniContent) {
         console.log('[Oscilloscope] loadIniContent skipped: same content');
         return;
     }
@@ -220,8 +259,8 @@ public async loadIniContent(iniContent: string): Promise<void> {
 
     await this.applyParsedRamParams(parsed?.ramParams ?? []);
 
-    Oscilloscope.lastLoadedIniContent = iniContent;
-}
+    (this as any)._lastLoadedIniContent = iniContent;
+}///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     public async applyParsedRamParams(ramParams: ParsedRamParam[]): Promise<void> {
         if (this.isDestroyed) return;

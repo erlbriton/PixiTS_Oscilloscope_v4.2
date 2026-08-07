@@ -36,41 +36,98 @@ export function initUI(deps: UiManagerDeps): void {
     const menuOpenFile = document.getElementById('menuOpenFile') as HTMLElement | null;
     const menuOpenFolder = document.getElementById('menuOpenFolder') as HTMLElement | null;
 
-    // 2. Инициализация логики файлов
-    // 2. Инициализация логики файлов
-if (filePicker) setupFileHandling(filePicker, appState);
-if (folderPicker && typeof setupFolderHandling === 'function') setupFolderHandling(folderPicker);
+//     // 2. Инициализация логики файлов///////////////////////////////////////////////////////////////////////////////
+// if (filePicker) setupFileHandling(filePicker, appState);
+// if (folderPicker && typeof setupFolderHandling === 'function') setupFolderHandling(folderPicker);
 
-// Синхронизация внешнего readLoop с любым INI, который загружает осциллограф.
-// Без этого при переключении INI через панель/дерево readLoop может остаться
-// на старом appState.currentDeviceConfig, и графики перестают получать данные.
-if (view && typeof view.loadIniContent === 'function') {
-    const originalLoadIniContent = view.loadIniContent.bind(view);
+// // Синхронизация внешнего readLoop с любым INI, который загружает осциллограф.
+// // Без этого при переключении INI через панель/дерево readLoop может остаться
+// // на старом appState.currentDeviceConfig, и графики перестают получать данные.
+// if (view && typeof view.loadIniContent === 'function') {
+//     const originalLoadIniContent = view.loadIniContent.bind(view);
 
-    view.loadIniContent = async (iniContent: string) => {
-        try {
-            if (typeof iniContent === 'string' && iniContent.trim().length > 0) {
-                appState.currentIniContent = iniContent;
+//     view.loadIniContent = async (iniContent: string) => {
+//         try {
+//             if (typeof iniContent === 'string' && iniContent.trim().length > 0) {
+//                 appState.currentIniContent = iniContent;
 
-                const parsedConfig = appState?.parser?.parse?.(iniContent);
+//                 const parsedConfig = appState?.parser?.parse?.(iniContent);
 
-                if (
-                    parsedConfig &&
-                    (parsedConfig['RAM'] ||
-                     parsedConfig['DEVICE'] ||
-                     parsedConfig['CD'] ||
-                     parsedConfig['FLASH'])
-                ) {
-                    appState.currentDeviceConfig = parsedConfig;
+//                 if (
+//                     parsedConfig &&
+//                     (parsedConfig['RAM'] ||
+//                      parsedConfig['DEVICE'] ||
+//                      parsedConfig['CD'] ||
+//                      parsedConfig['FLASH'])
+//                 ) {
+//                     appState.currentDeviceConfig = parsedConfig;
+//                 }
+//             }
+//         } catch (err) {
+//             console.warn('[uiManager] Failed to sync appState from INI content:', err);
+//         }
+
+//         return originalLoadIniContent(iniContent);
+//     };
+// }/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    // 2. Инициализация логики файлов////////////////////////////////////////////////////////////////////////////////////////////////////
+    if (filePicker) setupFileHandling(filePicker, appState);
+    if (folderPicker && typeof setupFolderHandling === 'function') setupFolderHandling(folderPicker);
+
+    // Синхронизация внешнего readLoop с любым INI, который загружает осциллограф.
+    // Перехватываем loadIniContent чтобы:
+    // 1. Обновить appState.currentDeviceConfig для readLoop
+    // 2. Обновить appState.currentIniContent
+    // 3. Принудительно перезапустить readLoop, чтобы он подхватил новый конфиг
+    if (view && typeof view.loadIniContent === 'function' && !(view as any).__loadIniContentWrapped) {
+        const originalLoadIniContent = view.loadIniContent.bind(view);
+        (view as any).__loadIniContentWrapped = true;
+
+        view.loadIniContent = async (iniContent: string) => {
+            try {
+                if (typeof iniContent === 'string' && iniContent.trim().length > 0) {
+                    appState.currentIniContent = iniContent;
+
+                    const parsedConfig = appState?.parser?.parse?.(iniContent);
+
+                    if (
+                        parsedConfig &&
+                        (parsedConfig['RAM'] ||
+                         parsedConfig['DEVICE'] ||
+                         parsedConfig['CD'] ||
+                         parsedConfig['FLASH'])
+                    ) {
+                        appState.currentDeviceConfig = parsedConfig;
+
+                        const ramKeys = parsedConfig['RAM']
+                            ? Object.keys(parsedConfig['RAM']).length
+                            : 0;
+
+                        console.log(`[INI SYNC] currentDeviceConfig updated. RAM keys: ${ramKeys}`);
+                    }
                 }
+            } catch (err) {
+                console.warn('[INI SYNC] Failed to sync appState:', err);
             }
-        } catch (err) {
-            console.warn('[uiManager] Failed to sync appState from INI content:', err);
-        }
 
-        return originalLoadIniContent(iniContent);
-    };
-}
+            const result = await originalLoadIniContent(iniContent);
+
+            // Принудительно перезапускаем readLoop, чтобы он подхватил новый currentDeviceConfig.
+            // Сбрасываем isLoopRunning, иначе readLoop() вернётся сразу.
+            setTimeout(() => {
+                try {
+                    appState.isLoopRunning = false;
+                    appState.isPolling = true;
+                    readLoop(serial, parser, view, buffers, appState);
+                } catch (err) {
+                    console.warn('[uiManager] Failed to restart readLoop:', err);
+                }
+            }, 100);
+
+            return result;
+        };
+    }///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     // 3. События кнопок
     if (connectBtn) {
