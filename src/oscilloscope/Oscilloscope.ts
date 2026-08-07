@@ -12,6 +12,7 @@ import { Renderer } from './graphics/Renderer';
 import { PixiView } from './graphics/PixiView';
 import { IniParser, ParsedRamParam } from './core/IniParser';
 import { PropertiesModal } from './ui/PropertiesModal';
+import { BottomPanels, ReadoutSlot } from './ui/BottomPanels';
 
 export class Oscilloscope {
     private settings: Settings;
@@ -23,6 +24,8 @@ export class Oscilloscope {
     private resizer!: Resizer;
     private renderer!: Renderer;
     private iniPanel!: IniPanel;
+    private bottomPanels!: BottomPanels;
+    private rowsContainer!: HTMLElement;
     private splitContainer!: HTMLElement;
 
     private allChannels: Channel[] = [];
@@ -74,11 +77,13 @@ export class Oscilloscope {
         this.resizer.initialize();
 
         this.iniPanel = new IniPanel(layoutElements.iniPanelContainer);
+        this.bottomPanels = new BottomPanels(layoutElements.bottomPanelsContainer);
+        this.rowsContainer = layoutElements.rowsContainer;
         this.propertiesModal = new PropertiesModal();
 
-            this.bindEvents();
-     this.bindTimeZoomWheel();
-     this.isRunning = true;
+        this.bindEvents();
+        this.bindTimeZoomWheel();
+        this.isRunning = true;
         this.lastFrameTime = performance.now();
         this.animFrameId = requestAnimationFrame((t) => this.loop(t));
     }
@@ -120,38 +125,26 @@ export class Oscilloscope {
         }
     }
 
-    // /**
-    //  * Переключение активного INI-файла в панели.
-    //  */
-    // public setActiveIni(id: string): void {///////////////////////////////////////////,,,,,,,,,,,,,,,,,,,,,,,////////
-    //     if (this.isDestroyed || !id) return;
-    //     if (this.currentIniId === id && this.allChannels.length > 0) return;
-    //     this.currentIniId = id;
-    //     if (this.iniPanel) {
-    //         this.iniPanel.selectFileById(id);
-    //     }
-    // }//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public setActiveIni(id: string, loadContent: boolean = true): void {
+        if (this.isDestroyed || !id) return;
 
-    public setActiveIni(id: string, loadContent: boolean = true): void {////////////////////////////////////////////////////
-    if (this.isDestroyed || !id) return;
+        if (this.currentIniId === id && this.allChannels.length > 0 && !loadContent) {
+            return;
+        }
 
-    if (this.currentIniId === id && this.allChannels.length > 0 && !loadContent) {
-        return;
-    }
+        this.currentIniId = id;
 
-    this.currentIniId = id;
+        if (this.iniPanel) {
+            this.iniPanel.selectFileById(id);
+        }
 
-    if (this.iniPanel) {
-        this.iniPanel.selectFileById(id);
-    }
-
-    if (loadContent) {
-        const file = this.availableIniFiles.find(f => f.id === id);
-        if (file && typeof file.content === 'string') {
-            void this.loadIniContent(file.content);
+        if (loadContent) {
+            const file = this.availableIniFiles.find(f => f.id === id);
+            if (file && typeof file.content === 'string') {
+                void this.loadIniContent(file.content);
+            }
         }
     }
-}/////////////////////////!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     public destroy(): void {
         this.isDestroyed = true;
@@ -217,52 +210,50 @@ export class Oscilloscope {
             this.loadIniContent(fileItem.content);
         });
 
-            window.addEventListener('oscilloscope-export-csv', () => {
-         this.recorder.downloadCSV(this.visibleChannels);
-     });
+        window.addEventListener('oscilloscope-export-csv', () => {
+            this.recorder.downloadCSV(this.visibleChannels);
+        });
 
-     this.toolbar.onToggleTimeZoom((enabled) => {
-         this.settings.timeZoomEnabled = enabled;
-     });
- }
+        this.toolbar.onToggleTimeZoom((enabled) => {
+            this.settings.timeZoomEnabled = enabled;
+        });
+    }
 
- /**
-  * Колесо мыши над областью графиков = горизонтальная развертка.
-  * Работает ТОЛЬКО когда включена кнопка «Развертка» в тулбаре.
-  * Колесо вверх — растянуть (зум ×), колесо вниз — сжать.
-  */
-  private bindTimeZoomWheel(): void {
-     const rowsContainer = this.targetRoot?.querySelector<HTMLElement>('#channelRows');
-     if (!rowsContainer) return;
+    /**
+     * Колесо мыши над областью графиков = горизонтальная развертка.
+     * Работает ТОЛЬКО когда включена кнопка «Развертка» в тулбаре.
+     * Колесо вверх — растянуть (зум ×), колесо вниз — сжать.
+     */
+    private bindTimeZoomWheel(): void {
+        const rowsContainer = this.rowsContainer;
 
-     rowsContainer.addEventListener('wheel', (e: WheelEvent) => {
-         if (!this.settings.timeZoomEnabled) return;
+        rowsContainer.addEventListener('wheel', (e: WheelEvent) => {
+            if (!this.settings.timeZoomEnabled) return;
 
-         const target = e.target as HTMLElement;
-         if (!target.closest('.col-graph')) return;
+            const target = e.target as HTMLElement;
+            if (!target.closest('.col-graph')) return;
 
-         e.preventDefault();
-         e.stopPropagation();
+            e.preventDefault();
+            e.stopPropagation();
 
-         const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
-         this.settings.setTimeScale(this.settings.timeScale * factor);
-         this.updateTimeScaleReadout();
-     }, { passive: false });
+            const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+            this.settings.setTimeScale(this.settings.timeScale * factor);
+            this.updateTimeScaleReadout();
+        }, { passive: false });
 
-     this.updateTimeScaleReadout();
- }
+        this.updateTimeScaleReadout();
+    }
 
- /**
-  * Показывает процент растяжки/сжатия графиков
-  * в крайнем правом нижнем окошке (#read-cell-4).
-  * 100% = норма, >100% = растянуто, <100% = сжато.
-  */
- private updateTimeScaleReadout(): void {
-     const cell = document.getElementById('read-cell-4');
-     if (cell) {
-         cell.textContent = `${Math.round(this.settings.timeScale * 100)}%`;
-     }
- }
+    /**
+     * Отображает текущий процент развертки
+     * в крайней правой ячейке нижней панели.
+     */
+    private updateTimeScaleReadout(): void {
+        this.bottomPanels.setReadout(
+            ReadoutSlot.TimeScale,
+            `${Math.round(this.settings.timeScale * 100)}%`
+        );
+    }
 
     /**
      * Главная точка входа для загрузки INI-контента.
@@ -271,38 +262,22 @@ export class Oscilloscope {
      */
     private static lastLoadedIniContent: string | null = null;
 
-// public async loadIniContent(iniContent: string): Promise<void> {/////////////////////////////////////////////////////////////////////////
-//     if (this.isDestroyed || typeof iniContent !== 'string') return;
+    public async loadIniContent(iniContent: string): Promise<void> {
+        if (this.isDestroyed || typeof iniContent !== 'string') return;
 
-//     if (this.allChannels.length > 0 && iniContent === Oscilloscope.lastLoadedIniContent) {
-//         console.log('[Oscilloscope] loadIniContent skipped: same content');
-//         return;
-//     }
+        const lastLoadedIniContent = (this as any)._lastLoadedIniContent as string | null;
 
-//     const parsed = IniParser.parse(iniContent);
+        if (this.allChannels.length > 0 && iniContent === lastLoadedIniContent) {
+            console.log('[Oscilloscope] loadIniContent skipped: same content');
+            return;
+        }
 
-//     await this.applyParsedRamParams(parsed?.ramParams ?? []);
+        const parsed = IniParser.parse(iniContent);
 
-//     Oscilloscope.lastLoadedIniContent = iniContent;
-// }//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        await this.applyParsedRamParams(parsed?.ramParams ?? []);
 
-
-public async loadIniContent(iniContent: string): Promise<void> {/////////////////////////////////////////////////////////////////////////
-    if (this.isDestroyed || typeof iniContent !== 'string') return;
-
-    const lastLoadedIniContent = (this as any)._lastLoadedIniContent as string | null;
-
-    if (this.allChannels.length > 0 && iniContent === lastLoadedIniContent) {
-        console.log('[Oscilloscope] loadIniContent skipped: same content');
-        return;
+        (this as any)._lastLoadedIniContent = iniContent;
     }
-
-    const parsed = IniParser.parse(iniContent);
-
-    await this.applyParsedRamParams(parsed?.ramParams ?? []);
-
-    (this as any)._lastLoadedIniContent = iniContent;
-}///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     public async applyParsedRamParams(ramParams: ParsedRamParam[]): Promise<void> {
         if (this.isDestroyed) return;
@@ -414,6 +389,9 @@ public async loadIniContent(iniContent: string): Promise<void> {////////////////
             };
             row.onDelete = (deletedChannel) => {
                 this.updateVisibleChannels(this.visibleChannels.filter(c => c.id !== deletedChannel.id));
+            };
+            row.onSelect = (selectedChannel) => {
+                this.bottomPanels.setCommandText(`${selectedChannel.name} = `);
             };
 
             const container = row.getGraphContainer();

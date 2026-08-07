@@ -16,6 +16,7 @@ export class ChannelRow {
 
     public onChannelUpdated?: (channel: Channel) => void;
     public onDelete?: (channel: Channel) => void;
+    public onSelect?: (channel: Channel) => void;
 
     constructor(public readonly channel: Channel) {
         this.element = document.createElement('div');
@@ -68,7 +69,7 @@ export class ChannelRow {
 
         this.updateValue();
 
-        this.element.addEventListener('click', () => {
+               this.element.addEventListener('click', () => {
             const container = this.element.parentElement;
             if (container) {
                 container.querySelectorAll('.channel-row.selected').forEach(el => {
@@ -76,6 +77,9 @@ export class ChannelRow {
                 });
             }
             this.element.classList.add('selected');
+            if (this.onSelect) {
+                this.onSelect(this.channel);
+            }
         });
 
         this.element.addEventListener('contextmenu', (e) => {
@@ -88,8 +92,10 @@ export class ChannelRow {
                     if (el !== this.element) el.classList.remove('selected');
                 });
             }
-            this.element.classList.add('selected');
-
+                       this.element.classList.add('selected');
+            if (this.onSelect) {
+                this.onSelect(this.channel);
+            }
             ContextMenu.getInstance().show(e.clientX, e.clientY, [
                 {
                     label: 'Удалить',
