@@ -1,3 +1,5 @@
+// src/ui/uiManager.ts
+
 import { initTableEditor } from '../ini-manager/table-editor.js';
 
 export interface UiManagerDeps {
@@ -36,6 +38,31 @@ export function initUI(deps: UiManagerDeps): void {
     const menuOpenFile = document.getElementById('menuOpenFile') as HTMLElement | null;
     const menuOpenFolder = document.getElementById('menuOpenFolder') as HTMLElement | null;
 
+    // Единая точка восстановления связи: уведомляет осциллограф и перезапускает опрос.
+    // Вызывается после любого успешного (пере)открытия порта: «подключиться», «ID».
+    const restoreConnection = (): void => {
+        if (!serial.isConnected) return;
+
+        // Сообщаем осциллографу: окно «Нет связи» закрывается, маркеры оживают
+        const osc = (window as any).osc;
+        if (osc && typeof osc.setConnectionStatus === 'function') {
+            osc.setConnectionStatus(true);
+        }
+
+        // Перезапускаем опрос контроллера, только если осциллограф открыт
+        const oscContainerEl = document.getElementById('osc-container');
+        const isOscVisible = oscContainerEl &&
+            !oscContainerEl.classList.contains('hidden') &&
+            oscContainerEl.style.display !== 'none';
+
+        if (isOscVisible) {
+            console.log('[UI] Перезапускаем readLoop после восстановления связи');
+            appState.isLoopRunning = false;
+            appState.isPolling = true;
+            readLoop(serial, parser, view, buffers, appState);
+        }
+    };
+
 //     // 2. Инициализация логики файлов///////////////////////////////////////////////////////////////////////////////
 // if (filePicker) setupFileHandling(filePicker, appState);
 // if (folderPicker && typeof setupFolderHandling === 'function') setupFolderHandling(folderPicker);
@@ -55,7 +82,7 @@ export function initUI(deps: UiManagerDeps): void {
 
 //                 if (
 //                     parsedConfig &&
-//                     (parsedConfig['RAM'] ||
+//                 (parsedConfig['RAM'] ||
 //                      parsedConfig['DEVICE'] ||
 //                      parsedConfig['CD'] ||
 //                      parsedConfig['FLASH'])
@@ -115,11 +142,21 @@ export function initUI(deps: UiManagerDeps): void {
 
             // Принудительно перезапускаем readLoop, чтобы он подхватил новый currentDeviceConfig.
             // Сбрасываем isLoopRunning, иначе readLoop() вернётся сразу.
+            // ВАЖНО: запускаем readLoop ТОЛЬКО если осциллограф открыт и есть связь.
             setTimeout(() => {
                 try {
-                    appState.isLoopRunning = false;
-                    appState.isPolling = true;
-                    readLoop(serial, parser, view, buffers, appState);
+                    const oscContainerEl = document.getElementById('osc-container');
+                    const isOscVisible = oscContainerEl && 
+                        !oscContainerEl.classList.contains('hidden') && 
+                        oscContainerEl.style.display !== 'none';
+                    
+                    if (isOscVisible && serial.isConnected) {
+                        appState.isLoopRunning = false;
+                        appState.isPolling = true;
+                        readLoop(serial, parser, view, buffers, appState);
+                    } else {
+                        console.log('[uiManager] readLoop не запущен: осциллограф закрыт или нет связи');
+                    }
                 } catch (err) {
                     console.warn('[uiManager] Failed to restart readLoop:', err);
                 }
@@ -137,7 +174,24 @@ export function initUI(deps: UiManagerDeps): void {
                 await serial.connect(115200);
                 const chipName = updateComInterfaceName(serial, comSelect);
                 console.log(`Успешно подключено к: ${chipName}`);
+                restoreConnection();
             } catch (err: any) { showIdModal("Ошибка: " + err.message); }
+        });
+    }
+
+    // Подписка на обрыв связи (выдернули USB, критическая ошибка ридера)
+    if (serial && typeof serial.onDisconnect === 'function') {
+        serial.onDisconnect(() => {
+            console.log('[UI] Обрыв связи обнаружен, останавливаем опрос и уведомляем осциллограф');
+            
+            // Останавливаем опрос контроллера
+            appState.isPolling = false;
+            
+            // Уведомляем осциллограф
+            const osc = (window as any).osc;
+            if (osc && typeof osc.setConnectionStatus === 'function') {
+                osc.setConnectionStatus(false, 'Связь с устройством потеряна.');
+            }
         });
     }
 
@@ -145,6 +199,8 @@ export function initUI(deps: UiManagerDeps): void {
         idBtn.addEventListener("click", async () => {
             if (serial.isConnected) { showIdModal("Порт уже открыт!"); return; }
             await executeDeviceIdentification(serial, comSelect, appState);
+            // Если порт открылся (в т.ч. после обрыва) — восстанавливаем связь и опрос
+            restoreConnection();
         });
     }
 
@@ -193,6 +249,12 @@ export function initUI(deps: UiManagerDeps): void {
                     if (appState.currentIniContent) {
                         osc.loadIniContent(appState.currentIniContent);
                     }
+                    
+                    // Проверка связи при открытии осциллографа
+                    if (typeof osc.setConnectionStatus === 'function') {
+                        osc.setConnectionStatus(serial.isConnected, serial.isConnected ? undefined : 'Нет связи с устройством.');
+                    }
+                    
                     readLoop(serial, parser, osc, buffers, appState);
                 }
             } else {
@@ -216,4 +278,3 @@ export function initUI(deps: UiManagerDeps): void {
 
     console.log("UI Manager: Интерфейс и обработчики инициализированы.");
 }
-

@@ -13,6 +13,8 @@ import { PixiView } from './graphics/PixiView';
 import { IniParser, ParsedRamParam } from './core/IniParser';
 import { PropertiesModal } from './ui/PropertiesModal';
 import { BottomPanels, ReadoutSlot } from './ui/BottomPanels';
+import { CursorsFooter } from './ui/CursorsFooter';
+import { ConnectionModal } from './ui/ConnectionModal';
 
 export class Oscilloscope {
     private settings: Settings;
@@ -25,6 +27,9 @@ export class Oscilloscope {
     private renderer!: Renderer;
     private iniPanel!: IniPanel;
     private bottomPanels!: BottomPanels;
+    private cursorsFooter!: CursorsFooter;
+    private connectionModal!: ConnectionModal;
+    private connectionLost: boolean = false;
     private rowsContainer!: HTMLElement;
     private splitContainer!: HTMLElement;
 
@@ -40,6 +45,7 @@ export class Oscilloscope {
     private animFrameId: number | null = null;
     private targetRoot: HTMLElement | null = null;
     private isDestroyed: boolean = false;
+    private lastLoadedIniContent: string | null = null;
 
     constructor() {
         this.settings = new Settings();
@@ -78,8 +84,10 @@ export class Oscilloscope {
 
         this.iniPanel = new IniPanel(layoutElements.iniPanelContainer);
         this.bottomPanels = new BottomPanels(layoutElements.bottomPanelsContainer);
+        this.cursorsFooter = new CursorsFooter(layoutElements.footerContainer);
         this.rowsContainer = layoutElements.rowsContainer;
         this.propertiesModal = new PropertiesModal();
+        this.connectionModal = new ConnectionModal();
 
         this.bindEvents();
         this.bindTimeZoomWheel();
@@ -146,9 +154,36 @@ export class Oscilloscope {
         }
     }
 
+    /**
+     * Управление состоянием связи (вызывается внешним проектом и Serial).
+     *
+     * false — графики и маркеры останавливаются, показывается окно «Нет связи».
+     * true  — окно скрывается, отрисовка возобновляется.
+     */
+    public setConnectionStatus(connected: boolean, message?: string): void {
+        if (this.isDestroyed) return;
+
+        if (connected) {
+            if (!this.connectionLost) return;
+            this.connectionLost = false;
+            this.connectionModal.close();
+            this.isRunning = true;
+            this.lastFrameTime = performance.now();
+            if (this.animFrameId === null) {
+                this.animFrameId = requestAnimationFrame((t) => this.loop(t));
+            }
+        } else {
+            if (this.connectionLost) return;
+            this.connectionLost = true;
+            this.isRunning = false;
+            this.connectionModal.show(message ?? 'Связь с устройством потеряна.');
+        }
+    }
+
     public destroy(): void {
         this.isDestroyed = true;
         this.isRunning = false;
+        this.connectionModal?.close();
 
         if (this.animFrameId !== null) {
             cancelAnimationFrame(this.animFrameId);
@@ -192,15 +227,9 @@ export class Oscilloscope {
 
         this.serial.onStateChange((state, msg) => {
             if (state === 'error') {
-                this.isRunning = false;
-                this.showConnectionError(msg || 'Связь с устройством потеряна.');
+                this.setConnectionStatus(false, msg || 'Связь с устройством потеряна.');
             } else if (state === 'connected') {
-                const wasRunning = this.isRunning;
-                this.isRunning = true;
-                this.lastFrameTime = performance.now();
-                if (!wasRunning) {
-                    this.animFrameId = requestAnimationFrame((t) => this.loop(t));
-                }
+                this.setConnectionStatus(true);
             }
         });
 
@@ -257,17 +286,13 @@ export class Oscilloscope {
 
     /**
      * Главная точка входа для загрузки INI-контента.
-     * Работает по рабочей модели: просто парсим RAM-параметры и передаём в applyParsedRamParams.
-     * Никаких frameParamIds, никаких setFrameChannels.
+     * Защита от повторной загрузки одного и того же контента,
+     * чтобы избежать гонок при переключении INI через панель и дерево устройств.
      */
-    private static lastLoadedIniContent: string | null = null;
-
     public async loadIniContent(iniContent: string): Promise<void> {
         if (this.isDestroyed || typeof iniContent !== 'string') return;
 
-        const lastLoadedIniContent = (this as any)._lastLoadedIniContent as string | null;
-
-        if (this.allChannels.length > 0 && iniContent === lastLoadedIniContent) {
+        if (this.allChannels.length > 0 && iniContent === this.lastLoadedIniContent) {
             console.log('[Oscilloscope] loadIniContent skipped: same content');
             return;
         }
@@ -276,7 +301,7 @@ export class Oscilloscope {
 
         await this.applyParsedRamParams(parsed?.ramParams ?? []);
 
-        (this as any)._lastLoadedIniContent = iniContent;
+        this.lastLoadedIniContent = iniContent;
     }
 
     public async applyParsedRamParams(ramParams: ParsedRamParam[]): Promise<void> {
@@ -445,60 +470,10 @@ export class Oscilloscope {
     }
 
     private updateCursorsFooter(): void {
-        const curX1 = document.getElementById('cur-x1');
-        const curX2 = document.getElementById('cur-x2');
-        const curDt = document.getElementById('cur-dt');
-        const curFreq = document.getElementById('cur-freq');
-
-        if (curX1 && curX2 && curDt && curFreq) {
-            const x1Pct = this.settings.cursorX1Percent;
-            const x2Pct = this.settings.cursorX2Percent;
-            const dtMs = (Math.abs(x2Pct - x1Pct) / 100) * this.settings.timeWindowMs;
-            const freqHz = dtMs > 0 ? (1000 / dtMs).toFixed(2) : '0';
-
-            curX1.textContent = `${x1Pct.toFixed(1)}%`;
-            curX2.textContent = `${x2Pct.toFixed(1)}%`;
-            curDt.textContent = `${dtMs.toFixed(1)} ms`;
-            curFreq.textContent = `${freqHz} Hz`;
-        }
-    }
-
-    private showConnectionError(message: string): void {
-        const existing = document.getElementById('oscilloscope-connection-error-overlay');
-        if (existing) existing.remove();
-
-        const overlay = document.createElement('div');
-        overlay.id = 'oscilloscope-connection-error-overlay';
-        overlay.style.position = 'fixed';
-        overlay.style.top = '0';
-        overlay.style.left = '0';
-        overlay.style.width = '100%';
-        overlay.style.height = '100%';
-        overlay.style.backgroundColor = 'rgba(0,0,0,0.85)';
-        overlay.style.display = 'flex';
-        overlay.style.alignItems = 'center';
-        overlay.style.justifyContent = 'center';
-        overlay.style.zIndex = '9999';
-        overlay.style.backdropFilter = 'blur(4px)';
-
-        const modal = document.createElement('div');
-        modal.className = 'modal-content';
-        modal.style.maxWidth = '400px';
-        modal.style.padding = '30px';
-        modal.style.textAlign = 'center';
-        modal.style.border = '1px solid #ff4d4d';
-        modal.style.boxShadow = '0 0 20px rgba(255, 77, 77, 0.2)';
-
-        modal.innerHTML = `
-            <div style="color: #ff4d4d; font-size: 48px; margin-bottom: 20px;">
-                ⚠️
-            </div>
-            <h2 style="margin-bottom: 15px; color: #fff;">Обрыв связи</h2>
-            <p style="color: #ccc; line-height: 1.5; margin-bottom: 25px;">${message}</p>
-            <div style="color: #94a3b8; font-size: 13px;">Ожидание переподключения в основном проекте...</div>
-        `;
-
-        overlay.appendChild(modal);
-        document.body.appendChild(overlay);
+        this.cursorsFooter.update(
+            this.settings.cursorX1Percent,
+            this.settings.cursorX2Percent,
+            this.settings.timeWindowMs
+        );
     }
 }

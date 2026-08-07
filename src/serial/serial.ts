@@ -1,3 +1,5 @@
+// src/serial/serial.ts
+
 declare global {
     interface Navigator {
         serial?: {
@@ -11,12 +13,20 @@ export class SerialConnection {
     public reader: ReadableStreamDefaultReader<Uint8Array> | null;
     public readableStream: ReadableStream<Uint8Array> | null;
     public isConnected: boolean;
+    private onDisconnectCallback?: () => void;
 
     constructor() {
         this.port = null;
         this.reader = null;
         this.readableStream = null;
         this.isConnected = false;
+    }
+
+    /**
+     * Подписка на событие обрыва связи (вызывается при release()).
+     */
+    public onDisconnect(cb: () => void): void {
+        this.onDisconnectCallback = cb;
     }
 
     /**
@@ -151,6 +161,7 @@ export class SerialConnection {
      * Корректное освобождение ресурсов.
      */
     public release(): void {
+        const wasConnected = this.isConnected;
         this.isConnected = false;
 
         const reader = this.reader;
@@ -166,5 +177,10 @@ export class SerialConnection {
         this.reader = null;
         this.readableStream = null;
         this.port = null;
+
+        // Уведомляем подписчиков об обрыве связи (только если были подключены)
+        if (wasConnected && this.onDisconnectCallback) {
+            this.onDisconnectCallback();
+        }
     }
 }

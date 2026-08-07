@@ -1,3 +1,5 @@
+// src/serial/serial-actions.ts
+
 import { identifyUsbChip } from './usb.js';
 import { showIdModal, updateIdBanner, closeIdModal } from '../ui/ui.js';
 import { parseRegisterAddress, hexToFloat32, float32ToHex } from '../ini-manager/tree-core.js';
