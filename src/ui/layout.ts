@@ -1,3 +1,5 @@
+// src\ui\layout.ts
+
 document.addEventListener('DOMContentLoaded', () => {
     const sidebar = document.querySelector<HTMLElement>('.left-sidebar-column');
     const sidebarResizer = document.querySelector<HTMLElement>('.sidebar-resizer');
@@ -50,12 +52,18 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    const table = document.querySelector<HTMLElement>('.modbus-grid');
+        const table = document.querySelector<HTMLElement>('.modbus-grid');
+    const groupHeaders = document.querySelectorAll<HTMLElement>('.modbus-grid thead tr:first-child th');
     const subHeaders = document.querySelectorAll<HTMLElement>('.modbus-grid thead tr:last-child th');
     const cols = document.querySelectorAll<HTMLElement>('.modbus-grid colgroup col');
 
     if (table) {
-        const internalIndices = [0, 1, 2, 4, 6]; 
+        // =====================================================
+        // 1) Ресайзеры ВНУТРИ групп (нижняя строка шапки):
+        //    №|Имя, Имя|Описание, Описание|Ед.изм,
+        //    hex|Physical (БАЗА), hex|Physical (КОНТРОЛЛЕР)
+        // =====================================================
+        const internalIndices = [0, 1, 2, 4, 6];
         internalIndices.forEach(idx => {
             const th = subHeaders[idx];
             const nextCol = cols[idx + 1];
@@ -100,6 +108,82 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.addEventListener('mouseup', stopDragInternal);
             });
         });
+
+        // =====================================================
+        // 2) Групповые ресайзеры ВЕРХНЕЙ строки шапки:
+        //    ПАРАМЕТРЫ | БАЗА   и   БАЗА | КОНТРОЛЛЕР
+        //    Тянут ширину ВСЕЙ группы целиком.
+        // =====================================================
+        const groups: number[][] = [
+            [0, 1, 2, 3], // ПАРАМЕТРЫ
+            [4, 5],       // БАЗА
+            [6, 7]        // КОНТРОЛЛЕР
+        ];
+
+        const getColWidth = (idx: number): number =>
+            subHeaders[idx] ? subHeaders[idx].getBoundingClientRect().width : 0;
+
+        for (let g = 0; g < groups.length - 1; g++) {
+            const headerTh = groupHeaders[g];
+            const leftGroup = groups[g];
+            const rightGroup = groups[g + 1];
+            if (!headerTh || !leftGroup || !rightGroup) continue;
+
+            const resizer = document.createElement('div');
+            resizer.className = 'table-resizer group-resizer';
+            headerTh.appendChild(resizer);
+
+            resizer.addEventListener('mousedown', (e: MouseEvent) => {
+                e.preventDefault();
+                resizer.classList.add('active');
+                document.body.classList.add('is-resizing');
+
+                const startX = e.clientX;
+                const totalTableWidth = table.offsetWidth;
+
+                const leftStartWidths = leftGroup.map(getColWidth);
+                const rightStartWidths = rightGroup.map(getColWidth);
+                const leftTotal = leftStartWidths.reduce((a, b) => a + b, 0);
+                const rightTotal = rightStartWidths.reduce((a, b) => a + b, 0);
+                if (leftTotal <= 0 || rightTotal <= 0) return;
+
+                const minLeft = 40 * leftGroup.length;
+                const minRight = 40 * rightGroup.length;
+
+                const doDragGroup = (moveEvent: MouseEvent): void => {
+                    let delta = moveEvent.clientX - startX;
+                    if (leftTotal + delta < minLeft) delta = minLeft - leftTotal;
+                    if (rightTotal - delta < minRight) delta = rightTotal - minRight;
+
+                    const leftScale = (leftTotal + delta) / leftTotal;
+                    const rightScale = (rightTotal - delta) / rightTotal;
+
+                    leftGroup.forEach((colIdx, i) => {
+                        if (cols[colIdx]) {
+                            cols[colIdx].style.width =
+                                `${((leftStartWidths[i] * leftScale) / totalTableWidth) * 100}%`;
+                        }
+                    });
+
+                    rightGroup.forEach((colIdx, i) => {
+                        if (cols[colIdx]) {
+                            cols[colIdx].style.width =
+                                `${((rightStartWidths[i] * rightScale) / totalTableWidth) * 100}%`;
+                        }
+                    });
+                };
+
+                const stopDragGroup = (): void => {
+                    resizer.classList.remove('active');
+                    document.body.classList.remove('is-resizing');
+                    window.removeEventListener('mousemove', doDragGroup);
+                    window.removeEventListener('mouseup', stopDragGroup);
+                };
+
+                window.addEventListener('mousemove', doDragGroup);
+                window.addEventListener('mouseup', stopDragGroup);
+            });
+        }
     }
 
     enforceSidebarLimits();
