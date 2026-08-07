@@ -1,5 +1,3 @@
-// src/Oscilloscope.ts
-
 import { Channel } from './core/Channel';
 import { Archive } from './core/Archive';
 import { Recorder } from './core/Recorder';
@@ -35,10 +33,10 @@ export class Oscilloscope {
     private propertiesModal!: PropertiesModal;
     private availableIniFiles: IniFileItem[] = [];
     private currentIniId: string | null = null;
-    private frameSizeMismatchCounter: number = 0;
 
     private animFrameId: number | null = null;
     private targetRoot: HTMLElement | null = null;
+    private isDestroyed: boolean = false;
 
     constructor() {
         this.settings = new Settings();
@@ -49,8 +47,8 @@ export class Oscilloscope {
     }
 
     public async initialize(targetContainer?: HTMLElement | string): Promise<void> {
-        if (this.targetRoot) return; // Prevent double initialization
-        
+        if (this.targetRoot) return;
+
         let rootElement: HTMLElement | null = null;
         if (typeof targetContainer === 'string') {
             rootElement = document.querySelector(targetContainer);
@@ -61,6 +59,7 @@ export class Oscilloscope {
             rootElement = document.getElementById('root') || document.body;
         }
         this.targetRoot = rootElement;
+        this.isDestroyed = false;
 
         this.settings.applyCSSTemplateVariables();
 
@@ -76,32 +75,34 @@ export class Oscilloscope {
 
         this.iniPanel = new IniPanel(layoutElements.iniPanelContainer);
         this.propertiesModal = new PropertiesModal();
-        
+
         this.bindEvents();
 
         this.isRunning = true;
         this.lastFrameTime = performance.now();
-        this.loop(this.lastFrameTime);
+        this.animFrameId = requestAnimationFrame((t) => this.loop(t));
     }
 
     /**
-     * Minimal bridge to allow parent project to push data samples.
-     * @param data Object mapping channel IDs to their new numeric values.
+     * Мост для получения данных от внешнего проекта.
      */
     public draw(data: Record<string, number>): void {
+        if (this.isDestroyed || !data) return;
+
         const now = Date.now();
         this.allChannels.forEach(ch => {
             if (data[ch.id] !== undefined) {
                 const val = data[ch.id];
-                ch.updateRawValue(val);
-                this.archive.addSample(ch.id, now, ch.scaledValue);
+                if (typeof val === 'number' && Number.isFinite(val)) {
+                    ch.updateRawValue(val);
+                    this.archive.addSample(ch.id, now, ch.scaledValue);
+                }
             }
         });
     }
 
     /**
-     * Injects an externally opened SerialPort into the oscilloscope.
-     * @param port The SerialPort object from navigator.serial
+     * Инжекция SerialPort, открытого во внешнем проекте.
      */
     public setSerialPort(port: any): void {
         if (this.serial && typeof (this.serial as any).attachPort === 'function') {
@@ -110,39 +111,54 @@ export class Oscilloscope {
     }
 
     /**
-     * Injects INI files from the main project.
-     * @param files Array of IniFileItem objects
+     * Установка списка INI-файлов из внешнего проекта.
      */
     public setIniFiles(files: IniFileItem[]): void {
-        this.availableIniFiles = files;
-        if (this.iniPanel) this.iniPanel.setExternalFiles(files);
+        this.availableIniFiles = Array.isArray(files) ? files : [];
+        if (this.iniPanel) {
+            this.iniPanel.setExternalFiles(this.availableIniFiles);
+        }
     }
 
     /**
-     * Switches to a specific INI file by ID.
-     * @param id The ID of the INI file
+     * Переключение активного INI-файла в панели.
      */
     public setActiveIni(id: string): void {
+        if (this.isDestroyed || !id) return;
         if (this.currentIniId === id && this.allChannels.length > 0) return;
         this.currentIniId = id;
-        if (this.iniPanel) this.iniPanel.selectFileById(id);
+        if (this.iniPanel) {
+            this.iniPanel.selectFileById(id);
+        }
     }
 
     public destroy(): void {
+        this.isDestroyed = true;
         this.isRunning = false;
+
         if (this.animFrameId !== null) {
             cancelAnimationFrame(this.animFrameId);
             this.animFrameId = null;
         }
-        this.pixiViews.forEach(view => view.destroy());
+
+        this.pixiViews.forEach(view => {
+            try {
+                view.destroy();
+            } catch (err) {
+                console.warn('[Oscilloscope] Failed to destroy PixiView:', err);
+            }
+        });
         this.pixiViews.clear();
+
         if (this.targetRoot) {
             this.targetRoot.innerHTML = '';
         }
     }
 
     private bindEvents(): void {
-        this.toolbar.onOpenProperties(() => this.propertiesModal.open(this.allChannels, this.visibleChannels));
+        this.toolbar.onOpenProperties(() => {
+            this.propertiesModal.open(this.allChannels, this.visibleChannels);
+        });
 
         this.toolbar.onToggleWindowSize((isHalf) => {
             if (this.splitContainer) {
@@ -169,18 +185,15 @@ export class Oscilloscope {
                 this.isRunning = true;
                 this.lastFrameTime = performance.now();
                 if (!wasRunning) {
-                    requestAnimationFrame((t) => this.loop(t));
+                    this.animFrameId = requestAnimationFrame((t) => this.loop(t));
                 }
             }
         });
 
         this.iniPanel.onFileSelect((fileItem: IniFileItem) => {
+            if (this.isDestroyed) return;
             this.currentIniId = fileItem.id;
             this.loadIniContent(fileItem.content);
-        });
-
-        this.serial.onFrameSizeDetected((size) => {
-            this.handleFrameSizeDetected(size);
         });
 
         window.addEventListener('oscilloscope-export-csv', () => {
@@ -188,117 +201,132 @@ export class Oscilloscope {
         });
     }
 
-    private handleFrameSizeDetected(size: number): void {
-        const currentFrameChannels = this.serial.getFrameChannels();
-        const currentSize = currentFrameChannels.length > 0 ? currentFrameChannels.length : this.allChannels.length;
+    /**
+     * Главная точка входа для загрузки INI-контента.
+     * Работает по рабочей модели: просто парсим RAM-параметры и передаём в applyParsedRamParams.
+     * Никаких frameParamIds, никаких setFrameChannels.
+     */
+    private static lastLoadedIniContent: string | null = null;
 
-        // Если текущий размер совпадает с ожидаемым, обнуляем счетчик и ничего не делаем
-        if (size === currentSize && currentSize > 0) {
-            this.frameSizeMismatchCounter = 0;
-            return;
-        }
+public async loadIniContent(iniContent: string): Promise<void> {
+    if (this.isDestroyed || typeof iniContent !== 'string') return;
 
-        this.frameSizeMismatchCounter++;
-        
-        // Дожидаемся 15 последовательных пакетов с новым размером перед переключением (было 10)
-        if (this.frameSizeMismatchCounter >= 15) {
-            this.frameSizeMismatchCounter = 0;
-            console.log(`[Oscilloscope] Frame size mismatch detected consistently: ${size} (expected ${currentSize}). Auto-switching INI...`);
-            this.autoSwitchIniByFrameSize(size);
-        }
+    if (this.allChannels.length > 0 && iniContent === Oscilloscope.lastLoadedIniContent) {
+        console.log('[Oscilloscope] loadIniContent skipped: same content');
+        return;
     }
 
-    private autoSwitchIniByFrameSize(size: number): void {
-        const targetFile = this.availableIniFiles.find(file => {
-            const parsed = IniParser.parse(file.content);
-            return parsed.frameParamIds.length === size;
-        });
+    const parsed = IniParser.parse(iniContent);
 
-        if (targetFile && targetFile.id !== this.currentIniId) {
-            console.log(`Auto-switching to INI: ${targetFile.name} (frame size ${size})`);
-            this.setActiveIni(targetFile.id);
-        }
-    }
+    await this.applyParsedRamParams(parsed?.ramParams ?? []);
 
-    public async loadIniContent(iniContent: string): Promise<void> {
-        const parsed = IniParser.parse(iniContent);
-        await this.applyParsedRamParams(parsed.ramParams, parsed.frameParamIds);
-    }
+    Oscilloscope.lastLoadedIniContent = iniContent;
+}
 
-    public async applyParsedRamParams(ramParams: ParsedRamParam[], frameParamIds: string[] = []): Promise<void> {
+    public async applyParsedRamParams(ramParams: ParsedRamParam[]): Promise<void> {
+        if (this.isDestroyed) return;
+
         let bitIndex = 0;
-        const newChannels = ramParams.map(param => {
-            let color: string | undefined;
-            if (param.isBit) {
-                color = (bitIndex % 2 === 0) ? '#00d2ff' : '#d2a679';
-                bitIndex++;
-            }
+        const safeParams = Array.isArray(ramParams) ? ramParams : [];
 
-            return new Channel({
-                id: param.id,
-                name: param.name,
-                description: param.description,
-                dataType: param.type,
-                unit: param.unit,
-                scale: param.scale,
-                rawDecValue: param.rawDec,
-                hexValue: param.rawHex,
-                isBit: param.isBit,
-                modbusReg: param.modbusReg,
-                min: param.isBit ? 0 : -50,
-                max: param.isBit ? 1 : 500,
-                color: color
+        const newChannels = safeParams
+            .filter(param => Boolean(param) && param.id != null && String(param.id).length > 0)
+            .map(param => {
+                let color: string | undefined;
+                if (param.isBit) {
+                    color = (bitIndex % 2 === 0) ? '#00d2ff' : '#d2a679';
+                    bitIndex++;
+                }
+
+                return new Channel({
+                    id: param.id,
+                    name: param.name,
+                    description: param.description,
+                    dataType: param.type,
+                    unit: param.unit,
+                    scale: param.scale,
+                    rawDecValue: param.rawDec,
+                    hexValue: param.rawHex,
+                    isBit: param.isBit,
+                    modbusReg: param.modbusReg,
+                    min: param.isBit ? 0 : -50,
+                    max: param.isBit ? 1 : 500,
+                    color: color
+                });
             });
-        });
 
-        await this.setChannels(newChannels, frameParamIds);
+        await this.setChannels(newChannels);
     }
 
-    public async setChannels(newChannels: Channel[], frameParamIds: string[] = []): Promise<void> {
-        console.log(`[Oscilloscope] Setting channels: ${newChannels.length}, frameParams: ${frameParamIds.length}`);
-        
-        this.allChannels = newChannels;
-        this.visibleChannels = [...newChannels];
-        
-        // 1. Reset Communication
-        this.serial.resetCommunication();
-        
-        // 2. Clear Archive
-        this.archive.clear();
-        
-        // 3. Update Serial Channels
-        this.serial.setChannels(this.allChannels);
+    /**
+     * Простая замена каналов - как в рабочем коде.
+     * Никаких setFrameChannels, resetCommunication, auto-switch.
+     */
+    public async setChannels(newChannels: Channel[]): Promise<void> {
+        if (this.isDestroyed) return;
 
-        if (frameParamIds.length > 0) {
-            const frameChannels = frameParamIds.map(id => {
-                return this.allChannels.find(ch => ch.id.toLowerCase() === id.toLowerCase());
-            }).filter((ch): ch is Channel => !!ch);
-            this.serial.setFrameChannels(frameChannels);
-        } else {
-            this.serial.setFrameChannels([]);
+        console.log(`[Oscilloscope] Setting channels: ${newChannels.length}`);
+
+        // Полная замена каналов
+        this.allChannels = Array.isArray(newChannels) ? newChannels : [];
+        this.visibleChannels = [...this.allChannels];
+
+        // Очистка архива
+        try {
+            this.archive.clear();
+        } catch (err) {
+            console.error('[Oscilloscope] Failed to clear archive:', err);
         }
 
-        // 4. Re-render UI and Graphs
+        // Передача новых каналов в Serial - размер опроса будет вычислен автоматически по modbusReg
+        try {
+            this.serial.setChannels(this.allChannels);
+        } catch (err) {
+            console.error('[Oscilloscope] Failed to set serial channels:', err);
+        }
+
+        // Перерисовка UI и графиков
         await this.renderVisibleChannels();
-        
+
         console.log(`[Oscilloscope] Switch complete.`);
     }
 
     public async updateVisibleChannels(newVisibleChannels: Channel[]): Promise<void> {
-        this.visibleChannels = newVisibleChannels;
+        if (this.isDestroyed) return;
+
+        const validIds = new Set(this.allChannels.map(ch => ch.id));
+        const filtered = Array.isArray(newVisibleChannels)
+            ? newVisibleChannels.filter(ch => ch && validIds.has(ch.id))
+            : [];
+
+        if (newVisibleChannels.length > 0 && filtered.length === 0 && this.allChannels.length > 0) {
+            this.visibleChannels = [...this.allChannels];
+        } else {
+            this.visibleChannels = filtered;
+        }
+
         await this.renderVisibleChannels();
     }
 
     private async renderVisibleChannels(): Promise<void> {
-        if (!this.table) return; // Wait for initialization
-        
-        this.pixiViews.forEach(view => view.destroy());
+        if (this.isDestroyed || !this.table) return;
+
+        // Уничтожаем старые графические представления
+        this.pixiViews.forEach(view => {
+            try {
+                view.destroy();
+            } catch (err) {
+                console.warn('[Oscilloscope] Failed to destroy old PixiView:', err);
+            }
+        });
         this.pixiViews.clear();
-        
+
         const tempPixiViews: Map<string, PixiView> = new Map();
         this.table.clear();
 
         for (const channel of this.visibleChannels) {
+            if (this.isDestroyed) break;
+
             const row = this.table.addChannel(channel);
             row.onChannelUpdated = () => {
                 if (this.settings.enableCursors) this.updateCursorsFooter();
@@ -306,16 +334,28 @@ export class Oscilloscope {
             row.onDelete = (deletedChannel) => {
                 this.updateVisibleChannels(this.visibleChannels.filter(c => c.id !== deletedChannel.id));
             };
-            const pixiView = new PixiView(row.getGraphContainer());
-            await pixiView.init();
-            tempPixiViews.set(channel.id, pixiView);
+
+            const container = row.getGraphContainer();
+            if (container) {
+                const pixiView = new PixiView(container);
+                try {
+                    await pixiView.init();
+                    tempPixiViews.set(channel.id, pixiView);
+                } catch (err) {
+                    console.warn(`[Oscilloscope] PixiView init failed for channel ${channel.id}:`, err);
+                }
+            }
         }
 
-        this.pixiViews = tempPixiViews;
+        if (!this.isDestroyed) {
+            this.pixiViews = tempPixiViews;
+        }
     }
 
     private loop(now: number): void {
-        if (!this.isRunning || !this.table) return;
+        this.animFrameId = null;
+
+        if (this.isDestroyed || !this.isRunning || !this.table) return;
 
         this.lastFrameTime = now;
 
@@ -365,7 +405,11 @@ export class Oscilloscope {
     }
 
     private showConnectionError(message: string): void {
+        const existing = document.getElementById('oscilloscope-connection-error-overlay');
+        if (existing) existing.remove();
+
         const overlay = document.createElement('div');
+        overlay.id = 'oscilloscope-connection-error-overlay';
         overlay.style.position = 'fixed';
         overlay.style.top = '0';
         overlay.style.left = '0';

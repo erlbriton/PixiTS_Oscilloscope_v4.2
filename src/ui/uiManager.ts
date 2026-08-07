@@ -37,8 +37,40 @@ export function initUI(deps: UiManagerDeps): void {
     const menuOpenFolder = document.getElementById('menuOpenFolder') as HTMLElement | null;
 
     // 2. Инициализация логики файлов
-    if (filePicker) setupFileHandling(filePicker, appState);
-    if (folderPicker && typeof setupFolderHandling === 'function') setupFolderHandling(folderPicker);
+    // 2. Инициализация логики файлов
+if (filePicker) setupFileHandling(filePicker, appState);
+if (folderPicker && typeof setupFolderHandling === 'function') setupFolderHandling(folderPicker);
+
+// Синхронизация внешнего readLoop с любым INI, который загружает осциллограф.
+// Без этого при переключении INI через панель/дерево readLoop может остаться
+// на старом appState.currentDeviceConfig, и графики перестают получать данные.
+if (view && typeof view.loadIniContent === 'function') {
+    const originalLoadIniContent = view.loadIniContent.bind(view);
+
+    view.loadIniContent = async (iniContent: string) => {
+        try {
+            if (typeof iniContent === 'string' && iniContent.trim().length > 0) {
+                appState.currentIniContent = iniContent;
+
+                const parsedConfig = appState?.parser?.parse?.(iniContent);
+
+                if (
+                    parsedConfig &&
+                    (parsedConfig['RAM'] ||
+                     parsedConfig['DEVICE'] ||
+                     parsedConfig['CD'] ||
+                     parsedConfig['FLASH'])
+                ) {
+                    appState.currentDeviceConfig = parsedConfig;
+                }
+            }
+        } catch (err) {
+            console.warn('[uiManager] Failed to sync appState from INI content:', err);
+        }
+
+        return originalLoadIniContent(iniContent);
+    };
+}
 
     // 3. События кнопок
     if (connectBtn) {
