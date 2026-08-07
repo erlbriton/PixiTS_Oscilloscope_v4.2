@@ -246,7 +246,22 @@ export class Oscilloscope {
 
          const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
          this.settings.setTimeScale(this.settings.timeScale * factor);
+         this.updateTimeScaleReadout();
      }, { passive: false });
+
+     this.updateTimeScaleReadout();
+ }
+
+ /**
+  * Показывает процент растяжки/сжатия графиков
+  * в крайнем правом нижнем окошке (#read-cell-4).
+  * 100% = норма, >100% = растянуто, <100% = сжато.
+  */
+ private updateTimeScaleReadout(): void {
+     const cell = document.getElementById('read-cell-4');
+     if (cell) {
+         cell.textContent = `${Math.round(this.settings.timeScale * 100)}%`;
+     }
  }
 
     /**
