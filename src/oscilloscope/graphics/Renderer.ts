@@ -1,6 +1,5 @@
 // src/graphics/Renderer.ts
 
-import { Color } from 'pixi.js';
 import { Channel } from '../core/Channel';
 import { Archive } from '../core/Archive';
 import { Settings } from '../config/Settings';

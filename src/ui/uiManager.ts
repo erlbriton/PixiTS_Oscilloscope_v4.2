@@ -1,27 +1,29 @@
 // src/ui/uiManager.ts
 
+// src/ui/uiManager.ts
 import { initTableEditor } from '../ini-manager/table-editor.js';
+import type { ISerialPort } from '../serial/ISerialPort.js';
 
 export interface UiManagerDeps {
-    serial: any;
+    serial: ISerialPort;
     appState: any;
     parser: any;
     view: any;
     buffers: any;
     setupFileHandling: (picker: HTMLInputElement, state: any) => void;
     setupFolderHandling?: (picker: HTMLInputElement) => void;
-    updateComInterfaceName: (serial: any, select: HTMLSelectElement | null) => string;
-    executeDeviceIdentification: (serial: any, select: HTMLSelectElement | null, state: any) => Promise<void>;
-    readLoop: (serial: any, parser: any, view: any, buffers: any, state: any) => void;
+    updateComInterfaceName: (serial: ISerialPort, select: HTMLSelectElement | null) => string;
+    executeDeviceIdentification: (serial: ISerialPort, select: HTMLSelectElement | null, state: any) => Promise<void>;
+    readLoop: (serial: ISerialPort, parser: any, view: any, buffers: any, state: any) => void;
     showIdModal: (text: string) => void;
-    updateDeviceRegisters: (serial: any, slaveAddr: number, state: any) => Promise<boolean>; 
+    updateDeviceRegisters: (serial: ISerialPort, slaveAddr: number, state: any) => Promise<boolean>;
 }
 
 export function initUI(deps: UiManagerDeps): void {
-    const { 
-        serial, appState, parser, view, buffers, 
+    const {
+        serial, appState, parser, view, buffers,
         setupFileHandling, setupFolderHandling, updateComInterfaceName,
-        executeDeviceIdentification, readLoop, showIdModal, updateDeviceRegisters 
+        executeDeviceIdentification, readLoop, showIdModal, updateDeviceRegisters
     } = deps;
 
     // 1. DOM Элементы
@@ -63,42 +65,7 @@ export function initUI(deps: UiManagerDeps): void {
         }
     };
 
-//     // 2. Инициализация логики файлов///////////////////////////////////////////////////////////////////////////////
-// if (filePicker) setupFileHandling(filePicker, appState);
-// if (folderPicker && typeof setupFolderHandling === 'function') setupFolderHandling(folderPicker);
-
-// // Синхронизация внешнего readLoop с любым INI, который загружает осциллограф.
-// // Без этого при переключении INI через панель/дерево readLoop может остаться
-// // на старом appState.currentDeviceConfig, и графики перестают получать данные.
-// if (view && typeof view.loadIniContent === 'function') {
-//     const originalLoadIniContent = view.loadIniContent.bind(view);
-
-//     view.loadIniContent = async (iniContent: string) => {
-//         try {
-//             if (typeof iniContent === 'string' && iniContent.trim().length > 0) {
-//                 appState.currentIniContent = iniContent;
-
-//                 const parsedConfig = appState?.parser?.parse?.(iniContent);
-
-//                 if (
-//                     parsedConfig &&
-//                 (parsedConfig['RAM'] ||
-//                      parsedConfig['DEVICE'] ||
-//                      parsedConfig['CD'] ||
-//                      parsedConfig['FLASH'])
-//                 ) {
-//                     appState.currentDeviceConfig = parsedConfig;
-//                 }
-//             }
-//         } catch (err) {
-//             console.warn('[uiManager] Failed to sync appState from INI content:', err);
-//         }
-
-//         return originalLoadIniContent(iniContent);
-//     };
-// }/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    // 2. Инициализация логики файлов////////////////////////////////////////////////////////////////////////////////////////////////////
+    // 2. Инициализация логики файлов
     if (filePicker) setupFileHandling(filePicker, appState);
     if (folderPicker && typeof setupFolderHandling === 'function') setupFolderHandling(folderPicker);
 
@@ -146,10 +113,10 @@ export function initUI(deps: UiManagerDeps): void {
             setTimeout(() => {
                 try {
                     const oscContainerEl = document.getElementById('osc-container');
-                    const isOscVisible = oscContainerEl && 
-                        !oscContainerEl.classList.contains('hidden') && 
+                    const isOscVisible = oscContainerEl &&
+                        !oscContainerEl.classList.contains('hidden') &&
                         oscContainerEl.style.display !== 'none';
-                    
+
                     if (isOscVisible && serial.isConnected) {
                         appState.isLoopRunning = false;
                         appState.isPolling = true;
@@ -164,7 +131,7 @@ export function initUI(deps: UiManagerDeps): void {
 
             return result;
         };
-    }///////////////////////////////////////////////////////////////////////////////////////////////////////////
+    }
 
     // 3. События кнопок
     if (connectBtn) {
@@ -183,10 +150,10 @@ export function initUI(deps: UiManagerDeps): void {
     if (serial && typeof serial.onDisconnect === 'function') {
         serial.onDisconnect(() => {
             console.log('[UI] Обрыв связи обнаружен, останавливаем опрос и уведомляем осциллограф');
-            
+
             // Останавливаем опрос контроллера
             appState.isPolling = false;
-            
+
             // Уведомляем осциллограф
             const osc = (window as any).osc;
             if (osc && typeof osc.setConnectionStatus === 'function') {
@@ -208,10 +175,10 @@ export function initUI(deps: UiManagerDeps): void {
         refreshBtn.addEventListener("click", async () => {
             if (!serial?.isConnected) { showIdModal("Устройство не подключено!"); return; }
             if (appState.isRefreshing) return;
-            
+
             appState.isRefreshing = true; // Блокируем всё остальное
             refreshBtn.disabled = true;
-            
+
             try {
                 // 1. Сначала выполняем тяжелое обновление
                 await updateDeviceRegisters(serial, appState.slaveAddress, appState);
@@ -222,7 +189,7 @@ export function initUI(deps: UiManagerDeps): void {
                 // 2. Сбрасываем флаг БЛОКИРОВКИ ДО запуска цикла
                 appState.isRefreshing = false;
                 refreshBtn.disabled = false;
-                
+
                 // 3. Запускаем цикл
                 console.log("DEBUG: Запускаю readLoop после обновления");
                 readLoop(serial, parser, view, buffers, appState);
@@ -240,21 +207,21 @@ export function initUI(deps: UiManagerDeps): void {
             if (isHidden) {
                 oscContainerEl.classList.remove('hidden');
                 oscContainerEl.style.display = 'block';
-                
+
                 appState.isPolling = true;
-                
+
                 if ((window as any).osc) {
                     const osc = (window as any).osc;
                     await osc.initialize(oscContainerEl);
                     if (appState.currentIniContent) {
                         osc.loadIniContent(appState.currentIniContent);
                     }
-                    
+
                     // Проверка связи при открытии осциллографа
                     if (typeof osc.setConnectionStatus === 'function') {
                         osc.setConnectionStatus(serial.isConnected, serial.isConnected ? undefined : 'Нет связи с устройством.');
                     }
-                    
+
                     readLoop(serial, parser, osc, buffers, appState);
                 }
             } else {
@@ -270,7 +237,7 @@ export function initUI(deps: UiManagerDeps): void {
     if (menuOpenFile) menuOpenFile.addEventListener('click', () => { filePicker?.click(); folderDropdown?.classList.remove('show'); });
     if (menuOpenFolder) menuOpenFolder.addEventListener('click', () => { folderPicker?.click(); folderDropdown?.classList.remove('show'); });
     if (folderArrowBtn) folderArrowBtn.addEventListener('click', (e) => { e.stopPropagation(); folderDropdown?.classList.toggle('show'); });
-    
+
     document.addEventListener('click', () => folderDropdown?.classList.remove('show'));
 
     // 5. Инициализация инлайн-редактора таблицы

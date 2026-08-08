@@ -1,5 +1,7 @@
 // src/serial/serial.ts
 
+import type { ISerialPort, SerialPortInfo } from './ISerialPort.js';
+
 declare global {
     interface Navigator {
         serial?: {
@@ -8,7 +10,7 @@ declare global {
     }
 }
 
-export class SerialConnection {
+export class SerialConnection implements ISerialPort {
     public port: any;
     public reader: ReadableStreamDefaultReader<Uint8Array> | null;
     public readableStream: ReadableStream<Uint8Array> | null;
@@ -27,6 +29,16 @@ export class SerialConnection {
      */
     public onDisconnect(cb: () => void): void {
         this.onDisconnectCallback = cb;
+    }
+
+    /**
+     * Информация об устройстве (VID/PID) для определения чипа.
+     */
+    public getPortInfo(): SerialPortInfo {
+        if (this.port && typeof this.port.getInfo === 'function') {
+            return this.port.getInfo();
+        }
+        return {};
     }
 
     /**

@@ -1,6 +1,4 @@
 // src/graphics/WaveformRenderer.ts
-
-import { Color } from 'pixi.js';
 import { Channel } from '../core/Channel';
 import { Archive, Sample } from '../core/Archive';
 import { Settings } from '../config/Settings';
@@ -23,7 +21,7 @@ export class WaveformRenderer {
 
         if (samples.length < 1) return;
 
-        let min = channel.min;
+                let min = channel.min;
         let max = channel.autoScale ? channel.max : channel.customMax;
 
         if (channel.autoScale) {
@@ -33,15 +31,23 @@ export class WaveformRenderer {
                 const targetMin = range.min - margin;
                 const targetMax = range.max + margin;
 
-                if (channel.currentDisplayMin === undefined || isNaN(channel.currentDisplayMin)) {
+                // Плавное приближение отображаемого диапазона к целевому.
+                // Читаем в локальные переменные: так TypeScript корректно
+                // сужает тип (number | undefined), и ошибки ts(18048)/ts(2322) исчезают.
+                const prevMin = channel.currentDisplayMin;
+                const prevMax = channel.currentDisplayMax;
+
+                if (prevMin === undefined || prevMax === undefined || isNaN(prevMin) || isNaN(prevMax)) {
                     channel.currentDisplayMin = targetMin;
                     channel.currentDisplayMax = targetMax;
                 } else {
-                    channel.currentDisplayMin += (targetMin - channel.currentDisplayMin) * 0.1;
-                    channel.currentDisplayMax += (targetMax - channel.currentDisplayMax) * 0.1;
+                    channel.currentDisplayMin = prevMin + (targetMin - prevMin) * 0.1;
+                    channel.currentDisplayMax = prevMax + (targetMax - prevMax) * 0.1;
                 }
-                min = channel.currentDisplayMin;
-                max = channel.currentDisplayMax;
+
+                // Гарантируем number: если по какой-то причине undefined — берём целевое значение.
+                min = channel.currentDisplayMin ?? targetMin;
+                max = channel.currentDisplayMax ?? targetMax;
             }
         } else {
             channel.currentDisplayMin = undefined;
@@ -50,8 +56,7 @@ export class WaveformRenderer {
 
         const vRange = max - min || 1;
         const startTime = currentTime - duration;
-        const colorNum = new Color(channel.color).toNumber();
-
+        const waveColor = channel.color;
         const getX = (t: number) => ((t - startTime) / duration) * width;
         const getY = (val: number) => {
             const y = height - ((val - min) / vRange) * height;
@@ -60,8 +65,8 @@ export class WaveformRenderer {
 
         const startX = getX(samples[0].time);
         const startY = getY(samples[0].value);
-
         g.moveTo(Math.max(0, Math.min(width, startX)), startY);
+
         if (startX > 0) {
             g.moveTo(0, startY);
             g.lineTo(startX, startY);
@@ -80,7 +85,7 @@ export class WaveformRenderer {
             g.lineTo(width, lastY);
         }
 
-        g.stroke({ width: 2, color: colorNum, alpha: 0.95 });
+        g.stroke({ width: 2, color: waveColor, alpha: 0.95 });
     }
 
     public static renderDigitalWaveform(
@@ -98,13 +103,13 @@ export class WaveformRenderer {
         if (samples.length < 1) return;
 
         const startTime = currentTime - duration;
-        const colorNum = new Color(channel.color).toNumber();
+        const waveColor = channel.color;
         const getX = (t: number) => ((t - startTime) / duration) * width;
-        
+
         const margin = 2; 
         const barHeight = height - (margin * 2);
         const lineY = height - margin - 1;
-        
+
         let lastValue = samples[0].value;
         let segmentStartX = Math.max(0, getX(samples[0].time));
 
@@ -124,7 +129,8 @@ export class WaveformRenderer {
                 lastValue = currentValue;
             }
         }
-        g.fill({ color: colorNum, alpha: 0.7 });
+
+        g.fill({ color: waveColor, alpha: 0.7 });
 
         lastValue = samples[0].value;
         segmentStartX = Math.max(0, getX(samples[0].time));
@@ -146,6 +152,7 @@ export class WaveformRenderer {
                 lastValue = currentValue;
             }
         }
-        g.stroke({ width: 2, color: colorNum, alpha: 0.9 });
+
+        g.stroke({ width: 2, color: waveColor, alpha: 0.9 });
     }
 }
