@@ -1,4 +1,6 @@
-import { Channel } from './core/Channel';
+// src/oscilloscope/Oscilloscope.ts
+
+import { Channel, ChannelConfig } from './core/Channel';
 import { Archive } from './core/Archive';
 import { Recorder } from './core/Recorder';
 import { Settings } from './config/Settings';
@@ -303,6 +305,36 @@ export class Oscilloscope {
 
         this.lastLoadedIniContent = iniContent;
     }
+
+        /**
+     * Применение типизированных конфигураций каналов из единого INI-слоя.
+     * Новый путь загрузки: принимает готовые данные, НЕ парсит INI-текст.
+     * Осциллограф не знает про INI — только про ChannelConfig.
+     */
+    // public async applyChannelConfigs(configs: ChannelConfig[]): Promise<void> {
+    //     if (this.isDestroyed) return;
+
+    //     const channels = (Array.isArray(configs) ? configs : [])
+    //         .filter(c => c && c.id)
+    //         .map(c => new Channel(c));
+
+    //     await this.setChannels(channels);
+    // }
+
+    /**
+ * Применение типизированных конфигураций каналов из единого INI-слоя.
+ * Новый путь загрузки: принимает готовые данные, НЕ парсит INI-текст.
+ * Осциллограф не знает про INI — только про ChannelConfig.
+ */
+public async applyChannelConfigs(configs: ChannelConfig[]): Promise<void> {
+    if (this.isDestroyed) return;
+
+    const channels = (Array.isArray(configs) ? configs : [])
+        .filter(c => c && c.id)
+        .map(c => new Channel(c));
+
+    await this.setChannels(channels);
+}
 
     public async applyParsedRamParams(ramParams: ParsedRamParam[]): Promise<void> {
         if (this.isDestroyed) return;

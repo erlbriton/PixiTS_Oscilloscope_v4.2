@@ -1,30 +1,78 @@
+// src/ini-manager/table-editor.ts
 import { serialManager, calculateCRC } from '../serial/serial-actions.js';
 import { parseRegisterAddress, float32ToHex } from './tree-core.js';
+import type { IniConfig } from '../core/ini/index.js';
+
+/** Ячейка с активным инлайн-редактором */
+interface EditableCell extends HTMLElement {
+    blurEditor?: () => void;
+}
+
+/** Тип функции updateRowValues из tree-ui.ts */
+type UpdateRowValuesFn = (
+    rowElement: HTMLTableRowElement,
+    rowParts: string[],
+    rowDataType: string,
+    rowScale: number,
+    rowHexIndex: number,
+    rowOriginalHexLen: number,
+    rowPrmListOptions: Record<string, string>,
+    argHexToFloat32: (hexStr: string) => number,
+    argFloat32ToHex: (floatVal: number, padLen?: number) => string,
+    colIndex?: number,
+) => void;
 
 export interface TableEditorState {
     slaveAddress?: number;
     isPolling?: boolean;
-    currentDeviceConfig?: any;
+    currentIniConfig?: IniConfig;
 }
 
 /**
  * Очистка активных ячеек редактора.
  */
 export function clearAnyActiveCellEditors(): void {
-    document.querySelectorAll<HTMLElement>('.is-editing-cell').forEach(el => {
-        if ((el as any).blurEditor) (el as any).blurEditor();
+    document.querySelectorAll<EditableCell>('.is-editing-cell').forEach(el => {
+        if (el.blurEditor) el.blurEditor();
     });
 }
 
 /**
- * Заглушка для обратной совместимости.
+ * Заглушка редактора hex-ячейки.
+ * Типизирована для совместимости с renderModbusTable.
  */
-export function initHexCellEditor(...args: any[]): void {
-    if (args[0]?.addEventListener) args[0].addEventListener('click', (e: MouseEvent) => e.stopPropagation());
+export function initHexCellEditor(
+    cell: HTMLElement,
+    row: HTMLTableRowElement,
+    parts: string[],
+    hexIndex: number,
+    updateFn: UpdateRowValuesFn,
+    dataType: string,
+    scale: number,
+    originalHexLen: number,
+    prmListOptions: Record<string, string>,
+): void {
+    cell.addEventListener('click', (e: MouseEvent) => e.stopPropagation());
 }
 
-export function initPhysicalCellEditor(...args: any[]): void {
-    if (args[0]?.addEventListener) args[0].addEventListener('click', (e: MouseEvent) => e.stopPropagation());
+/**
+ * Заглушка редактора физической ячейки.
+ * Типизирована для совместимости с renderModbusTable.
+ */
+export function initPhysicalCellEditor(
+    cell: HTMLElement,
+    row: HTMLTableRowElement,
+    parts: string[],
+    dataType: string,
+    scale: number,
+    hexIndex: number,
+    originalHexLen: number,
+    prmListOptions: Record<string, string>,
+    updateFn: UpdateRowValuesFn,
+    hexToFloat32Fn: (hexStr: string) => number,
+    float32ToHexFn: (floatVal: number, padLen?: number) => string,
+): void {
+    cell.addEventListener('click', (e: MouseEvent) => e.stopPropagation());
 }
 
 /**
@@ -32,8 +80,8 @@ export function initPhysicalCellEditor(...args: any[]): void {
  */
 export function initTableEditor(containerOrTableId: string, stateObj: TableEditorState): void {
     try {
-        const container = typeof containerOrTableId === 'string' 
-            ? document.getElementById(containerOrTableId) 
+        const container = typeof containerOrTableId === 'string'
+            ? document.getElementById(containerOrTableId)
             : containerOrTableId;
 
         if (!container) return;
@@ -44,6 +92,7 @@ export function initTableEditor(containerOrTableId: string, stateObj: TableEdito
             const editableCell = target.closest<HTMLElement>('td.editable-cell');
             if (editableCell) startInlineEdit(editableCell, stateObj);
         });
+
         console.log("[TableEditor] Инлайн-редактор таблицы подключен.");
     } catch (err) {
         console.error("[TableEditor] Ошибка инициализации:", err);
@@ -67,7 +116,6 @@ export async function sendModbusWriteCommand(
             (word >> 8) & 0xFF,
             word & 0xFF
         ]);
-
         const crc = calculateCRC(body);
         const packet = new Uint8Array(8);
         packet.set(body, 0);
@@ -87,7 +135,6 @@ export async function sendModbusWriteCommand(
         const regCount = words.length;
         const byteCount = regCount * 2;
         const body = new Uint8Array(7 + byteCount);
-
         body[0] = slaveAddr & 0xFF;
         body[1] = 0x10;
         body[2] = (startReg >> 8) & 0xFF;
@@ -148,7 +195,7 @@ async function processValueWrite(
         if (!isNaN(parsedScale) && parsedScale !== 0) scale = parsedScale;
     }
 
-    const is32Bit = dataType.includes('FLOAT') || dataType.includes('DWORD') || 
+    const is32Bit = dataType.includes('FLOAT') || dataType.includes('DWORD') ||
                     dataType.includes('LONG') || dataType.includes('INT32');
 
     let wordsToWrite: number[] = [];
@@ -156,7 +203,6 @@ async function processValueWrite(
     if (editType === 'hex') {
         const cleanHex = newValueStr.replace(/^(x|0x)/i, '');
         if (!/^[0-9A-Fa-f]+$/.test(cleanHex)) return false;
-
         const parsedVal = parseInt(cleanHex, 16);
         if (isNaN(parsedVal)) return false;
 
@@ -205,6 +251,7 @@ async function processValueWrite(
 export function startInlineEdit(cell: HTMLElement, stateObj: TableEditorState): void {
     const tr = cell.closest<HTMLTableRowElement>('tr');
     if (!tr) return;
+
     if (cell.querySelector('input')) return;
 
     const editType = cell.getAttribute('data-edit-type') || 'phys';
@@ -226,12 +273,15 @@ export function startInlineEdit(cell: HTMLElement, stateObj: TableEditorState): 
     const save = async () => {
         if (isFinished) return;
         isFinished = true;
+
         const newValue = input.value.trim();
         if (newValue === originalValue || newValue === '') {
             cell.innerText = originalValue;
             return;
         }
+
         cell.innerText = newValue;
+
         try {
             const success = await processValueWrite(tr, editType, newValue, stateObj);
             if (!success) {
@@ -251,5 +301,6 @@ export function startInlineEdit(cell: HTMLElement, stateObj: TableEditorState): 
         if (e.key === 'Enter') input.blur();
         else if (e.key === 'Escape') { isFinished = true; cell.innerText = originalValue; }
     });
+
     input.addEventListener('blur', () => save());
 }

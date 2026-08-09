@@ -5,6 +5,8 @@ import { showIdModal, updateIdBanner, closeIdModal } from '../ui/ui.js';
 import { parseRegisterAddress, hexToFloat32, float32ToHex } from '../ini-manager/tree-core.js';
 import { updateRowValues } from '../ini-manager/tree-ui.js';
 import type { ISerialPort } from './ISerialPort.js';
+import { IniConfig } from '../core/ini/index.js';
+import { IniDataType, type IniParameter } from '../core/ini/index.js';
 
 let currentLoopId = 0;
 
@@ -145,41 +147,16 @@ export function calculateCRC(buffer: Uint8Array): number {
  * Разбивает запросы при дырах между адресами > maxGap или при превышении maxRegisters (125 регистров Modbus).
  */
 export function getOptimizedBatches(
-    deviceConfig: any,
+    config: IniConfig,
     sectionName: string = 'RAM',
     maxGap: number = 10,
     maxRegistersPerBatch: number = 125
 ): RegisterBatch[] {
-    const section = deviceConfig ? deviceConfig[sectionName] : null;
-    if (!section) return [];
+    // Единый INI-слой уже содержит уникальные адреса с учётом 32-битных типов
+    const sorted = config.getUniqueRegisterAddresses(sectionName);
+    if (sorted.length === 0) return [];
 
-    const addresses: number[] = [];
-    for (const key in section) {
-        const parts = section[key];
-        if (!Array.isArray(parts)) continue;
-
-        const dataType = String(parts[2] || '').toUpperCase();
-        const regAddrString = String(dataType === 'TBIT' ? (parts[5] ?? '') : (parts[4] ?? ''));
-        const match = regAddrString.match(/(?:x|0x)?([0-9A-Fa-f]+)/i);
-
-        if (match) {
-            const reg = parseInt(match[1], 16);
-            if (!isNaN(reg)) {
-                addresses.push(reg);
-                const is32Bit = dataType.includes('FLOAT') || dataType.includes('DWORD') ||
-                                dataType.includes('LONG') || dataType.includes('INT32');
-                if (is32Bit) {
-                    addresses.push(reg + 1);
-                }
-            }
-        }
-    }
-
-    if (addresses.length === 0) return [];
-
-    const sorted = Array.from(new Set(addresses)).sort((a, b) => a - b);
     const batches: RegisterBatch[] = [];
-
     let currentStart = sorted[0];
     let currentEnd = sorted[0];
 
@@ -261,19 +238,18 @@ export async function executeDeviceIdentification(serial: ISerialPort, comSelect
 export async function readLoop(serial: ISerialPort, parser: any, view: any, buffers: any, stateObj: any): Promise<void> {
     if (stateObj.isLoopRunning) return;
     stateObj.isLoopRunning = true;
-
     console.log("DEBUG: Единый батчевый readLoop запущен");
-
     try {
         while (serial && serial.isConnected && stateObj.isPolling) {
-            const deviceConfig = stateObj.currentDeviceConfig;
-            if (!deviceConfig || !deviceConfig['RAM']) {
+            const iniConfig: IniConfig | undefined = stateObj.currentIniConfig;
+
+            if (!iniConfig || !iniConfig.isValid) {
                 await new Promise(r => setTimeout(r, 500));
                 continue;
             }
 
             // 1. Формируем оптимальные батчи запросов Modbus
-            const batches = getOptimizedBatches(deviceConfig, 'RAM', 10, 125);
+            const batches = getOptimizedBatches(iniConfig, 'RAM', 10, 125);
             if (batches.length === 0) {
                 await new Promise(r => setTimeout(r, 500));
                 continue;
@@ -285,7 +261,6 @@ export async function readLoop(serial: ISerialPort, parser: any, view: any, buff
             // 2. Последовательный опрос батчей
             for (const batch of batches) {
                 if (!serial.isConnected || !stateObj.isPolling) break;
-
                 const { start: startAddr, count: regCount } = batch;
                 const body = new Uint8Array([
                     stateObj.slaveAddress || 0x01,
@@ -295,15 +270,12 @@ export async function readLoop(serial: ISerialPort, parser: any, view: any, buff
                     (regCount >> 8) & 0xFF,
                     regCount & 0xFF
                 ]);
-
                 const crc = calculateCRC(body);
                 const finalPacket = new Uint8Array(8);
                 finalPacket.set(body, 0);
                 finalPacket[6] = crc & 0xFF;
                 finalPacket[7] = (crc >> 8) & 0xFF;
-
                 const checkComplete: CheckCompleteFn = (buf: Uint8Array) => buf.length >= 3 + (regCount * 2) + 2;
-
                 try {
                     const reply = await serialManager.executeTransaction(finalPacket, checkComplete, 500);
                     if (reply && reply.length >= 3 + (regCount * 2)) {
@@ -318,60 +290,33 @@ export async function readLoop(serial: ISerialPort, parser: any, view: any, buff
             }
 
             if (mergedDataMap.size > 0) {
-                // --- 3. СИНХРОНИЗАЦИЯ С ОСЦИЛЛОГРАФОМ ---
-                const ram = deviceConfig['RAM'];
+                // --- 3. СИНХРОНИЗАЦИЯ С ОСЦИЛЛОГРАФОМ (через типизированные IniParameter) ---
+                const ramParams = iniConfig.getSection('RAM');
                 const oscData: Record<string, number> = {};
 
-                for (const key in ram) {
-                    const parts = ram[key];
-                    if (!Array.isArray(parts)) continue;
+                for (const param of ramParams) {
+                    if (param.registerAddress === null) continue;
+                    if (!mergedDataMap.has(param.registerAddress)) continue;
 
-                    const dataType = String(parts[2] || '').toUpperCase();
-                    const regAddrString = String(dataType === 'TBIT' ? (parts[5] ?? '') : (parts[4] ?? ''));
-                    const { reg } = parseRegisterAddress(regAddrString);
+                    const reg = param.registerAddress;
+                    const low = mergedDataMap.get(reg)!;
+                    let val = 0;
 
-                    if (reg !== null && mergedDataMap.has(reg)) {
-                        const low = mergedDataMap.get(reg)!;
-                        let val = 0;
-                        const is32Bit = dataType.includes('FLOAT') || dataType.includes('DWORD') ||
-                                        dataType.includes('LONG') || dataType.includes('INT32');
+                    if (param.is32Bit && mergedDataMap.has(reg + 1)) {
+                        const high = mergedDataMap.get(reg + 1)!;
+                        val = decode32BitValue(high, low, param.dataType);
+                    } else {
+                        val = decode16BitValue(low, param);
+                    }
 
-                        if (is32Bit && mergedDataMap.has(reg + 1)) {
-                            const high = mergedDataMap.get(reg + 1)!;
+                    val = val * param.scale;
+                    oscData[param.id] = val;
 
-                            if (dataType.includes('FLOAT')) {
-                                const buf = new ArrayBuffer(4);
-                                const dv = new DataView(buf);
-                                dv.setUint16(0, high, false);
-                                dv.setUint16(2, low, false);
-                                val = dv.getFloat32(0, false);
-                            } else if (dataType.includes('LONG') || dataType.includes('INT32')) {
-                                val = ((high << 16) | low) | 0;
-                            } else {
-                                val = ((high << 16) | low) >>> 0;
-                            }
-                        } else {
-                            val = low;
-                            if (dataType === 'TSHORT' || dataType === 'TINT') {
-                                val = val & 0x8000 ? val - 0x10000 : val;
-                            } else if (dataType === 'TBIT') {
-                                const bitNum = parseInt(parts[6] || '0', 10);
-                                val = (val >> bitNum) & 0x01;
-                            }
-                        }
-
-                        const scaleRaw = parseFloat(parts[3]);
-                        const scale = isNaN(scaleRaw) ? 1.0 : scaleRaw;
-                        val = val * scale;
-
-                        oscData[key] = val;
-
-                        if (buffers) {
-                            if (buffers instanceof Map && buffers.has(key)) {
-                                buffers.get(key).push(val);
-                            } else if (buffers[key] && typeof buffers[key].push === 'function') {
-                                buffers[key].push(val);
-                            }
+                    if (buffers) {
+                        if (buffers instanceof Map && buffers.has(param.id)) {
+                            buffers.get(param.id).push(val);
+                        } else if (buffers[param.id] && typeof buffers[param.id].push === 'function') {
+                            buffers[param.id].push(val);
                         }
                     }
                 }
@@ -391,26 +336,21 @@ export async function readLoop(serial: ISerialPort, parser: any, view: any, buff
                         if (!addrStr) return;
                         const { reg } = parseRegisterAddress(addrStr);
                         if (reg === null || !mergedDataMap.has(reg)) return;
-
                         const word = mergedDataMap.get(reg)!;
                         const dataType = tr.getAttribute('data-type') || '';
                         const sub = tr.getAttribute('data-sub') || '';
                         const hIdx = parseInt(tr.getAttribute('data-hex-index') || '0', 10);
-
                         let parts: string[] = [];
                         try { parts = JSON.parse(tr.dataset.parts || '[]'); } catch (e) { return; }
-
                         let originalHexLen = 4;
                         if (parts[hIdx] && parts[hIdx].startsWith('x')) {
                             originalHexLen = parts[hIdx].slice(1).length;
                         }
-
                         let scale = 1.0;
                         if (parts[6]) {
                             const parsedScale = parseFloat(parts[6].replace(',', '.'));
                             if (!isNaN(parsedScale)) scale = parsedScale;
                         }
-
                         const prmListOptions: Record<string, string> = {};
                         for (let j = parts.length - 1; j >= 3; j--) {
                             const part = parts[j] ? parts[j].trim() : '';
@@ -419,9 +359,7 @@ export async function readLoop(serial: ISerialPort, parser: any, view: any, buff
                                 if (h && t) prmListOptions[h.toLowerCase()] = t;
                             }
                         }
-
                         let hexValue = '';
-
                         if (dataType === 'TByte' || dataType === 'TPrmList') {
                             const byteVal = (sub === 'H') ? ((word >> 8) & 0xFF) : (word & 0xFF);
                             hexValue = 'x' + byteVal.toString(16).toUpperCase().padStart(originalHexLen, '0');
@@ -437,7 +375,6 @@ export async function readLoop(serial: ISerialPort, parser: any, view: any, buff
                         } else {
                             hexValue = 'x' + word.toString(16).toUpperCase().padStart(originalHexLen, '0');
                         }
-
                         if (hexValue && hIdx !== -1 && hIdx < parts.length) {
                             parts[hIdx] = hexValue;
                             tr.dataset.parts = JSON.stringify(parts);
@@ -446,11 +383,48 @@ export async function readLoop(serial: ISerialPort, parser: any, view: any, buff
                     });
                 }
             }
-
             await new Promise((res) => setTimeout(res, 50));
         }
     } finally {
         stateObj.isLoopRunning = false;
         console.log("DEBUG: Единый батчевый readLoop остановлен");
     }
+}
+// ── Вспомогательные функции декодирования Modbus-значений ──
+
+/**
+ * Декодирует 32-битное значение из двух 16-битных слов Modbus.
+ * Учитывает тип данных (Float, Long, Int32, DWord).
+ */
+function decode32BitValue(high: number, low: number, dataType: IniDataType): number {
+    switch (dataType) {
+        case IniDataType.TFLOAT:
+        case IniDataType.TFLOAT32: {
+            const buf = new ArrayBuffer(4);
+            const dv = new DataView(buf);
+            dv.setUint16(0, high, false);
+            dv.setUint16(2, low, false);
+            return dv.getFloat32(0, false);
+        }
+        case IniDataType.TLONG:
+        case IniDataType.TINT32:
+            return ((high << 16) | low) | 0;
+        case IniDataType.TDWORD:
+            return ((high << 16) | low) >>> 0;
+        default:
+            return ((high << 16) | low) >>> 0;
+    }
+}
+
+/**
+ * Декодирует 16-битное значение с учётом типа (знак, бит).
+ */
+function decode16BitValue(word: number, param: IniParameter): number {
+    if (param.isBit && param.bitIndex !== null) {
+        return (word >> param.bitIndex) & 0x01;
+    }
+    if (param.dataType === IniDataType.TSHORT || param.dataType === IniDataType.TINT16) {
+        return word & 0x8000 ? word - 0x10000 : word;
+    }
+    return word;
 }

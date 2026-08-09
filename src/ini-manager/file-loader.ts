@@ -1,8 +1,10 @@
+// src/ini-manager/file-loader.ts
+
 import { showIdModal, populateDeviceForm } from '../ui/ui.js';
-import { addDeviceToRegistry, deviceRegistry } from './tree-core.js';
+import { addDeviceToRegistry, deviceRegistry, setCurrentIniConfig } from './tree-core.js';
 import { renderDeviceTree } from './tree-ui.js';
 import { renderModbusTable } from '../ui/tree.js';
-import { readTextFile } from './textFileReader.js';
+import { IniParser as CoreIniParser, IniConfig, iniParamsToChannelConfigs } from '../core/ini/index.js';
 
 export function setupFileHandling(fileInput: HTMLInputElement, appState: any): void {
     let processingQueue: Promise<void> = Promise.resolve();
@@ -10,7 +12,6 @@ export function setupFileHandling(fileInput: HTMLInputElement, appState: any): v
     fileInput.addEventListener('change', (event: Event) => {
         const target = event.target as HTMLInputElement;
         if (!target || !target.files) return;
-
         const files: File[] = Array.from(target.files);
         if (files.length === 0) return;
         target.value = '';
@@ -28,7 +29,7 @@ export function setupFileHandling(fileInput: HTMLInputElement, appState: any): v
 async function processSingleFile(file: File, appState: any): Promise<void> {
     let content: string;
     try {
-        content = await readTextFile(file);
+        content = await readFileAsText(file);
     } catch (err) {
         showIdModal(`Ошибка чтения файла: ${file.name}`);
         console.error('[file-loader] Read error:', err);
@@ -40,20 +41,25 @@ async function processSingleFile(file: File, appState: any): Promise<void> {
             throw new Error('Файл пуст');
         }
 
-        const parser = appState?.parser;
-        if (!parser || typeof parser.parse !== 'function') {
-            throw new Error('Не инициализирован INI-парсер');
-        }
+        // ЕДИНЫЙ парсинг через core/ini
+        const coreParser = new CoreIniParser();
+        const parseResult = coreParser.parse(content);
+        const iniConfig = new IniConfig(parseResult);
 
-        const config = parser.parse(content);
+        // Совместимость: rawSections — тот же формат, что и старый ParsedData
+        const config = parseResult.rawSections as any;
+
         if (!config || !(config['DEVICE'] || config['RAM'] || config['CD'] || config['FLASH'])) {
             throw new Error('Неверный формат INI файла (отсутствуют стандартные секции)');
         }
 
         appState.currentDeviceConfig = config;
         appState.currentIniContent = content;
+        appState.currentIniConfig = iniConfig;
 
-        const isAdded = addDeviceToRegistry(config);
+        const isAdded = addDeviceToRegistry(iniConfig);
+        setCurrentIniConfig(iniConfig);
+
         if (isAdded) {
             renderDeviceTree();
         }
@@ -62,36 +68,27 @@ async function processSingleFile(file: File, appState: any): Promise<void> {
             populateDeviceForm(config['DEVICE']);
         }
 
-        renderModbusTable(config);
+        renderModbusTable(iniConfig);
 
+        // Осциллограф: используем уже распарсенный iniConfig
         const osc = (window as any).osc;
-        if (osc && typeof osc.loadIniContent === 'function') {
-            const normalizedContent = serializeConfig(config);
-            let oscLoadApplied = false;
-
-            if (normalizedContent.trim().length > 0) {
-                try {
-                    await osc.loadIniContent(normalizedContent);
-                    oscLoadApplied = true;
-                } catch (normalizedErr) {
-                    console.warn(
-                        '[file-loader] Normalized INI apply failed, falling back to raw content:',
-                        normalizedErr
-                    );
-                }
+        if (osc && typeof osc.applyChannelConfigs === 'function') {
+            try {
+                const ramParams = iniConfig.getSection('RAM');
+                const channelConfigs = iniParamsToChannelConfigs(ramParams);
+                await osc.applyChannelConfigs(channelConfigs);
+            } catch (oscErr: any) {
+                console.error('[file-loader] applyChannelConfigs error:', oscErr);
+                showIdModal(
+                    'Ошибка применения INI к осциллографу: ' +
+                    (oscErr?.message ? oscErr.message : String(oscErr))
+                );
             }
-
-            if (!oscLoadApplied) {
-                try {
-                    await osc.loadIniContent(content);
-                    oscLoadApplied = true;
-                } catch (oscErr: any) {
-                    console.error('[file-loader] Oscilloscope apply error:', oscErr);
-                    showIdModal(
-                        'Ошибка применения INI к осциллографу: ' +
-                        (oscErr?.message ? oscErr.message : String(oscErr))
-                    );
-                }
+        } else if (osc && typeof osc.loadIniContent === 'function') {
+            try {
+                await osc.loadIniContent(content);
+            } catch (oscErr: any) {
+                console.error('[file-loader] Oscilloscope apply error (legacy):', oscErr);
             }
         }
 
@@ -105,10 +102,29 @@ async function processSingleFile(file: File, appState: any): Promise<void> {
                 console.error('[file-loader] Failed to set active INI:', uiErr);
             }
         }
+
     } catch (err: any) {
         showIdModal('Ошибка обработки файла ' + file.name + ': ' + (err?.message ? err.message : String(err)));
         console.error('Parser Error:', err);
     }
+}
+
+function readFileAsText(file: File): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e: ProgressEvent<FileReader>) => {
+            const result = e.target?.result;
+            if (typeof result === 'string') {
+                resolve(result);
+            } else {
+                reject(new Error('Не удалось прочитать файл как текст'));
+            }
+        };
+        reader.onerror = () => {
+            reject(new Error('Ошибка чтения файла'));
+        };
+        reader.readAsText(file, 'windows-1251');
+    });
 }
 
 function syncFilesToOscilloscope(): void {
@@ -117,6 +133,7 @@ function syncFilesToOscilloscope(): void {
 
     const allFiles: any[] = [];
     const registry = deviceRegistry as any;
+
     for (const location in registry) {
         const group = registry[location];
         if (!Array.isArray(group)) continue;
@@ -146,8 +163,8 @@ function syncFilesToOscilloscope(): void {
 
 function findDeviceIdByConfig(config: any): string | null {
     if (!config) return null;
-
     const registry = deviceRegistry as any;
+
     for (const location in registry) {
         const group = registry[location];
         if (!Array.isArray(group)) continue;
@@ -178,7 +195,6 @@ function findDeviceIdByConfig(config: any): string | null {
 
 function serializeConfig(config: any): string {
     if (!config || typeof config !== 'object') return '';
-
     let out = '';
     for (const section in config) {
         out += `[${section}]\n`;

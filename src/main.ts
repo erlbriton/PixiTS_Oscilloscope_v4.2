@@ -1,3 +1,4 @@
+// src/main.ts
 import { IniParser } from './ini-manager/iniParser.js';
 import { SerialConnection } from './serial/serial.js';
 import { initUI } from './ui/uiManager.js';
@@ -5,15 +6,15 @@ import { ModbusParser } from './serial/modbus.js';
 import { Oscilloscope } from './oscilloscope';
 import './ui/layout.js';
 
-// Импорты логики
 import { showIdModal } from './ui/ui.js';
 import { updateDeviceRegisters } from './serial/device_updater.js';
 import { setupFileHandling } from './ini-manager/file-loader.js';
-import { 
-    updateComInterfaceName, 
-    executeDeviceIdentification, 
-    readLoop 
+import {
+    updateComInterfaceName,
+    executeDeviceIdentification,
+    readLoop
 } from './serial/serial-actions.js';
+import type { AppState } from './core/app-state.js';
 
 declare global {
     interface Window {
@@ -21,23 +22,31 @@ declare global {
     }
 }
 
-// Удаляем локальные заглушки, используем реальный модуль
 const iniParser = new IniParser();
-const appState = { isIdentifying: false, isPolling: false, isRefreshing: false, slaveAddress: 0x01, parser: iniParser };
+
+const appState: AppState = {
+    isIdentifying: false,
+    isPolling: false,
+    isRefreshing: false,
+    isLoopRunning: false,
+    slaveAddress: 0x01,
+    parser: iniParser,
+    currentDeviceConfig: null,
+    currentIniContent: null,
+    currentIniConfig: null,
+};
 
 document.addEventListener('DOMContentLoaded', async () => {
     try {
         const oscContainer = document.getElementById('osc-container');
-        
-        // Инициализируем реальный осциллограф
+
         const osc = new Oscilloscope();
-        (window as any).osc = osc;
-        await osc.initialize(oscContainer!);
+        window.osc = osc;
+        await osc.initialize(oscContainer ?? undefined);
 
         const serial = new SerialConnection();
         const parser = new ModbusParser();
-        
-        // Реальные буферы данных для передачи в осциллограф
+
         const buffers = Array.from({ length: 70 }, () => {
             const data: number[] = [];
             return {
@@ -46,7 +55,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (data.length > 200) data.shift();
                 },
                 get: (idx: number) => data[idx],
-                get length() { return data.length; }, 
+                get length() { return data.length; },
                 get data() { return data; },
                 clear: () => { data.length = 0; },
                 toArray: () => [...data]
@@ -55,16 +64,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         initUI({
             serial, appState, parser, view: osc, buffers,
-            setupFileHandling, 
-            updateComInterfaceName, 
-            executeDeviceIdentification, 
-            readLoop, 
-            showIdModal, 
+            setupFileHandling,
+            updateComInterfaceName,
+            executeDeviceIdentification,
+            readLoop,
+            showIdModal,
             updateDeviceRegisters
         });
 
         console.log("Приложение запущено. Модуль осциллографа интегрирован.");
-    } catch (error: any) {
-        console.error("Критическая ошибка:", error.message);
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error("Критическая ошибка:", message);
     }
 });

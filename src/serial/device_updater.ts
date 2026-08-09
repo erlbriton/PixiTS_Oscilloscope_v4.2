@@ -1,7 +1,9 @@
+// src/serial/device_updater.ts
 import { updateRowValues } from "../ini-manager/tree-ui.js";
 import { hexToFloat32, float32ToHex } from "../ini-manager/tree-core.js";
 import { calculateCRC, serialManager } from "./serial-actions.js";
 import type { ISerialPort } from "./ISerialPort.js";
+import type { IniConfig } from "../core/ini/index.js";
 
 declare global {
     interface Window {
@@ -9,20 +11,10 @@ declare global {
     }
 }
 
-/**
- * Вспомогательная функция для получения готового множителя из кэша.
- * Теперь множители уже разрешены на этапе парсинга INI-файла.
- */
-function getScaleFromCache(appState: any, section: string, key: string): number {
-    const cache = appState?.parser?.multiplierCache;
-    if (!cache) {
-        return 1.0;
-    }
-    if (cache[section] && cache[section][key] !== undefined) {
-        const val = parseFloat(cache[section][key].replace(",", "."));
-        return val;
-    }
-    return 1.0;
+/** Минимальный контракт состояния для обновления регистров */
+interface DeviceUpdaterState {
+    isPolling?: boolean;
+    currentIniConfig?: IniConfig;
 }
 
 let isUpdating = false;
@@ -30,16 +22,16 @@ let isUpdating = false;
 export async function updateDeviceRegisters(
     serial: ISerialPort,
     slaveAddress: number = 0x01,
-    appState: any = null,
+    appState: DeviceUpdaterState | null = null,
 ): Promise<boolean> {
     if (isUpdating) return false;
     isUpdating = true;
-
     document.body.classList.add("loading-state");
 
-    const wasPolling = appState ? appState.isPolling : false;
+    const iniConfig: IniConfig | undefined = appState?.currentIniConfig;
+    const wasPolling = appState ? (appState.isPolling ?? false) : false;
 
-    if (wasPolling) {
+    if (wasPolling && appState) {
         appState.isPolling = false;
         await new Promise((r) => setTimeout(r, 20));
     }
@@ -57,7 +49,6 @@ export async function updateDeviceRegisters(
                 registerMap.set(addr, []);
             }
             registerMap.get(addr)?.push(tr);
-
             const dataType = tr.getAttribute("data-type");
             if (dataType === "TFloat" || dataType === "TDWORD" || dataType === "FLOAT" || dataType === "TFLOAT32") {
                 addresses.push(addr);
@@ -76,18 +67,15 @@ export async function updateDeviceRegisters(
         }
 
         const batches: Batch[] = [];
-
         if (uniqueAddresses.length > 0) {
             let currentBatch: Batch = {
                 start: uniqueAddresses[0],
                 end: uniqueAddresses[0],
                 regs: [uniqueAddresses[0]],
             };
-
             for (let i = 1; i < uniqueAddresses.length; i++) {
                 const nextAddr = uniqueAddresses[i];
                 const gap = nextAddr - currentBatch.end - 1;
-
                 if (gap <= 3 && nextAddr - currentBatch.start + 1 <= 125) {
                     currentBatch.end = nextAddr;
                     currentBatch.regs.push(nextAddr);
@@ -109,7 +97,6 @@ export async function updateDeviceRegisters(
                 (count >> 8) & 0xff,
                 count & 0xff,
             ]);
-
             const crc = calculateCRC(body);
             const finalPacket = new Uint8Array(8);
             finalPacket.set(body, 0);
@@ -137,14 +124,12 @@ export async function updateDeviceRegisters(
                 if (reply && reply.length >= 3 && reply[1] === 0x03) {
                     const byteCount = reply[2];
                     const expectedTotal = 3 + byteCount + 2;
-
                     if (reply.length >= expectedTotal) {
                         for (let i = 0; i < count; i++) {
                             const regAddr = batch.start + i;
                             if (registerMap.has(regAddr)) {
                                 const trList = registerMap.get(regAddr);
                                 if (!trList) continue;
-
                                 for (const tr of trList) {
                                     try {
                                         let parts: string[] = JSON.parse(tr.dataset.parts || "[]");
@@ -161,7 +146,9 @@ export async function updateDeviceRegisters(
                                             originalHexLen = parts[hIdx].slice(1).length;
                                         }
 
-                                        const scale = getScaleFromCache(appState, section, key);
+                                        // Множитель из единого INI-слоя вместо старого кэша
+                                        const param = iniConfig?.getParameter(section, key);
+                                        const scale = param?.scale ?? 1.0;
                                         const scaleStr = scale.toString().replace(".", ",");
 
                                         const prmListOptions: Record<string, string> = {};
@@ -180,7 +167,6 @@ export async function updateDeviceRegisters(
                                         const word = (valH << 8) | valL;
 
                                         let hexValue = "";
-
                                         if (dataType === "TByte" || dataType === "TPrmList") {
                                             if (sub === "H") {
                                                 const byteVal = (word >> 8) & 0xff;
@@ -229,7 +215,6 @@ export async function updateDeviceRegisters(
         isUpdating = false;
         document.body.classList.remove("loading-state");
     }
-
     return wasPolling;
 }
 

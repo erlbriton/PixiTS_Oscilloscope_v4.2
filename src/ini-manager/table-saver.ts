@@ -1,4 +1,19 @@
-export function calculateNewHex(newValStr, dataType, scale, originalHexLen, float32ToHex) {
+// src/ini-manager/table-saver.ts
+
+/** Тип функции float32ToHex из tree-core.ts */
+type Float32ToHexFn = (floatVal: number, padLen?: number) => string;
+
+/**
+ * Вычисляет новое hex-значение параметра по физическому вводу.
+ * Используется при инлайн-редактировании ячеек таблицы.
+ */
+export function calculateNewHex(
+    newValStr: string,
+    dataType: string,
+    scale: number,
+    originalHexLen: number,
+    float32ToHex: Float32ToHexFn,
+): string {
     newValStr = newValStr.replace(',', '.');
     if (!newValStr) newValStr = '0';
 
