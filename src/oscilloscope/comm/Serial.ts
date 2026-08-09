@@ -1,3 +1,5 @@
+// src/oscilloscope/comm/Serial.ts
+
 import { Channel } from '../core/Channel';
 import { Archive } from '../core/Archive';
 import { Modbus } from './Modbus';
@@ -69,6 +71,10 @@ export class Serial {
             this.setState('connecting', 'Выбор COM-порта...');
 
             const navSerial = (navigator as any).serial;
+            if (!navSerial) {
+                this.setState('disconnected', 'Web Serial API не поддерживается.');
+                return false;
+            }
             this.port = await navSerial.requestPort();
 
             await this.port.open({ baudRate: this.baudRate });
@@ -81,8 +87,8 @@ export class Serial {
             this.startModbusPolling();
 
             return true;
-        } catch (err: any) {
-            const errMsg = err.message || 'Отменено';
+        } catch (err: unknown) {
+            const errMsg = err instanceof Error ? err.message : 'Отменено';
             this.setState('disconnected', `COM-порт не подключен (${errMsg}).`);
             return false;
         }

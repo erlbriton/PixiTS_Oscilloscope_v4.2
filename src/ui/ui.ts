@@ -52,7 +52,7 @@ export function closeIdModal(): void {
 /**
  * Заполняет форму устройства данными из конфигурации
  */
-export function populateDeviceForm(devConfig?: Record<string, any>): void {
+export function populateDeviceForm(devConfig?: Record<string, string | string[] | undefined>): void {
     if (!devConfig) return;
     
     const mechanismInput = document.querySelector<HTMLInputElement>('.mechanism-input');

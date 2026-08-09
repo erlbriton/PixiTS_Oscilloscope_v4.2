@@ -1,45 +1,47 @@
 // src/serial/serial-actions.ts
-
 import { identifyUsbChip } from './usb.js';
 import { showIdModal, updateIdBanner, closeIdModal } from '../ui/ui.js';
 import { parseRegisterAddress, hexToFloat32, float32ToHex } from '../ini-manager/tree-core.js';
 import { updateRowValues } from '../ini-manager/tree-ui.js';
 import type { ISerialPort } from './ISerialPort.js';
+import type { Oscilloscope } from '../oscilloscope/Oscilloscope.js';
+/** Буфер данных канала для передачи в осциллограф */
+interface ChannelBuffer {
+    push(v: number): void;
+    get(idx: number): number;
+    readonly length: number;
+    readonly data: number[];
+    clear(): void;
+    toArray(): number[];
+}
+import type { AppState } from '../core/app-state.js';
 import { IniConfig } from '../core/ini/index.js';
 import { IniDataType, type IniParameter } from '../core/ini/index.js';
-
 let currentLoopId = 0;
-
 type ChunkHandler = (chunk: Uint8Array) => void;
 type CheckCompleteFn = (buffer: Uint8Array) => boolean;
-
 export interface RegisterBatch {
     start: number;
     count: number;
 }
-
 // === ЦЕНТРАЛЬНЫЙ МЕНЕДЖЕР ПОРТА (АРХИТЕКТУРА «ЕДИНЫЙ ЧИТАТЕЛЬ») ===
 class SerialManager {
     public serial: ISerialPort | null;
     public readerPromise: Promise<void> | null;
     public currentHandler: ChunkHandler | null;
     private lock: Promise<void>;
-
     constructor() {
         this.serial = null;
         this.readerPromise = null;
         this.currentHandler = null;
         this.lock = Promise.resolve();
     }
-
     public init(serial: ISerialPort): void {
         this.serial = serial;
         this.startReader();
     }
-
     public startReader(): void {
         if (this.readerPromise || !this.serial || !this.serial.isConnected) return;
-
         this.readerPromise = (async () => {
             console.log("[SerialManager] Центральный единый ридер успешно запущен.");
             while (this.serial && this.serial.isConnected) {
@@ -61,52 +63,42 @@ class SerialManager {
             console.log("[SerialManager] Центральный единый ридер остановлен.");
         })();
     }
-
     public async executeTransaction(
         packet: Uint8Array,
         checkCompleteFn: CheckCompleteFn,
         timeoutMs: number = 1000
     ): Promise<Uint8Array> {
         const oldLock = this.lock;
-        let release: () => void = () => {};
+        let release: () => void = () => { };
         this.lock = new Promise((r) => { release = r; });
         await oldLock;
-
         try {
             this.startReader();
-
             const port = this.serial;
             if (!port) {
                 throw new Error("[SerialManager] Порт не инициализирован для транзакции.");
             }
-
             await port.write(packet);
-
             return await new Promise<Uint8Array>((resolve) => {
                 let buffer = new Uint8Array(0);
-                let timeoutId: any = null;
-
+                let timeoutId: ReturnType<typeof setTimeout> | null = null;
                 const cleanUp = () => {
                     if (timeoutId) clearTimeout(timeoutId);
                     if (this.currentHandler === handleChunk) {
                         this.currentHandler = null;
                     }
                 };
-
                 const handleChunk: ChunkHandler = (chunk: Uint8Array) => {
                     let newBuffer = new Uint8Array(buffer.length + chunk.length);
                     newBuffer.set(buffer);
                     newBuffer.set(chunk, buffer.length);
                     buffer = newBuffer;
-
                     if (checkCompleteFn(buffer)) {
                         cleanUp();
                         resolve(buffer);
                     }
                 };
-
                 this.currentHandler = handleChunk;
-
                 timeoutId = setTimeout(() => {
                     cleanUp();
                     resolve(buffer);
@@ -120,9 +112,7 @@ class SerialManager {
         }
     }
 }
-
 export const serialManager = new SerialManager();
-
 /**
  * Вычисление Modbus RTU CRC16.
  */
@@ -141,7 +131,6 @@ export function calculateCRC(buffer: Uint8Array): number {
     }
     return crc;
 }
-
 /**
  * Оптимизация Modbus запросов: группировка адресов регистров в батчи.
  * Разбивает запросы при дырах между адресами > maxGap или при превышении maxRegisters (125 регистров Modbus).
@@ -155,16 +144,13 @@ export function getOptimizedBatches(
     // Единый INI-слой уже содержит уникальные адреса с учётом 32-битных типов
     const sorted = config.getUniqueRegisterAddresses(sectionName);
     if (sorted.length === 0) return [];
-
     const batches: RegisterBatch[] = [];
     let currentStart = sorted[0];
     let currentEnd = sorted[0];
-
     for (let i = 1; i < sorted.length; i++) {
         const addr = sorted[i];
         const gap = addr - currentEnd - 1;
         const newCount = (addr - currentStart + 1);
-
         if (gap > maxGap || newCount > maxRegistersPerBatch) {
             batches.push({
                 start: currentStart,
@@ -176,15 +162,12 @@ export function getOptimizedBatches(
             currentEnd = addr;
         }
     }
-
     batches.push({
         start: currentStart,
         count: currentEnd - currentStart + 1
     });
-
     return batches;
 }
-
 export function updateComInterfaceName(serial: ISerialPort, comSelect: HTMLSelectElement | null): string {
     if (!comSelect) return "";
     // Через интерфейс: работает и для WebSerial, и для Tauri-адаптера.
@@ -194,19 +177,15 @@ export function updateComInterfaceName(serial: ISerialPort, comSelect: HTMLSelec
     comSelect.className = 'select-blue';
     return chipName;
 }
-
-export async function executeDeviceIdentification(serial: ISerialPort, comSelect: HTMLSelectElement | null, stateObj: any): Promise<void> {
+export async function executeDeviceIdentification(serial: ISerialPort, comSelect: HTMLSelectElement | null, stateObj: AppState): Promise<void> {
     try {
         stateObj.isIdentifying = true;
         await serial.connect(115200);
         serialManager.init(serial);
-
         updateComInterfaceName(serial, comSelect);
         await new Promise((r) => setTimeout(r, 500));
         showIdModal("Запрос ID устройства...");
-
         const packet = new Uint8Array([0x01, 0x11, 0xC0, 0x2C]);
-
         const checkComplete: CheckCompleteFn = (buf: Uint8Array) => {
             if (buf.length >= 3) {
                 const dataLength = buf[2];
@@ -214,9 +193,7 @@ export async function executeDeviceIdentification(serial: ISerialPort, comSelect
             }
             return false;
         };
-
         const reply = await serialManager.executeTransaction(packet, checkComplete, 1500);
-
         if (reply && reply.length >= 3) {
             const dataLength = reply[2];
             let idText = "";
@@ -228,36 +205,32 @@ export async function executeDeviceIdentification(serial: ISerialPort, comSelect
         } else {
             showIdModal("Ошибка: Нет ответа от устройства");
         }
-    } catch (error: any) {
-        showIdModal("Ошибка: " + error.message);
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        showIdModal("Ошибка: " + message);
     } finally {
         stateObj.isIdentifying = false;
     }
 }
-
-export async function readLoop(serial: ISerialPort, parser: any, view: any, buffers: any, stateObj: any): Promise<void> {
+export async function readLoop(serial: ISerialPort, _parser: unknown, view: Oscilloscope | null, buffers: Record<string, ChannelBuffer> | Map<string, ChannelBuffer> | null, stateObj: AppState): Promise<void> {
     if (stateObj.isLoopRunning) return;
     stateObj.isLoopRunning = true;
     console.log("DEBUG: Единый батчевый readLoop запущен");
     try {
         while (serial && serial.isConnected && stateObj.isPolling) {
-            const iniConfig: IniConfig | undefined = stateObj.currentIniConfig;
-
+            const iniConfig: IniConfig | null = stateObj.currentIniConfig;
             if (!iniConfig || !iniConfig.isValid) {
                 await new Promise(r => setTimeout(r, 500));
                 continue;
             }
-
             // 1. Формируем оптимальные батчи запросов Modbus
             const batches = getOptimizedBatches(iniConfig, 'RAM', 10, 125);
             if (batches.length === 0) {
                 await new Promise(r => setTimeout(r, 500));
                 continue;
             }
-
             serialManager.init(serial);
             const mergedDataMap = new Map<number, number>();
-
             // 2. Последовательный опрос батчей
             for (const batch of batches) {
                 if (!serial.isConnected || !stateObj.isPolling) break;
@@ -288,46 +261,36 @@ export async function readLoop(serial: ISerialPort, parser: any, view: any, buff
                     console.error(`Read error for batch start ${startAddr}:`, err);
                 }
             }
-
             if (mergedDataMap.size > 0) {
                 // --- 3. СИНХРОНИЗАЦИЯ С ОСЦИЛЛОГРАФОМ (через типизированные IniParameter) ---
-                const ramParams = iniConfig.getSection('RAM');
+                const ramParams: IniParameter[] = iniConfig.getSection('RAM');
                 const oscData: Record<string, number> = {};
-
                 for (const param of ramParams) {
                     if (param.registerAddress === null) continue;
                     if (!mergedDataMap.has(param.registerAddress)) continue;
-
                     const reg = param.registerAddress;
                     const low = mergedDataMap.get(reg)!;
                     let val = 0;
-
                     if (param.is32Bit && mergedDataMap.has(reg + 1)) {
                         const high = mergedDataMap.get(reg + 1)!;
                         val = decode32BitValue(high, low, param.dataType);
                     } else {
                         val = decode16BitValue(low, param);
                     }
-
                     val = val * param.scale;
                     oscData[param.id] = val;
-
                     if (buffers) {
                         if (buffers instanceof Map && buffers.has(param.id)) {
-                            buffers.get(param.id).push(val);
-                        } else if (buffers[param.id] && typeof buffers[param.id].push === 'function') {
+                            buffers.get(param.id)?.push(val);
+                        } else if (!(buffers instanceof Map) && buffers[param.id] && typeof buffers[param.id].push === 'function') {
                             buffers[param.id].push(val);
                         }
                     }
                 }
-
-                const activeOsc = (window as any).osc || view;
-                if (activeOsc && typeof activeOsc.updateValues === 'function') {
-                    activeOsc.updateValues(oscData);
-                } else if (activeOsc && typeof activeOsc.draw === 'function') {
+                const activeOsc = window.osc ?? view;
+                if (activeOsc) {
                     activeOsc.draw(oscData);
                 }
-
                 // --- 4. СИНХРОНИЗАЦИЯ С ТАБЛИЦЕЙ MODBUS ---
                 const tableRows = document.querySelectorAll<HTMLTableRowElement>('#grid-data-rows tr');
                 if (tableRows.length > 0) {
@@ -391,7 +354,6 @@ export async function readLoop(serial: ISerialPort, parser: any, view: any, buff
     }
 }
 // ── Вспомогательные функции декодирования Modbus-значений ──
-
 /**
  * Декодирует 32-битное значение из двух 16-битных слов Modbus.
  * Учитывает тип данных (Float, Long, Int32, DWord).
@@ -415,7 +377,6 @@ function decode32BitValue(high: number, low: number, dataType: IniDataType): num
             return ((high << 16) | low) >>> 0;
     }
 }
-
 /**
  * Декодирует 16-битное значение с учётом типа (знак, бит).
  */
