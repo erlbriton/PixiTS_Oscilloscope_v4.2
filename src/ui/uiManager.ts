@@ -1,8 +1,7 @@
 // src/ui/uiManager.ts
-
-// src/ui/uiManager.ts
 import { initTableEditor } from '../ini-manager/table-editor.js';
 import type { ISerialPort } from '../serial/ISerialPort.js';
+import { IniParser as CoreIniParser, IniConfig } from '../core/ini/index.js';
 
 export interface UiManagerDeps {
     serial: ISerialPort;
@@ -74,64 +73,45 @@ export function initUI(deps: UiManagerDeps): void {
     // 1. Обновить appState.currentDeviceConfig для readLoop
     // 2. Обновить appState.currentIniContent
     // 3. Принудительно перезапустить readLoop, чтобы он подхватил новый конфиг
-    if (view && typeof view.loadIniContent === 'function' && !(view as any).__loadIniContentWrapped) {
-        const originalLoadIniContent = view.loadIniContent.bind(view);
-        (view as any).__loadIniContentWrapped = true;
-
-        view.loadIniContent = async (iniContent: string) => {
-            try {
-                if (typeof iniContent === 'string' && iniContent.trim().length > 0) {
-                    appState.currentIniContent = iniContent;
-
-                    const parsedConfig = appState?.parser?.parse?.(iniContent);
-
-                    if (
-                        parsedConfig &&
-                        (parsedConfig['RAM'] ||
-                         parsedConfig['DEVICE'] ||
-                         parsedConfig['CD'] ||
-                         parsedConfig['FLASH'])
-                    ) {
-                        appState.currentDeviceConfig = parsedConfig;
-
-                        const ramKeys = parsedConfig['RAM']
-                            ? Object.keys(parsedConfig['RAM']).length
-                            : 0;
-
-                        console.log(`[INI SYNC] currentDeviceConfig updated. RAM keys: ${ramKeys}`);
-                    }
-                }
-            } catch (err) {
-                console.warn('[INI SYNC] Failed to sync appState:', err);
-            }
-
-            const result = await originalLoadIniContent(iniContent);
-
-            // Принудительно перезапускаем readLoop, чтобы он подхватил новый currentDeviceConfig.
-            // Сбрасываем isLoopRunning, иначе readLoop() вернётся сразу.
-            // ВАЖНО: запускаем readLoop ТОЛЬКО если осциллограф открыт и есть связь.
-            setTimeout(() => {
-                try {
-                    const oscContainerEl = document.getElementById('osc-container');
-                    const isOscVisible = oscContainerEl &&
-                        !oscContainerEl.classList.contains('hidden') &&
-                        oscContainerEl.style.display !== 'none';
-
-                    if (isOscVisible && serial.isConnected) {
-                        appState.isLoopRunning = false;
-                        appState.isPolling = true;
-                        readLoop(serial, parser, view, buffers, appState);
-                    } else {
-                        console.log('[uiManager] readLoop не запущен: осциллограф закрыт или нет связи');
-                    }
-                } catch (err) {
-                    console.warn('[uiManager] Failed to restart readLoop:', err);
-                }
-            }, 100);
-
-            return result;
-        };
-    }
+    // src/ui/uiManager.ts (внутри initUI, блок обёртки)
+ if (view && typeof view.loadIniContent === 'function' && !(view as any).__loadIniContentWrapped) {
+     const originalLoadIniContent = view.loadIniContent.bind(view);
+     (view as any).__loadIniContentWrapped = true;
+     view.loadIniContent = async (iniContent: string) => {
+         try {
+             if (typeof iniContent === 'string' && iniContent.trim().length > 0) {
+                 appState.currentIniContent = iniContent;
+                 const parsedConfig = appState?.parser?.parse?.(iniContent);
+                 if (
+                     parsedConfig &&
+                     (parsedConfig['RAM'] ||
+                      parsedConfig['DEVICE'] ||
+                      parsedConfig['CD'] ||
+                      parsedConfig['FLASH'])
+                 ) {
+                     appState.currentDeviceConfig = parsedConfig;
+                     const ramKeys = parsedConfig['RAM']
+                         ? Object.keys(parsedConfig['RAM']).length
+                         : 0;
+                     console.log(`[INI SYNC] currentDeviceConfig updated. RAM keys: ${ramKeys}`);
+                 }
+                 // КРИТИЧНО: обновляем типизированный currentIniConfig,
+                 // который читает readLoop на каждой итерации цикла.
+                 // Без этого readLoop продолжает опрашивать старый файл.
+                 const coreParser = new CoreIniParser();
+                 const parseResult = coreParser.parse(iniContent);
+                 appState.currentIniConfig = new IniConfig(parseResult);
+                 console.log('[INI SYNC] currentIniConfig updated.');
+             }
+         } catch (err) {
+             console.warn('[INI SYNC] Failed to sync appState:', err);
+         }
+         const result = await originalLoadIniContent(iniContent);
+         // readLoop НЕ перезапускаем. Текущий цикл уже работает и читает
+         // appState.currentIniConfig на каждой итерации while.
+         return result;
+     };
+ }
 
     // 3. События кнопок
     if (connectBtn) {
