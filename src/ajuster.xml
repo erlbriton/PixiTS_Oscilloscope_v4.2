@@ -97,6 +97,7 @@ oscilloscope/
   Oscilloscope.ts
 serial/
   device_updater.ts
+  ISerialPort.ts
   modbus.ts
   serial-actions.ts
   serial.ts
@@ -6851,6 +6852,7 @@ export class Oscilloscope {
 import { updateRowValues } from "../ini-manager/tree-ui.js";
 import { hexToFloat32, float32ToHex } from "../ini-manager/tree-core.js";
 import { calculateCRC, serialManager } from "./serial-actions.js";
+import type { ISerialPort } from "./ISerialPort.js";
 
 declare global {
     interface Window {
@@ -6863,232 +6865,278 @@ declare global {
  * Теперь множители уже разрешены на этапе парсинга INI-файла.
  */
 function getScaleFromCache(appState: any, section: string, key: string): number {
-  const cache = appState?.parser?.multiplierCache;
-
-  if (!cache) {
+    const cache = appState?.parser?.multiplierCache;
+    if (!cache) {
+        return 1.0;
+    }
+    if (cache[section] && cache[section][key] !== undefined) {
+        const val = parseFloat(cache[section][key].replace(",", "."));
+        return val;
+    }
     return 1.0;
-  }
-
-  if (cache[section] && cache[section][key] !== undefined) {
-    const val = parseFloat(cache[section][key].replace(",", "."));
-    return val;
-  }
-
-  return 1.0;
 }
 
 let isUpdating = false;
 
 export async function updateDeviceRegisters(
-  serial: any,
-  slaveAddress: number = 0x01,
-  appState: any = null,
+    serial: ISerialPort,
+    slaveAddress: number = 0x01,
+    appState: any = null,
 ): Promise<boolean> {
-  if (isUpdating) return false;
+    if (isUpdating) return false;
+    isUpdating = true;
 
-  isUpdating = true;
-  document.body.classList.add("loading-state");
+    document.body.classList.add("loading-state");
 
-  const wasPolling = appState ? appState.isPolling : false;
+    const wasPolling = appState ? appState.isPolling : false;
 
-  if (wasPolling) {
-    appState.isPolling = false;
-    await new Promise((r) => setTimeout(r, 20));
-  }
-
-  try {
-    const rows = Array.from(document.querySelectorAll<HTMLTableRowElement>("#grid-data-rows tr"));
-    const registerMap = new Map<number, HTMLTableRowElement[]>();
-    const addresses: number[] = [];
-
-    for (const tr of rows) {
-      const addrStr = tr.getAttribute("data-reg");
-      if (!addrStr) continue;
-      const addr = parseInt(addrStr, 16);
-
-      if (!registerMap.has(addr)) {
-        registerMap.set(addr, []);
-      }
-      registerMap.get(addr)?.push(tr);
-
-      const dataType = tr.getAttribute("data-type");
-      if (dataType === "TFloat" || dataType === "TDWORD" || dataType === "FLOAT" || dataType === "TFLOAT32") {
-        addresses.push(addr);
-        addresses.push(addr + 1);
-      } else {
-        addresses.push(addr);
-      }
+    if (wasPolling) {
+        appState.isPolling = false;
+        await new Promise((r) => setTimeout(r, 20));
     }
 
-    const uniqueAddresses = [...new Set(addresses)].sort((a, b) => a - b);
+    try {
+        const rows = Array.from(document.querySelectorAll<HTMLTableRowElement>("#grid-data-rows tr"));
+        const registerMap = new Map<number, HTMLTableRowElement[]>();
+        const addresses: number[] = [];
 
-    interface Batch {
-      start: number;
-      end: number;
-      regs: number[];
-    }
-
-    const batches: Batch[] = [];
-    if (uniqueAddresses.length > 0) {
-      let currentBatch: Batch = {
-        start: uniqueAddresses[0],
-        end: uniqueAddresses[0],
-        regs: [uniqueAddresses[0]],
-      };
-      for (let i = 1; i < uniqueAddresses.length; i++) {
-        const nextAddr = uniqueAddresses[i];
-        const gap = nextAddr - currentBatch.end - 1;
-        if (gap <= 3 && nextAddr - currentBatch.start + 1 <= 125) {
-          currentBatch.end = nextAddr;
-          currentBatch.regs.push(nextAddr);
-        } else {
-          batches.push(currentBatch);
-          currentBatch = { start: nextAddr, end: nextAddr, regs: [nextAddr] };
-        }
-      }
-      batches.push(currentBatch);
-    }
-
-    for (const batch of batches) {
-      const count = batch.end - batch.start + 1;
-      const body = new Uint8Array([
-        slaveAddress,
-        0x03,
-        (batch.start >> 8) & 0xff,
-        batch.start & 0xff,
-        (count >> 8) & 0xff,
-        count & 0xff,
-      ]);
-      const crc = calculateCRC(body);
-      const finalPacket = new Uint8Array(8);
-      finalPacket.set(body, 0);
-      finalPacket[6] = crc & 0xff;
-      finalPacket[7] = (crc >> 8) & 0xff;
-
-      try {
-        const checkComplete = (buf: Uint8Array): boolean => {
-          if (buf.length >= 3 && buf[1] === 0x03) {
-            const byteCount = buf[2];
-            return buf.length >= 3 + byteCount + 2;
-          }
-          if (buf.length >= 5 && (buf[1] & 0x80)) {
-            return true;
-          }
-          return false;
-        };
-
-        const reply: Uint8Array | null = await serialManager.executeTransaction(
-          finalPacket,
-          checkComplete,
-          300,
-        );
-
-        if (reply && reply.length >= 3 && reply[1] === 0x03) {
-          const byteCount = reply[2];
-          const expectedTotal = 3 + byteCount + 2;
-
-          if (reply.length >= expectedTotal) {
-            for (let i = 0; i < count; i++) {
-              const regAddr = batch.start + i;
-
-              if (registerMap.has(regAddr)) {
-                const trList = registerMap.get(regAddr);
-                if (!trList) continue;
-
-                for (const tr of trList) {
-                  try {
-                    let parts: string[] = JSON.parse(tr.dataset.parts || "[]");
-                    const dataType = tr.getAttribute("data-type") || "";
-                    const sub = tr.getAttribute("data-sub") || "";
-                    const hIdx = parseInt(
-                      tr.getAttribute("data-hex-index") || "0",
-                    );
-
-                    const section = tr.getAttribute("data-section") || "";
-                    const key = tr.getAttribute("data-key") || "";
-
-                    let originalHexLen = 4;
-                    if (parts[hIdx] && parts[hIdx].startsWith("x")) {
-                      originalHexLen = parts[hIdx].slice(1).length;
-                    }
-
-                    const scale = getScaleFromCache(appState, section, key);
-                    const scaleStr = scale.toString().replace(".", ",");
-
-                    const prmListOptions: Record<string, string> = {};
-                    for (let j = parts.length - 1; j >= 3; j--) {
-                      const part = parts[j] ? parts[j].trim() : "";
-                      if (part.includes("#")) {
-                        const [h, t] = part.split("#");
-                        if (h && t) {
-                          prmListOptions[h.toLowerCase()] = t;
-                        }
-                      }
-                    }
-                    const valH = reply[3 + i * 2];
-                    const valL = reply[4 + i * 2];
-                    const word = (valH << 8) | valL;
-
-                    let hexValue = "";
-
-                    if (dataType === "TByte" || dataType === "TPrmList") {
-                      if (sub === "H") {
-                        const byteVal = (word >> 8) & 0xff;
-                        hexValue = "x" + byteVal.toString(16).padStart(originalHexLen, "0");
-                      } else {
-                        const byteVal = word & 0xff;
-                        hexValue = "x" + byteVal.toString(16).padStart(originalHexLen, "0");
-                      }
-                    } else if (dataType === "TBit") {
-                      const bitIndex = parseInt(sub, 16);
-                      const bitVal = (word >> bitIndex) & 1;
-                      hexValue = "x" + bitVal.toString(16).padStart(originalHexLen, "0");
-                    } else if (dataType === "TFloat" || dataType === "TDWORD" || dataType === "FLOAT" || dataType === "TFLOAT32") {
-                      if (i + 1 < count) {
-                        const nextValH = reply[3 + (i + 1) * 2];
-                        const nextValL = reply[4 + (i + 1) * 2];
-                        const nextWord = (nextValH << 8) | nextValL;
-                        hexValue = "x" + nextWord.toString(16).padStart(4, "0") + word.toString(16).padStart(4, "0");
-                      } else {
-                        continue;
-                      }
-                    } else {
-                      hexValue = "x" + word.toString(16).padStart(originalHexLen, "0");
-                    }
-
-                    if (hexValue) {
-                      parts[hIdx] = hexValue;
-                      parts[6] = scaleStr;
-                      tr.dataset.parts = JSON.stringify(parts);
-
-                      updateRowValues(tr, parts, dataType, scale, hIdx, originalHexLen, prmListOptions, hexToFloat32, float32ToHex, 6);
-                      tr.classList.add("updated");
-                    }
-                  } catch (e) {
-                    console.error(`Error processing row:`, e);
-                  }
-                }
-              }
+        for (const tr of rows) {
+            const addrStr = tr.getAttribute("data-reg");
+            if (!addrStr) continue;
+            const addr = parseInt(addrStr, 16);
+            if (!registerMap.has(addr)) {
+                registerMap.set(addr, []);
             }
-          }
+            registerMap.get(addr)?.push(tr);
+
+            const dataType = tr.getAttribute("data-type");
+            if (dataType === "TFloat" || dataType === "TDWORD" || dataType === "FLOAT" || dataType === "TFLOAT32") {
+                addresses.push(addr);
+                addresses.push(addr + 1);
+            } else {
+                addresses.push(addr);
+            }
         }
-      } catch (err) {
-        console.error(`Batch error:`, err);
-      }
+
+        const uniqueAddresses = [...new Set(addresses)].sort((a, b) => a - b);
+
+        interface Batch {
+            start: number;
+            end: number;
+            regs: number[];
+        }
+
+        const batches: Batch[] = [];
+
+        if (uniqueAddresses.length > 0) {
+            let currentBatch: Batch = {
+                start: uniqueAddresses[0],
+                end: uniqueAddresses[0],
+                regs: [uniqueAddresses[0]],
+            };
+
+            for (let i = 1; i < uniqueAddresses.length; i++) {
+                const nextAddr = uniqueAddresses[i];
+                const gap = nextAddr - currentBatch.end - 1;
+
+                if (gap <= 3 && nextAddr - currentBatch.start + 1 <= 125) {
+                    currentBatch.end = nextAddr;
+                    currentBatch.regs.push(nextAddr);
+                } else {
+                    batches.push(currentBatch);
+                    currentBatch = { start: nextAddr, end: nextAddr, regs: [nextAddr] };
+                }
+            }
+            batches.push(currentBatch);
+        }
+
+        for (const batch of batches) {
+            const count = batch.end - batch.start + 1;
+            const body = new Uint8Array([
+                slaveAddress,
+                0x03,
+                (batch.start >> 8) & 0xff,
+                batch.start & 0xff,
+                (count >> 8) & 0xff,
+                count & 0xff,
+            ]);
+
+            const crc = calculateCRC(body);
+            const finalPacket = new Uint8Array(8);
+            finalPacket.set(body, 0);
+            finalPacket[6] = crc & 0xff;
+            finalPacket[7] = (crc >> 8) & 0xff;
+
+            try {
+                const checkComplete = (buf: Uint8Array): boolean => {
+                    if (buf.length >= 3 && buf[1] === 0x03) {
+                        const byteCount = buf[2];
+                        return buf.length >= 3 + byteCount + 2;
+                    }
+                    if (buf.length >= 5 && (buf[1] & 0x80)) {
+                        return true;
+                    }
+                    return false;
+                };
+
+                const reply: Uint8Array | null = await serialManager.executeTransaction(
+                    finalPacket,
+                    checkComplete,
+                    300,
+                );
+
+                if (reply && reply.length >= 3 && reply[1] === 0x03) {
+                    const byteCount = reply[2];
+                    const expectedTotal = 3 + byteCount + 2;
+
+                    if (reply.length >= expectedTotal) {
+                        for (let i = 0; i < count; i++) {
+                            const regAddr = batch.start + i;
+                            if (registerMap.has(regAddr)) {
+                                const trList = registerMap.get(regAddr);
+                                if (!trList) continue;
+
+                                for (const tr of trList) {
+                                    try {
+                                        let parts: string[] = JSON.parse(tr.dataset.parts || "[]");
+                                        const dataType = tr.getAttribute("data-type") || "";
+                                        const sub = tr.getAttribute("data-sub") || "";
+                                        const hIdx = parseInt(
+                                            tr.getAttribute("data-hex-index") || "0",
+                                        );
+                                        const section = tr.getAttribute("data-section") || "";
+                                        const key = tr.getAttribute("data-key") || "";
+
+                                        let originalHexLen = 4;
+                                        if (parts[hIdx] && parts[hIdx].startsWith("x")) {
+                                            originalHexLen = parts[hIdx].slice(1).length;
+                                        }
+
+                                        const scale = getScaleFromCache(appState, section, key);
+                                        const scaleStr = scale.toString().replace(".", ",");
+
+                                        const prmListOptions: Record<string, string> = {};
+                                        for (let j = parts.length - 1; j >= 3; j--) {
+                                            const part = parts[j] ? parts[j].trim() : "";
+                                            if (part.includes("#")) {
+                                                const [h, t] = part.split("#");
+                                                if (h && t) {
+                                                    prmListOptions[h.toLowerCase()] = t;
+                                                }
+                                            }
+                                        }
+
+                                        const valH = reply[3 + i * 2];
+                                        const valL = reply[4 + i * 2];
+                                        const word = (valH << 8) | valL;
+
+                                        let hexValue = "";
+
+                                        if (dataType === "TByte" || dataType === "TPrmList") {
+                                            if (sub === "H") {
+                                                const byteVal = (word >> 8) & 0xff;
+                                                hexValue = "x" + byteVal.toString(16).padStart(originalHexLen, "0");
+                                            } else {
+                                                const byteVal = word & 0xff;
+                                                hexValue = "x" + byteVal.toString(16).padStart(originalHexLen, "0");
+                                            }
+                                        } else if (dataType === "TBit") {
+                                            const bitIndex = parseInt(sub, 16);
+                                            const bitVal = (word >> bitIndex) & 1;
+                                            hexValue = "x" + bitVal.toString(16).padStart(originalHexLen, "0");
+                                        } else if (dataType === "TFloat" || dataType === "TDWORD" || dataType === "FLOAT" || dataType === "TFLOAT32") {
+                                            if (i + 1 < count) {
+                                                const nextValH = reply[3 + (i + 1) * 2];
+                                                const nextValL = reply[4 + (i + 1) * 2];
+                                                const nextWord = (nextValH << 8) | nextValL;
+                                                hexValue = "x" + nextWord.toString(16).padStart(4, "0") + word.toString(16).padStart(4, "0");
+                                            } else {
+                                                continue;
+                                            }
+                                        } else {
+                                            hexValue = "x" + word.toString(16).padStart(originalHexLen, "0");
+                                        }
+
+                                        if (hexValue) {
+                                            parts[hIdx] = hexValue;
+                                            parts[6] = scaleStr;
+                                            tr.dataset.parts = JSON.stringify(parts);
+                                            updateRowValues(tr, parts, dataType, scale, hIdx, originalHexLen, prmListOptions, hexToFloat32, float32ToHex, 6);
+                                            tr.classList.add("updated");
+                                        }
+                                    } catch (e) {
+                                        console.error(`Error processing row:`, e);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error(`Batch error:`, err);
+            }
+        }
+    } finally {
+        isUpdating = false;
+        document.body.classList.remove("loading-state");
     }
-  } finally {
-    isUpdating = false;
-    document.body.classList.remove("loading-state");
-  }
-  return wasPolling;
+
+    return wasPolling;
 }
 
 export function resetUpdateState(): void {
-  isUpdating = false;
-  document.body.classList.remove("loading-state");
+    isUpdating = false;
+    document.body.classList.remove("loading-state");
 }
 
 window.resetUpdateState = resetUpdateState;
+</file>
+
+<file path="serial/ISerialPort.ts">
+// src/serial/ISerialPort.ts
+
+/**
+ * Информация об USB-устройстве (для определения имени чипа по VID/PID).
+ */
+export interface SerialPortInfo {
+    usbVendorId?: number;
+    usbProductId?: number;
+}
+
+/**
+ * Платформенно-независимый интерфейс последовательного порта.
+ *
+ * Реализации:
+ *  - браузер: SerialConnection (Web Serial API), src/serial/serial.ts;
+ *  - нативное приложение (Tauri): адаптер, обращающийся к Rust-бэкенду
+ *    через IPC (крейт `serialport`) — будет создан в нативном проекте.
+ *
+ * Правило подготовки к портированию:
+ * вся бизнес-логика (SerialManager, readLoop, идентификация устройства)
+ * должна зависеть ТОЛЬКО от этого интерфейса, а не от конкретной реализации.
+ */
+export interface ISerialPort {
+    /** Открыт ли порт в данный момент. */
+    readonly isConnected: boolean;
+
+    /** Открыть порт (в браузере — с диалогом выбора порта пользователем). */
+    connect(baudRate?: number): Promise<void>;
+
+    /** Прочитать очередную порцию байт. null — данных нет или порт закрыт. */
+    readChunk(): Promise<Uint8Array | null>;
+
+    /** Записать байты в порт. */
+    write(data: Uint8Array): Promise<void>;
+
+    /** Информация об устройстве (VID/PID). Пустой объект, если недоступна. */
+    getPortInfo(): SerialPortInfo;
+
+    /** Подписка на обрыв связи (вызывается один раз при потере порта). */
+    onDisconnect(cb: () => void): void;
+
+    /** Освободить ресурсы; после вызова порт считается закрытым. */
+    release(): void;
+}
 </file>
 
 <file path="serial/modbus.ts">
@@ -7159,8 +7207,9 @@ import { identifyUsbChip } from './usb.js';
 import { showIdModal, updateIdBanner, closeIdModal } from '../ui/ui.js';
 import { parseRegisterAddress, hexToFloat32, float32ToHex } from '../ini-manager/tree-core.js';
 import { updateRowValues } from '../ini-manager/tree-ui.js';
+import type { ISerialPort } from './ISerialPort.js';
 
-let currentLoopId = 0; 
+let currentLoopId = 0;
 
 type ChunkHandler = (chunk: Uint8Array) => void;
 type CheckCompleteFn = (buffer: Uint8Array) => boolean;
@@ -7172,7 +7221,7 @@ export interface RegisterBatch {
 
 // === ЦЕНТРАЛЬНЫЙ МЕНЕДЖЕР ПОРТА (АРХИТЕКТУРА «ЕДИНЫЙ ЧИТАТЕЛЬ») ===
 class SerialManager {
-    public serial: any;
+    public serial: ISerialPort | null;
     public readerPromise: Promise<void> | null;
     public currentHandler: ChunkHandler | null;
     private lock: Promise<void>;
@@ -7184,14 +7233,14 @@ class SerialManager {
         this.lock = Promise.resolve();
     }
 
-    public init(serial: any): void {
+    public init(serial: ISerialPort): void {
         this.serial = serial;
         this.startReader();
     }
 
     public startReader(): void {
         if (this.readerPromise || !this.serial || !this.serial.isConnected) return;
-        
+
         this.readerPromise = (async () => {
             console.log("[SerialManager] Центральный единый ридер успешно запущен.");
             while (this.serial && this.serial.isConnected) {
@@ -7227,7 +7276,12 @@ class SerialManager {
         try {
             this.startReader();
 
-            await this.serial.write(packet);
+            const port = this.serial;
+            if (!port) {
+                throw new Error("[SerialManager] Порт не инициализирован для транзакции.");
+            }
+
+            await port.write(packet);
 
             return await new Promise<Uint8Array>((resolve) => {
                 let buffer = new Uint8Array(0);
@@ -7294,9 +7348,9 @@ export function calculateCRC(buffer: Uint8Array): number {
  * Разбивает запросы при дырах между адресами > maxGap или при превышении maxRegisters (125 регистров Modbus).
  */
 export function getOptimizedBatches(
-    deviceConfig: any, 
-    sectionName: string = 'RAM', 
-    maxGap: number = 10, 
+    deviceConfig: any,
+    sectionName: string = 'RAM',
+    maxGap: number = 10,
     maxRegistersPerBatch: number = 125
 ): RegisterBatch[] {
     const section = deviceConfig ? deviceConfig[sectionName] : null;
@@ -7315,7 +7369,7 @@ export function getOptimizedBatches(
             const reg = parseInt(match[1], 16);
             if (!isNaN(reg)) {
                 addresses.push(reg);
-                const is32Bit = dataType.includes('FLOAT') || dataType.includes('DWORD') || 
+                const is32Bit = dataType.includes('FLOAT') || dataType.includes('DWORD') ||
                                 dataType.includes('LONG') || dataType.includes('INT32');
                 if (is32Bit) {
                     addresses.push(reg + 1);
@@ -7357,32 +7411,31 @@ export function getOptimizedBatches(
     return batches;
 }
 
-export function updateComInterfaceName(serial: any, comSelect: HTMLSelectElement | null): string {
+export function updateComInterfaceName(serial: ISerialPort, comSelect: HTMLSelectElement | null): string {
     if (!comSelect) return "";
-    const portInfo = (serial.port && typeof serial.port.getInfo === 'function') 
-        ? serial.port.getInfo() 
-        : (typeof serial.getInfo === 'function' ? serial.getInfo() : {});
+    // Через интерфейс: работает и для WebSerial, и для Tauri-адаптера.
+    const portInfo = serial.getPortInfo();
     const chipName = identifyUsbChip(portInfo);
     comSelect.innerHTML = `<option value="active">${chipName}</option>`;
     comSelect.className = 'select-blue';
     return chipName;
 }
 
-export async function executeDeviceIdentification(serial: any, comSelect: HTMLSelectElement | null, stateObj: any): Promise<void> {
+export async function executeDeviceIdentification(serial: ISerialPort, comSelect: HTMLSelectElement | null, stateObj: any): Promise<void> {
     try {
-        stateObj.isIdentifying = true; 
+        stateObj.isIdentifying = true;
         await serial.connect(115200);
         serialManager.init(serial);
-        
+
         updateComInterfaceName(serial, comSelect);
         await new Promise((r) => setTimeout(r, 500));
         showIdModal("Запрос ID устройства...");
-        
+
         const packet = new Uint8Array([0x01, 0x11, 0xC0, 0x2C]);
 
         const checkComplete: CheckCompleteFn = (buf: Uint8Array) => {
             if (buf.length >= 3) {
-                const dataLength = buf[2]; 
+                const dataLength = buf[2];
                 return buf.length >= 3 + dataLength + 2 || buf.length >= 52;
             }
             return false;
@@ -7404,24 +7457,24 @@ export async function executeDeviceIdentification(serial: any, comSelect: HTMLSe
     } catch (error: any) {
         showIdModal("Ошибка: " + error.message);
     } finally {
-        stateObj.isIdentifying = false; 
+        stateObj.isIdentifying = false;
     }
 }
 
-export async function readLoop(serial: any, parser: any, view: any, buffers: any, stateObj: any): Promise<void> {
+export async function readLoop(serial: ISerialPort, parser: any, view: any, buffers: any, stateObj: any): Promise<void> {
     if (stateObj.isLoopRunning) return;
     stateObj.isLoopRunning = true;
-    
+
     console.log("DEBUG: Единый батчевый readLoop запущен");
-    
+
     try {
         while (serial && serial.isConnected && stateObj.isPolling) {
             const deviceConfig = stateObj.currentDeviceConfig;
             if (!deviceConfig || !deviceConfig['RAM']) {
                 await new Promise(r => setTimeout(r, 500));
-                continue; 
+                continue;
             }
-            
+
             // 1. Формируем оптимальные батчи запросов Modbus
             const batches = getOptimizedBatches(deviceConfig, 'RAM', 10, 125);
             if (batches.length === 0) {
@@ -7438,11 +7491,11 @@ export async function readLoop(serial: any, parser: any, view: any, buffers: any
 
                 const { start: startAddr, count: regCount } = batch;
                 const body = new Uint8Array([
-                    stateObj.slaveAddress || 0x01, 
-                    0x03, 
-                    (startAddr >> 8) & 0xFF, 
-                    startAddr & 0xFF, 
-                    (regCount >> 8) & 0xFF, 
+                    stateObj.slaveAddress || 0x01,
+                    0x03,
+                    (startAddr >> 8) & 0xFF,
+                    startAddr & 0xFF,
+                    (regCount >> 8) & 0xFF,
                     regCount & 0xFF
                 ]);
 
@@ -7471,21 +7524,21 @@ export async function readLoop(serial: any, parser: any, view: any, buffers: any
                 // --- 3. СИНХРОНИЗАЦИЯ С ОСЦИЛЛОГРАФОМ ---
                 const ram = deviceConfig['RAM'];
                 const oscData: Record<string, number> = {};
-                
+
                 for (const key in ram) {
                     const parts = ram[key];
                     if (!Array.isArray(parts)) continue;
-                    
+
                     const dataType = String(parts[2] || '').toUpperCase();
                     const regAddrString = String(dataType === 'TBIT' ? (parts[5] ?? '') : (parts[4] ?? ''));
                     const { reg } = parseRegisterAddress(regAddrString);
-                    
+
                     if (reg !== null && mergedDataMap.has(reg)) {
                         const low = mergedDataMap.get(reg)!;
                         let val = 0;
-                        const is32Bit = dataType.includes('FLOAT') || dataType.includes('DWORD') || 
+                        const is32Bit = dataType.includes('FLOAT') || dataType.includes('DWORD') ||
                                         dataType.includes('LONG') || dataType.includes('INT32');
-                        
+
                         if (is32Bit && mergedDataMap.has(reg + 1)) {
                             const high = mergedDataMap.get(reg + 1)!;
 
@@ -7513,7 +7566,7 @@ export async function readLoop(serial: any, parser: any, view: any, buffers: any
                         const scaleRaw = parseFloat(parts[3]);
                         const scale = isNaN(scaleRaw) ? 1.0 : scaleRaw;
                         val = val * scale;
-                        
+
                         oscData[key] = val;
 
                         if (buffers) {
@@ -7525,7 +7578,7 @@ export async function readLoop(serial: any, parser: any, view: any, buffers: any
                         }
                     }
                 }
-                
+
                 const activeOsc = (window as any).osc || view;
                 if (activeOsc && typeof activeOsc.updateValues === 'function') {
                     activeOsc.updateValues(oscData);
@@ -7596,7 +7649,7 @@ export async function readLoop(serial: any, parser: any, view: any, buffers: any
                     });
                 }
             }
-            
+
             await new Promise((res) => setTimeout(res, 50));
         }
     } finally {
@@ -7609,6 +7662,8 @@ export async function readLoop(serial: any, parser: any, view: any, buffers: any
 <file path="serial/serial.ts">
 // src/serial/serial.ts
 
+import type { ISerialPort, SerialPortInfo } from './ISerialPort.js';
+
 declare global {
     interface Navigator {
         serial?: {
@@ -7617,7 +7672,7 @@ declare global {
     }
 }
 
-export class SerialConnection {
+export class SerialConnection implements ISerialPort {
     public port: any;
     public reader: ReadableStreamDefaultReader<Uint8Array> | null;
     public readableStream: ReadableStream<Uint8Array> | null;
@@ -7636,6 +7691,16 @@ export class SerialConnection {
      */
     public onDisconnect(cb: () => void): void {
         this.onDisconnectCallback = cb;
+    }
+
+    /**
+     * Информация об устройстве (VID/PID) для определения чипа.
+     */
+    public getPortInfo(): SerialPortInfo {
+        if (this.port && typeof this.port.getInfo === 'function') {
+            return this.port.getInfo();
+        }
+        return {};
     }
 
     /**
@@ -8285,28 +8350,30 @@ export function populateDeviceForm(devConfig?: Record<string, any>): void {
 <file path="ui/uiManager.ts">
 // src/ui/uiManager.ts
 
+// src/ui/uiManager.ts
 import { initTableEditor } from '../ini-manager/table-editor.js';
+import type { ISerialPort } from '../serial/ISerialPort.js';
 
 export interface UiManagerDeps {
-    serial: any;
+    serial: ISerialPort;
     appState: any;
     parser: any;
     view: any;
     buffers: any;
     setupFileHandling: (picker: HTMLInputElement, state: any) => void;
     setupFolderHandling?: (picker: HTMLInputElement) => void;
-    updateComInterfaceName: (serial: any, select: HTMLSelectElement | null) => string;
-    executeDeviceIdentification: (serial: any, select: HTMLSelectElement | null, state: any) => Promise<void>;
-    readLoop: (serial: any, parser: any, view: any, buffers: any, state: any) => void;
+    updateComInterfaceName: (serial: ISerialPort, select: HTMLSelectElement | null) => string;
+    executeDeviceIdentification: (serial: ISerialPort, select: HTMLSelectElement | null, state: any) => Promise<void>;
+    readLoop: (serial: ISerialPort, parser: any, view: any, buffers: any, state: any) => void;
     showIdModal: (text: string) => void;
-    updateDeviceRegisters: (serial: any, slaveAddr: number, state: any) => Promise<boolean>; 
+    updateDeviceRegisters: (serial: ISerialPort, slaveAddr: number, state: any) => Promise<boolean>;
 }
 
 export function initUI(deps: UiManagerDeps): void {
-    const { 
-        serial, appState, parser, view, buffers, 
+    const {
+        serial, appState, parser, view, buffers,
         setupFileHandling, setupFolderHandling, updateComInterfaceName,
-        executeDeviceIdentification, readLoop, showIdModal, updateDeviceRegisters 
+        executeDeviceIdentification, readLoop, showIdModal, updateDeviceRegisters
     } = deps;
 
     // 1. DOM Элементы
@@ -8348,42 +8415,7 @@ export function initUI(deps: UiManagerDeps): void {
         }
     };
 
-//     // 2. Инициализация логики файлов///////////////////////////////////////////////////////////////////////////////
-// if (filePicker) setupFileHandling(filePicker, appState);
-// if (folderPicker && typeof setupFolderHandling === 'function') setupFolderHandling(folderPicker);
-
-// // Синхронизация внешнего readLoop с любым INI, который загружает осциллограф.
-// // Без этого при переключении INI через панель/дерево readLoop может остаться
-// // на старом appState.currentDeviceConfig, и графики перестают получать данные.
-// if (view && typeof view.loadIniContent === 'function') {
-//     const originalLoadIniContent = view.loadIniContent.bind(view);
-
-//     view.loadIniContent = async (iniContent: string) => {
-//         try {
-//             if (typeof iniContent === 'string' && iniContent.trim().length > 0) {
-//                 appState.currentIniContent = iniContent;
-
-//                 const parsedConfig = appState?.parser?.parse?.(iniContent);
-
-//                 if (
-//                     parsedConfig &&
-//                 (parsedConfig['RAM'] ||
-//                      parsedConfig['DEVICE'] ||
-//                      parsedConfig['CD'] ||
-//                      parsedConfig['FLASH'])
-//                 ) {
-//                     appState.currentDeviceConfig = parsedConfig;
-//                 }
-//             }
-//         } catch (err) {
-//             console.warn('[uiManager] Failed to sync appState from INI content:', err);
-//         }
-
-//         return originalLoadIniContent(iniContent);
-//     };
-// }/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    // 2. Инициализация логики файлов////////////////////////////////////////////////////////////////////////////////////////////////////
+    // 2. Инициализация логики файлов
     if (filePicker) setupFileHandling(filePicker, appState);
     if (folderPicker && typeof setupFolderHandling === 'function') setupFolderHandling(folderPicker);
 
@@ -8431,10 +8463,10 @@ export function initUI(deps: UiManagerDeps): void {
             setTimeout(() => {
                 try {
                     const oscContainerEl = document.getElementById('osc-container');
-                    const isOscVisible = oscContainerEl && 
-                        !oscContainerEl.classList.contains('hidden') && 
+                    const isOscVisible = oscContainerEl &&
+                        !oscContainerEl.classList.contains('hidden') &&
                         oscContainerEl.style.display !== 'none';
-                    
+
                     if (isOscVisible && serial.isConnected) {
                         appState.isLoopRunning = false;
                         appState.isPolling = true;
@@ -8449,7 +8481,7 @@ export function initUI(deps: UiManagerDeps): void {
 
             return result;
         };
-    }///////////////////////////////////////////////////////////////////////////////////////////////////////////
+    }
 
     // 3. События кнопок
     if (connectBtn) {
@@ -8468,10 +8500,10 @@ export function initUI(deps: UiManagerDeps): void {
     if (serial && typeof serial.onDisconnect === 'function') {
         serial.onDisconnect(() => {
             console.log('[UI] Обрыв связи обнаружен, останавливаем опрос и уведомляем осциллограф');
-            
+
             // Останавливаем опрос контроллера
             appState.isPolling = false;
-            
+
             // Уведомляем осциллограф
             const osc = (window as any).osc;
             if (osc && typeof osc.setConnectionStatus === 'function') {
@@ -8493,10 +8525,10 @@ export function initUI(deps: UiManagerDeps): void {
         refreshBtn.addEventListener("click", async () => {
             if (!serial?.isConnected) { showIdModal("Устройство не подключено!"); return; }
             if (appState.isRefreshing) return;
-            
+
             appState.isRefreshing = true; // Блокируем всё остальное
             refreshBtn.disabled = true;
-            
+
             try {
                 // 1. Сначала выполняем тяжелое обновление
                 await updateDeviceRegisters(serial, appState.slaveAddress, appState);
@@ -8507,7 +8539,7 @@ export function initUI(deps: UiManagerDeps): void {
                 // 2. Сбрасываем флаг БЛОКИРОВКИ ДО запуска цикла
                 appState.isRefreshing = false;
                 refreshBtn.disabled = false;
-                
+
                 // 3. Запускаем цикл
                 console.log("DEBUG: Запускаю readLoop после обновления");
                 readLoop(serial, parser, view, buffers, appState);
@@ -8525,21 +8557,21 @@ export function initUI(deps: UiManagerDeps): void {
             if (isHidden) {
                 oscContainerEl.classList.remove('hidden');
                 oscContainerEl.style.display = 'block';
-                
+
                 appState.isPolling = true;
-                
+
                 if ((window as any).osc) {
                     const osc = (window as any).osc;
                     await osc.initialize(oscContainerEl);
                     if (appState.currentIniContent) {
                         osc.loadIniContent(appState.currentIniContent);
                     }
-                    
+
                     // Проверка связи при открытии осциллографа
                     if (typeof osc.setConnectionStatus === 'function') {
                         osc.setConnectionStatus(serial.isConnected, serial.isConnected ? undefined : 'Нет связи с устройством.');
                     }
-                    
+
                     readLoop(serial, parser, osc, buffers, appState);
                 }
             } else {
@@ -8555,7 +8587,7 @@ export function initUI(deps: UiManagerDeps): void {
     if (menuOpenFile) menuOpenFile.addEventListener('click', () => { filePicker?.click(); folderDropdown?.classList.remove('show'); });
     if (menuOpenFolder) menuOpenFolder.addEventListener('click', () => { folderPicker?.click(); folderDropdown?.classList.remove('show'); });
     if (folderArrowBtn) folderArrowBtn.addEventListener('click', (e) => { e.stopPropagation(); folderDropdown?.classList.toggle('show'); });
-    
+
     document.addEventListener('click', () => folderDropdown?.classList.remove('show'));
 
     // 5. Инициализация инлайн-редактора таблицы

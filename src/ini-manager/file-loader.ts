@@ -2,6 +2,7 @@ import { showIdModal, populateDeviceForm } from '../ui/ui.js';
 import { addDeviceToRegistry, deviceRegistry } from './tree-core.js';
 import { renderDeviceTree } from './tree-ui.js';
 import { renderModbusTable } from '../ui/tree.js';
+import { readTextFile } from './textFileReader.js';
 
 export function setupFileHandling(fileInput: HTMLInputElement, appState: any): void {
     let processingQueue: Promise<void> = Promise.resolve();
@@ -12,7 +13,6 @@ export function setupFileHandling(fileInput: HTMLInputElement, appState: any): v
 
         const files: File[] = Array.from(target.files);
         if (files.length === 0) return;
-
         target.value = '';
 
         files.forEach((file: File) => {
@@ -27,9 +27,8 @@ export function setupFileHandling(fileInput: HTMLInputElement, appState: any): v
 
 async function processSingleFile(file: File, appState: any): Promise<void> {
     let content: string;
-
     try {
-        content = await readFileAsText(file);
+        content = await readTextFile(file);
     } catch (err) {
         showIdModal(`Ошибка чтения файла: ${file.name}`);
         console.error('[file-loader] Read error:', err);
@@ -47,7 +46,6 @@ async function processSingleFile(file: File, appState: any): Promise<void> {
         }
 
         const config = parser.parse(content);
-
         if (!config || !(config['DEVICE'] || config['RAM'] || config['CD'] || config['FLASH'])) {
             throw new Error('Неверный формат INI файла (отсутствуют стандартные секции)');
         }
@@ -69,7 +67,6 @@ async function processSingleFile(file: File, appState: any): Promise<void> {
         const osc = (window as any).osc;
         if (osc && typeof osc.loadIniContent === 'function') {
             const normalizedContent = serializeConfig(config);
-
             let oscLoadApplied = false;
 
             if (normalizedContent.trim().length > 0) {
@@ -114,44 +111,19 @@ async function processSingleFile(file: File, appState: any): Promise<void> {
     }
 }
 
-function readFileAsText(file: File): Promise<string> {
-    return new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-
-        reader.onload = (e: ProgressEvent<FileReader>) => {
-            const result = e.target?.result;
-            if (typeof result === 'string') {
-                resolve(result);
-            } else {
-                reject(new Error('Не удалось прочитать файл как текст'));
-            }
-        };
-
-        reader.onerror = () => {
-            reject(new Error('Ошибка чтения файла'));
-        };
-
-        reader.readAsText(file, 'windows-1251');
-    });
-}
-
 function syncFilesToOscilloscope(): void {
     const osc = (window as any).osc;
     if (!osc || typeof osc.setIniFiles !== 'function') return;
 
     const allFiles: any[] = [];
     const registry = deviceRegistry as any;
-
     for (const location in registry) {
         const group = registry[location];
         if (!Array.isArray(group)) continue;
-
         group.forEach((dev: any) => {
             try {
                 if (!dev || dev.id == null) return;
-
                 const configStr = serializeConfig(dev?.fullConfig);
-
                 allFiles.push({
                     id: String(dev.id),
                     name: dev.displayText ?? dev.name ?? String(dev.id),
@@ -176,11 +148,9 @@ function findDeviceIdByConfig(config: any): string | null {
     if (!config) return null;
 
     const registry = deviceRegistry as any;
-
     for (const location in registry) {
         const group = registry[location];
         if (!Array.isArray(group)) continue;
-
         for (const dev of group) {
             if (dev && dev.fullConfig === config && dev.id != null) {
                 return String(dev.id);
@@ -190,11 +160,9 @@ function findDeviceIdByConfig(config: any): string | null {
 
     try {
         const target = serializeConfig(config);
-
         for (const location in registry) {
             const group = registry[location];
             if (!Array.isArray(group)) continue;
-
             for (const dev of group) {
                 if (dev && dev.id != null && serializeConfig(dev.fullConfig) === target) {
                     return String(dev.id);
@@ -212,10 +180,8 @@ function serializeConfig(config: any): string {
     if (!config || typeof config !== 'object') return '';
 
     let out = '';
-
     for (const section in config) {
         out += `[${section}]\n`;
-
         const data = config[section];
         if (data && typeof data === 'object') {
             for (const key in data) {
@@ -223,9 +189,7 @@ function serializeConfig(config: any): string {
                 out += `${key} = ${Array.isArray(val) ? val.join('/') : val}\n`;
             }
         }
-
         out += '\n';
     }
-
     return out;
 }
