@@ -1,4 +1,4 @@
-// src/ui/Toolbar.ts
+// src/oscilloscope/ui/Toolbar.ts
 
 import { Settings } from '../config/Settings';
 import { Recorder } from '../core/Recorder';
@@ -47,19 +47,30 @@ export class Toolbar {
     public initialize(): void {
         this.container.innerHTML = '';
 
-        // Group 1: Brand & Status
+        // Кнопка "Свойства": инициализация и установка ширины 64px (пропорция 2:1)
+        this.propertiesBtn = ToolbarComponents.createButton(
+            `⚙️`,
+            'icon-btn osc-btn-properties',
+            () => {
+                if (this.onOpenPropertiesCallback) this.onOpenPropertiesCallback();
+            },
+            'Свойства'
+        );
+        this.propertiesBtn.style.width = '64px';
+
+        // Group 1: Brand & Status (Левая группа элементов шапки)
         const groupLeft = document.createElement('div');
         groupLeft.className = 'toolbar-group';
 
         const title = document.createElement('div');
         title.className = 'toolbar-title';
-        //title.innerHTML = `⚡ PixiTS Oscilloscope v4.1`;
 
         this.statusBadge = document.createElement('span');
         this.statusBadge.className = 'status-badge disconnected';
         this.statusBadge.textContent = 'DISCONNECTED';
 
-        groupLeft.append(title, this.statusBadge);
+        // Размещаем кнопку "Свойства" первой в левой группе
+        groupLeft.append(this.propertiesBtn, title, this.statusBadge);
 
         // Group 2: Controls
         const groupCenter = document.createElement('div');
@@ -70,30 +81,29 @@ export class Toolbar {
             this.autoscaleBtn.classList.toggle('active', this.settings.autoScale);
         }, 'Автомасштабирование (Auto-Scale)');
 
-             this.cursorBtn = ToolbarComponents.createButton('📏', this.settings.enableCursors ? 'active' : '', () => {
-         this.settings.enableCursors = !this.settings.enableCursors;
-         this.cursorBtn.classList.toggle('active', this.settings.enableCursors);
-         const footer = document.getElementById('footer');
-         if (footer) footer.style.display = this.settings.enableCursors ? 'flex' : 'none';
-     }, 'Курсоры измерения (Cursors)');
-     // Кнопка «Развертка»: включает регулировку развертки колесом мыши.
-     // Ширина = 2 × высоты (высота .toolbar-btn = 32px → ширина 64px).
-     const sweepIcon = `
-         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-             <path d="M3 5h18"/>
-             <path d="m6 2-3 3 3 3"/>
-             <path d="m18 2 3 3-3 3"/>
-             <path d="M3 17h2l2-5 3 10 3-8 2 3h6"/>
-         </svg>`;
-     this.sweepBtn = ToolbarComponents.createButton(sweepIcon, '', () => {
-         const enabled = !this.sweepBtn.classList.contains('active');
-         this.sweepBtn.classList.toggle('active', enabled);
-         if (this.onToggleTimeZoomCallback) {
-             this.onToggleTimeZoomCallback(enabled);
-         }
-     }, 'Развертка: колесо мыши над графиками растягивает / сжимает их по времени');
-     this.sweepBtn.style.width = '64px';
-     groupCenter.append(this.autoscaleBtn, this.cursorBtn, this.sweepBtn);
+        this.cursorBtn = ToolbarComponents.createButton('📏', this.settings.enableCursors ? 'active' : '', () => {
+            this.settings.enableCursors = !this.settings.enableCursors;
+            this.cursorBtn.classList.toggle('active', this.settings.enableCursors);
+            const footer = document.getElementById('footer');
+            if (footer) footer.style.display = this.settings.enableCursors ? 'flex' : 'none';
+        }, 'Курсоры измерения (Cursors)');
+
+        const sweepIcon = `
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 5h18"/>
+                <path d="m6 2-3 3 3 3"/>
+                <path d="m18 2 3 3-3 3"/>
+                <path d="M3 17h2l2-5 3 10 3-8 2 3h6"/>
+            </svg>`;
+        this.sweepBtn = ToolbarComponents.createButton(sweepIcon, '', () => {
+            const enabled = !this.sweepBtn.classList.contains('active');
+            this.sweepBtn.classList.toggle('active', enabled);
+            if (this.onToggleTimeZoomCallback) {
+                this.onToggleTimeZoomCallback(enabled);
+            }
+        }, 'Развертка: колесо мыши над графиками растягивает / сжимает их по времени');
+        this.sweepBtn.style.width = '64px';
+        groupCenter.append(this.autoscaleBtn, this.cursorBtn, this.sweepBtn);
 
         // Group 3: Window Size & Export
         const groupRight = document.createElement('div');
@@ -112,20 +122,11 @@ export class Toolbar {
             'Переключить ширину окна (50% слева / 100% на весь экран)'
         );
 
-        this.propertiesBtn = ToolbarComponents.createButton(
-            `⚙️`,
-            'icon-btn',
-            () => {
-                if (this.onOpenPropertiesCallback) this.onOpenPropertiesCallback();
-            },
-            'Свойства просмотра параметров'
-        );
-
         this.exportBtn = ToolbarComponents.createButton('💾', '', () => {
             window.dispatchEvent(new CustomEvent('oscilloscope-export-csv'));
         }, 'Экспорт CSV');
 
-        groupRight.append(this.windowSizeBtn, this.propertiesBtn, this.exportBtn);
+        groupRight.append(this.windowSizeBtn, this.exportBtn);
 
         this.container.append(groupLeft, groupCenter, groupRight);
 

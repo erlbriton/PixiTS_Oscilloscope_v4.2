@@ -110,3 +110,5 @@ function onFileHighlighted(fileId: string) {
 1. **State Synchronization**: It is recommended to keep a reference to the `id` of your files in the main project that matches the `id` passed to the oscilloscope. This makes `setActiveIni` calls seamless.
 2. **Reconnection**: If the serial port disconnects, the oscilloscope will show an error overlay. Your main project should re-call `setSerialPort` with a new (or re-opened) port object once available.
 3. **Z-Index**: The oscilloscope uses fixed and relative positioning. Ensure your main project container has `position: relative` or `overflow: hidden` if you want to constrain it.
+
+Кнопка "Свойства", стили - файл src/css/oscilloscope.css

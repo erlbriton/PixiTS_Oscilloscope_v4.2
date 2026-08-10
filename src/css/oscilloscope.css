@@ -65,6 +65,36 @@
 }
 
 /* =========================================
+   КНОПКА "СВОЙСТВА" (НАСТРОЙКА РАЗМЕРОВ И ЦВЕТА)
+   ========================================= */
+.toolbar-group button.osc-btn-properties,
+.toolbar-group .osc-btn-properties {
+    height: 32px;                     /* Высота кнопки */
+    width: 64px;                      /* Ширина (в 2 раза больше высоты) */
+    background-color: #535a63;        /* Основной цвет */
+    border-top: 2px solid #5599ff;    /* Верхняя и левая рамка (светлый блик 3D) */
+    border-left: 2px solid #5599ff;
+    border-bottom: 2px solid #002b80; /* Нижняя и правая рамка (тень 3D) */
+    border-right: 2px solid #002b80;
+    color: #ffffff;                    /* Цвет иконки */
+}
+
+.toolbar-group button.osc-btn-properties:hover,
+.toolbar-group .osc-btn-properties:hover {
+    background-color: #1a66ff;
+    color: #ffffff;
+}
+
+.toolbar-group button.osc-btn-properties:active,
+.toolbar-group .osc-btn-properties:active {
+    background-color: #0044cc;
+    border-top: 2px solid #002b80;
+    border-left: 2px solid #002b80;
+    border-bottom: 2px solid #5599ff;
+    border-right: 2px solid #5599ff;
+}
+
+/* =========================================
    ОСНОВНАЯ РАБОЧАЯ ОБЛАСТЬ (Таблица + Графики)
    ========================================= */
 .osc-main-area {
