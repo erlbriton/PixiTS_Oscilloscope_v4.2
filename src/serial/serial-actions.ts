@@ -5,6 +5,7 @@ import { parseRegisterAddress, hexToFloat32, float32ToHex } from '../ini-manager
 import { updateRowValues } from '../ini-manager/tree-ui.js';
 import type { ISerialPort } from './ISerialPort.js';
 import type { Oscilloscope } from '../oscilloscope/Oscilloscope.js';
+import type { IOscilloscopeApi } from '../core/osc-api.js';
 /** Буфер данных канала для передачи в осциллограф */
 interface ChannelBuffer {
     push(v: number): void;
@@ -212,7 +213,7 @@ export async function executeDeviceIdentification(serial: ISerialPort, comSelect
         stateObj.isIdentifying = false;
     }
 }
-export async function readLoop(serial: ISerialPort, _parser: unknown, view: Oscilloscope | null, buffers: Record<string, ChannelBuffer> | Map<string, ChannelBuffer> | null, stateObj: AppState): Promise<void> {
+export async function readLoop(serial: ISerialPort, _parser: unknown, view: IOscilloscopeApi | null, buffers: ChannelBuffer[] | Record<string, ChannelBuffer> | Map<string, ChannelBuffer> | null, stateObj: AppState): Promise<void> {
     if (stateObj.isLoopRunning) return;
     stateObj.isLoopRunning = true;
     console.log("DEBUG: Единый батчевый readLoop запущен");
@@ -279,13 +280,13 @@ export async function readLoop(serial: ISerialPort, _parser: unknown, view: Osci
                     }
                     val = val * param.scale;
                     oscData[param.id] = val;
-                    if (buffers) {
-                        if (buffers instanceof Map && buffers.has(param.id)) {
-                            buffers.get(param.id)?.push(val);
-                        } else if (!(buffers instanceof Map) && buffers[param.id] && typeof buffers[param.id].push === 'function') {
-                            buffers[param.id].push(val);
-                        }
-                    }
+                   if (buffers && !Array.isArray(buffers)) {
+                                    if (buffers instanceof Map && buffers.has(param.id)) {
+                                        buffers.get(param.id)?.push(val);
+                                    } else if (!(buffers instanceof Map) && buffers[param.id] && typeof buffers[param.id].push === 'function') {
+                                        buffers[param.id].push(val);
+                                    }
+                                }
                 }
                 const activeOsc = window.osc ?? view;
                 if (activeOsc) {

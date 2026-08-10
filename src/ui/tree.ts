@@ -56,6 +56,7 @@ export function renderModbusTable(config?: IniConfig): void {
                 }
             }
             tr.setAttribute('data-hex-index', hexIndex.toString());
+            tr.dataset.parts = JSON.stringify(param.rawParts);
 
             tr.innerHTML = `
                 <td>${param.id}</td>

@@ -3,224 +3,266 @@ import { updateRowValues } from "../ini-manager/tree-ui.js";
 import { hexToFloat32, float32ToHex } from "../ini-manager/tree-core.js";
 import { calculateCRC, serialManager } from "./serial-actions.js";
 import type { ISerialPort } from "./ISerialPort.js";
+import type { AppState } from "../core/app-state.js";          // FIX 1: вместо DeviceUpdaterState
 import type { IniConfig } from "../core/ini/index.js";
 
 declare global {
-    interface Window {
-        resetUpdateState?: () => void;
-    }
-}
-
-/** Минимальный контракт состояния для обновления регистров */
-interface DeviceUpdaterState {
-    isPolling?: boolean;
-    currentIniConfig?: IniConfig;
+  interface Window {
+    resetUpdateState?: () => void;
+  }
 }
 
 let isUpdating = false;
 
 export async function updateDeviceRegisters(
-    serial: ISerialPort,
-    slaveAddress: number = 0x01,
-    appState: DeviceUpdaterState | null = null,
+  serial: ISerialPort,
+  slaveAddress: number = 0x01,
+  appState: AppState | null = null,                            // FIX 1: AppState
 ): Promise<boolean> {
-    if (isUpdating) return false;
-    isUpdating = true;
-    document.body.classList.add("loading-state");
+  if (isUpdating) return false;
+  isUpdating = true;
+  document.body.classList.add("loading-state");
 
-    const iniConfig: IniConfig | undefined = appState?.currentIniConfig;
-    const wasPolling = appState ? (appState.isPolling ?? false) : false;
+  // FIX 2: гарантируем инициализацию менеджера порта
+  serialManager.init(serial);
 
-    if (wasPolling && appState) {
-        appState.isPolling = false;
-        await new Promise((r) => setTimeout(r, 20));
+  const iniConfig: IniConfig | undefined = appState?.currentIniConfig ?? undefined;
+
+  const wasPolling = appState ? appState.isPolling : false;
+  if (wasPolling && appState) {
+    appState.isPolling = false;
+    await new Promise((r) => setTimeout(r, 20));
+  }
+
+  try {
+    const rows = Array.from(
+      document.querySelectorAll<HTMLTableRowElement>("#grid-data-rows tr"),
+    );
+    const registerMap = new Map<number, HTMLTableRowElement[]>();
+    const addresses: number[] = [];
+
+    for (const tr of rows) {
+      const addrStr = tr.getAttribute("data-reg");
+      if (!addrStr) continue;
+
+      const addr = parseInt(addrStr, 16);
+      if (!registerMap.has(addr)) {
+        registerMap.set(addr, []);
+      }
+      registerMap.get(addr)?.push(tr);
+
+      // FIX 3: нормализуем регистр
+      const dataType = (tr.getAttribute("data-type") || "").toUpperCase();
+
+      if (
+        dataType === "TFLOAT" || dataType === "TFLOAT32" ||
+        dataType === "FLOAT"  || dataType === "TDWORD"  ||
+        dataType === "TLONG"  || dataType === "TINT32"
+      ) {
+        addresses.push(addr);
+        addresses.push(addr + 1);
+      } else {
+        addresses.push(addr);
+      }
     }
 
-    try {
-        const rows = Array.from(document.querySelectorAll<HTMLTableRowElement>("#grid-data-rows tr"));
-        const registerMap = new Map<number, HTMLTableRowElement[]>();
-        const addresses: number[] = [];
+    const uniqueAddresses = [...new Set(addresses)].sort((a, b) => a - b);
 
-        for (const tr of rows) {
-            const addrStr = tr.getAttribute("data-reg");
-            if (!addrStr) continue;
-            const addr = parseInt(addrStr, 16);
-            if (!registerMap.has(addr)) {
-                registerMap.set(addr, []);
-            }
-            registerMap.get(addr)?.push(tr);
-            const dataType = tr.getAttribute("data-type");
-            if (dataType === "TFloat" || dataType === "TDWORD" || dataType === "FLOAT" || dataType === "TFLOAT32") {
-                addresses.push(addr);
-                addresses.push(addr + 1);
-            } else {
-                addresses.push(addr);
-            }
+    interface Batch {
+      start: number;
+      end: number;
+      regs: number[];
+    }
+
+    const batches: Batch[] = [];
+
+    if (uniqueAddresses.length > 0) {
+      let currentBatch: Batch = {
+        start: uniqueAddresses[0],
+        end: uniqueAddresses[0],
+        regs: [uniqueAddresses[0]],
+      };
+
+      for (let i = 1; i < uniqueAddresses.length; i++) {
+        const nextAddr = uniqueAddresses[i];
+        const gap = nextAddr - currentBatch.end - 1;
+
+        if (gap <= 3 && nextAddr - currentBatch.start + 1 <= 125) {
+          currentBatch.end = nextAddr;
+          currentBatch.regs.push(nextAddr);
+        } else {
+          batches.push(currentBatch);
+          currentBatch = { start: nextAddr, end: nextAddr, regs: [nextAddr] };
         }
+      }
+      batches.push(currentBatch);
+    }
 
-        const uniqueAddresses = [...new Set(addresses)].sort((a, b) => a - b);
+    for (const batch of batches) {
+      const count = batch.end - batch.start + 1;
+      const body = new Uint8Array([
+        slaveAddress,
+        0x03,
+        (batch.start >> 8) & 0xff,
+        batch.start & 0xff,
+        (count >> 8) & 0xff,
+        count & 0xff,
+      ]);
 
-        interface Batch {
-            start: number;
-            end: number;
-            regs: number[];
-        }
+      const crc = calculateCRC(body);
+      const finalPacket = new Uint8Array(8);
+      finalPacket.set(body, 0);
+      finalPacket[6] = crc & 0xff;
+      finalPacket[7] = (crc >> 8) & 0xff;
 
-        const batches: Batch[] = [];
-        if (uniqueAddresses.length > 0) {
-            let currentBatch: Batch = {
-                start: uniqueAddresses[0],
-                end: uniqueAddresses[0],
-                regs: [uniqueAddresses[0]],
-            };
-            for (let i = 1; i < uniqueAddresses.length; i++) {
-                const nextAddr = uniqueAddresses[i];
-                const gap = nextAddr - currentBatch.end - 1;
-                if (gap <= 3 && nextAddr - currentBatch.start + 1 <= 125) {
-                    currentBatch.end = nextAddr;
-                    currentBatch.regs.push(nextAddr);
-                } else {
-                    batches.push(currentBatch);
-                    currentBatch = { start: nextAddr, end: nextAddr, regs: [nextAddr] };
-                }
-            }
-            batches.push(currentBatch);
-        }
+      try {
+        const checkComplete = (buf: Uint8Array): boolean => {
+          if (buf.length >= 3 && buf[1] === 0x03) {
+            const byteCount = buf[2];
+            return buf.length >= 3 + byteCount + 2;
+          }
+          if (buf.length >= 5 && (buf[1] & 0x80)) {
+            return true;
+          }
+          return false;
+        };
 
-        for (const batch of batches) {
-            const count = batch.end - batch.start + 1;
-            const body = new Uint8Array([
-                slaveAddress,
-                0x03,
-                (batch.start >> 8) & 0xff,
-                batch.start & 0xff,
-                (count >> 8) & 0xff,
-                count & 0xff,
-            ]);
-            const crc = calculateCRC(body);
-            const finalPacket = new Uint8Array(8);
-            finalPacket.set(body, 0);
-            finalPacket[6] = crc & 0xff;
-            finalPacket[7] = (crc >> 8) & 0xff;
+        const reply: Uint8Array | null = await serialManager.executeTransaction(
+          finalPacket,
+          checkComplete,
+          300,
+        );
 
-            try {
-                const checkComplete = (buf: Uint8Array): boolean => {
-                    if (buf.length >= 3 && buf[1] === 0x03) {
-                        const byteCount = buf[2];
-                        return buf.length >= 3 + byteCount + 2;
+        if (reply && reply.length >= 3 && reply[1] === 0x03) {
+          const byteCount = reply[2];
+          const expectedTotal = 3 + byteCount + 2;
+
+          if (reply.length >= expectedTotal) {
+            for (let i = 0; i < count; i++) {
+              const regAddr = batch.start + i;
+
+              if (registerMap.has(regAddr)) {
+                const trList = registerMap.get(regAddr);
+                if (!trList) continue;
+
+                for (const tr of trList) {
+                  try {
+                    let parts: string[] = JSON.parse(tr.dataset.parts || "[]");
+
+                    // FIX 4: защита от пустого parts
+                    if (parts.length === 0) continue;
+
+                    // FIX 3: нормализуем регистр
+                    const dataType = (tr.getAttribute("data-type") || "").toUpperCase();
+                    const sub = tr.getAttribute("data-sub") || "";
+                    const hIdx = parseInt(
+                      tr.getAttribute("data-hex-index") || "0",
+                      10,
+                    );
+                    const section = tr.getAttribute("data-section") || "";
+                    const key = tr.getAttribute("data-key") || "";
+
+                    let originalHexLen = 4;
+                    if (parts[hIdx] && parts[hIdx].startsWith("x")) {
+                      originalHexLen = parts[hIdx].slice(1).length;
                     }
-                    if (buf.length >= 5 && (buf[1] & 0x80)) {
-                        return true;
-                    }
-                    return false;
-                };
 
-                const reply: Uint8Array | null = await serialManager.executeTransaction(
-                    finalPacket,
-                    checkComplete,
-                    300,
-                );
+                    // Множитель из единого INI-слоя вместо старого кэша
+                    const param = iniConfig?.getParameter(section, key);
+                    const scale = param?.scale ?? 1.0;
+                    const scaleStr = scale.toString().replace(".", ",");
 
-                if (reply && reply.length >= 3 && reply[1] === 0x03) {
-                    const byteCount = reply[2];
-                    const expectedTotal = 3 + byteCount + 2;
-                    if (reply.length >= expectedTotal) {
-                        for (let i = 0; i < count; i++) {
-                            const regAddr = batch.start + i;
-                            if (registerMap.has(regAddr)) {
-                                const trList = registerMap.get(regAddr);
-                                if (!trList) continue;
-                                for (const tr of trList) {
-                                    try {
-                                        let parts: string[] = JSON.parse(tr.dataset.parts || "[]");
-                                        const dataType = tr.getAttribute("data-type") || "";
-                                        const sub = tr.getAttribute("data-sub") || "";
-                                        const hIdx = parseInt(
-                                            tr.getAttribute("data-hex-index") || "0",
-                                        );
-                                        const section = tr.getAttribute("data-section") || "";
-                                        const key = tr.getAttribute("data-key") || "";
-
-                                        let originalHexLen = 4;
-                                        if (parts[hIdx] && parts[hIdx].startsWith("x")) {
-                                            originalHexLen = parts[hIdx].slice(1).length;
-                                        }
-
-                                        // Множитель из единого INI-слоя вместо старого кэша
-                                        const param = iniConfig?.getParameter(section, key);
-                                        const scale = param?.scale ?? 1.0;
-                                        const scaleStr = scale.toString().replace(".", ",");
-
-                                        const prmListOptions: Record<string, string> = {};
-                                        for (let j = parts.length - 1; j >= 3; j--) {
-                                            const part = parts[j] ? parts[j].trim() : "";
-                                            if (part.includes("#")) {
-                                                const [h, t] = part.split("#");
-                                                if (h && t) {
-                                                    prmListOptions[h.toLowerCase()] = t;
-                                                }
-                                            }
-                                        }
-
-                                        const valH = reply[3 + i * 2];
-                                        const valL = reply[4 + i * 2];
-                                        const word = (valH << 8) | valL;
-
-                                        let hexValue = "";
-                                        if (dataType === "TByte" || dataType === "TPrmList") {
-                                            if (sub === "H") {
-                                                const byteVal = (word >> 8) & 0xff;
-                                                hexValue = "x" + byteVal.toString(16).padStart(originalHexLen, "0");
-                                            } else {
-                                                const byteVal = word & 0xff;
-                                                hexValue = "x" + byteVal.toString(16).padStart(originalHexLen, "0");
-                                            }
-                                        } else if (dataType === "TBit") {
-                                            const bitIndex = parseInt(sub, 16);
-                                            const bitVal = (word >> bitIndex) & 1;
-                                            hexValue = "x" + bitVal.toString(16).padStart(originalHexLen, "0");
-                                        } else if (dataType === "TFloat" || dataType === "TDWORD" || dataType === "FLOAT" || dataType === "TFLOAT32") {
-                                            if (i + 1 < count) {
-                                                const nextValH = reply[3 + (i + 1) * 2];
-                                                const nextValL = reply[4 + (i + 1) * 2];
-                                                const nextWord = (nextValH << 8) | nextValL;
-                                                hexValue = "x" + nextWord.toString(16).padStart(4, "0") + word.toString(16).padStart(4, "0");
-                                            } else {
-                                                continue;
-                                            }
-                                        } else {
-                                            hexValue = "x" + word.toString(16).padStart(originalHexLen, "0");
-                                        }
-
-                                        if (hexValue) {
-                                            parts[hIdx] = hexValue;
-                                            parts[6] = scaleStr;
-                                            tr.dataset.parts = JSON.stringify(parts);
-                                            updateRowValues(tr, parts, dataType, scale, hIdx, originalHexLen, prmListOptions, hexToFloat32, float32ToHex, 6);
-                                            tr.classList.add("updated");
-                                        }
-                                    } catch (e) {
-                                        console.error(`Error processing row:`, e);
-                                    }
-                                }
-                            }
+                    const prmListOptions: Record<string, string> = {};
+                    for (let j = parts.length - 1; j >= 3; j--) {
+                      const part = parts[j] ? parts[j].trim() : "";
+                      if (part.includes("#")) {
+                        const [h, t] = part.split("#");
+                        if (h && t) {
+                          prmListOptions[h.toLowerCase()] = t;
                         }
+                      }
                     }
+
+                    const valH = reply[3 + i * 2];
+                    const valL = reply[4 + i * 2];
+                    const word = ((valH & 0xff) << 8) | (valL & 0xff);
+
+                    let hexValue = "";
+
+                    // FIX 3: все сравнения в верхнем регистре
+                    if (dataType === "TBYTE" || dataType === "TPRMLIST") {
+                      if (sub === "H") {
+                        const byteVal = (word >> 8) & 0xff;
+                        hexValue =
+                          "x" + byteVal.toString(16).padStart(originalHexLen, "0");
+                      } else {
+                        const byteVal = word & 0xff;
+                        hexValue =
+                          "x" + byteVal.toString(16).padStart(originalHexLen, "0");
+                      }
+                    } else if (dataType === "TBIT") {
+                      const bitIndex = parseInt(sub, 16);
+                      const bitVal = (word >> (isNaN(bitIndex) ? 0 : bitIndex)) & 1;
+                      hexValue =
+                        "x" + bitVal.toString(16).padStart(originalHexLen, "0");
+                    } else if (
+                      dataType === "TFLOAT" || dataType === "TFLOAT32" ||
+                      dataType === "FLOAT"  || dataType === "TDWORD"  ||
+                      dataType === "TLONG"  || dataType === "TINT32"
+                    ) {
+                      if (i + 1 < count) {
+                        const nextValH = reply[3 + (i + 1) * 2];
+                        const nextValL = reply[4 + (i + 1) * 2];
+                        const nextWord =
+                          ((nextValH & 0xff) << 8) | (nextValL & 0xff);
+                        hexValue =
+                          "x" +
+                          nextWord.toString(16).padStart(4, "0") +
+                          word.toString(16).padStart(4, "0");
+                      } else {
+                        continue;
+                      }
+                    } else {
+                      hexValue =
+                        "x" + word.toString(16).padStart(originalHexLen, "0");
+                    }
+
+                    if (hexValue && hIdx >= 0 && hIdx < parts.length) {
+                      parts[hIdx] = hexValue;
+                      if (parts.length > 6) {
+                        parts[6] = scaleStr;
+                      }
+                      tr.dataset.parts = JSON.stringify(parts);
+                      updateRowValues(
+                        tr, parts, dataType, scale, hIdx,
+                        originalHexLen, prmListOptions,
+                        hexToFloat32, float32ToHex, 6,
+                      );
+                      tr.classList.add("updated");
+                    }
+                  } catch (e) {
+                    console.error(`Error processing row:`, e);
+                  }
                 }
-            } catch (err) {
-                console.error(`Batch error:`, err);
+              }
             }
+          }
         }
-    } finally {
-        isUpdating = false;
-        document.body.classList.remove("loading-state");
+      } catch (err) {
+        console.error(`Batch error:`, err);
+      }
     }
-    return wasPolling;
+  } finally {
+    isUpdating = false;
+    document.body.classList.remove("loading-state");
+  }
+
+  return wasPolling;
 }
 
 export function resetUpdateState(): void {
-    isUpdating = false;
-    document.body.classList.remove("loading-state");
+  isUpdating = false;
+  document.body.classList.remove("loading-state");
 }
 
 window.resetUpdateState = resetUpdateState;

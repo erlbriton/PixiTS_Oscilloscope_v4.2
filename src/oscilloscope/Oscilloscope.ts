@@ -17,6 +17,7 @@ import { PropertiesModal } from './ui/PropertiesModal';
 import { BottomPanels, ReadoutSlot } from './ui/BottomPanels';
 import { CursorsFooter } from './ui/CursorsFooter';
 import { ConnectionModal } from './ui/ConnectionModal';
+import type { WebSerialPort } from '../serial/web-serial-types.js';
 
 export class Oscilloscope {
     private settings: Settings;
@@ -119,11 +120,9 @@ export class Oscilloscope {
     /**
      * Инжекция SerialPort, открытого во внешнем проекте.
      */
-    public setSerialPort(port: any): void {
-        if (this.serial && typeof (this.serial as any).attachPort === 'function') {
-            (this.serial as any).attachPort(port);
-        }
-    }
+    public setSerialPort(port: WebSerialPort): void {
+    this.serial.attachPort(port);
+}
 
     /**
      * Установка списка INI-файлов из внешнего проекта.

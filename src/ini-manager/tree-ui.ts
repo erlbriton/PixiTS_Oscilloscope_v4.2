@@ -37,9 +37,9 @@ export function renderDeviceTree(): void {
                 renderModbusTable(device.iniConfig);
 
                 // SYNC WITH OSCILLOSCOPE
-                if ((window as any).osc) {
-                    (window as any).osc.setActiveIni(device.id);
-                }
+                if (window.osc) {
+    window.osc.setActiveIni(device.id);
+}
             });
 
             ulElement.appendChild(liElement);

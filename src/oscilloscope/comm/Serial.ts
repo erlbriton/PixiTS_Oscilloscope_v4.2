@@ -3,13 +3,14 @@
 import { Channel } from '../core/Channel';
 import { Archive } from '../core/Archive';
 import { Modbus } from './Modbus';
+import type { WebSerialPort } from '../../serial/web-serial-types.js';
 
 export type SerialState = 'disconnected' | 'connecting' | 'connected' | 'error';
 
 export class Serial {
     private state: SerialState = 'disconnected';
-    private port: any = null;
-    private reader: any = null;
+    private port: WebSerialPort | null = null;
+    private reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
     private baudRate: number = 115200;
     private archive: Archive;
     private channels: Channel[] = [];
@@ -67,17 +68,19 @@ export class Serial {
             return false;
         }
 
+        const navSerial = navigator.serial;
+        if (!navSerial) {
+            this.setState('disconnected', 'Web Serial API не поддерживается.');
+            return false;
+        }
+
         try {
             this.setState('connecting', 'Выбор COM-порта...');
 
-            const navSerial = (navigator as any).serial;
-            if (!navSerial) {
-                this.setState('disconnected', 'Web Serial API не поддерживается.');
-                return false;
-            }
-            this.port = await navSerial.requestPort();
+            const port = await navSerial.requestPort();
+            this.port = port;
 
-            await this.port.open({ baudRate: this.baudRate });
+            await port.open({ baudRate: this.baudRate });
 
             this.setState('connected', `Подключено @ ${this.baudRate} baud`);
             this.lastResponseTime = Date.now();
@@ -97,7 +100,7 @@ export class Serial {
     /**
      * Инжекция порта, открытого во внешнем проекте.
      */
-    public attachPort(port: any): void {
+    public attachPort(port: WebSerialPort): void {
         this.port = port;
         this.setState('connected', 'Порт подключен из внешнего проекта.');
         this.lastResponseTime = Date.now();
@@ -111,17 +114,19 @@ export class Serial {
         this.stopModbusPolling();
 
         try {
-            if (this.reader) {
-                await this.reader.cancel();
-                this.reader.releaseLock();
+            const reader = this.reader;
+            if (reader) {
+                await reader.cancel();
+                reader.releaseLock();
                 this.reader = null;
             }
 
-            if (this.port) {
-                await this.port.close();
+            const port = this.port;
+            if (port) {
+                await port.close();
                 this.port = null;
             }
-        } catch (e) {
+        } catch (e: unknown) {
             console.error('Error closing serial port:', e);
         }
 
@@ -162,7 +167,8 @@ export class Serial {
      * размер опроса НЕ привязан к количеству каналов.
      */
     private async sendModbus03Request(slaveAddr: number = 1): Promise<void> {
-        if (!this.port || !this.port.writable || this.state !== 'connected') {
+        const port = this.port;
+        if (!port || !port.writable || this.state !== 'connected') {
             return;
         }
 
@@ -195,7 +201,7 @@ export class Serial {
         maxReg = Math.min(125, maxReg);
 
         try {
-            const writer = this.port.writable.getWriter();
+            const writer = port.writable.getWriter();
             const frame = Modbus.createReadRequest(slaveAddr, 0x03, 0, maxReg);
 
             await writer.write(frame);
@@ -206,15 +212,17 @@ export class Serial {
     }
 
     private async startReading(): Promise<void> {
-        if (!this.port || !this.port.readable) return;
+        const port = this.port;
+        if (!port || !port.readable) return;
 
         try {
-            while (this.port.readable && this.state === 'connected') {
-                this.reader = this.port.readable.getReader();
+            while (port.readable && this.state === 'connected') {
+                const reader = port.readable.getReader();
+                this.reader = reader;
 
                 try {
                     while (true) {
-                        const { value, done } = await this.reader.read();
+                        const { value, done } = await reader.read();
 
                         if (done) break;
 
@@ -225,7 +233,8 @@ export class Serial {
                 } catch (readErr) {
                     console.error('Serial stream read error:', readErr);
                 } finally {
-                    this.reader.releaseLock();
+                    reader.releaseLock();
+                    this.reader = null;
                 }
             }
         } catch (err) {

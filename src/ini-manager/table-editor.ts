@@ -23,9 +23,9 @@ type UpdateRowValuesFn = (
 ) => void;
 
 export interface TableEditorState {
-    slaveAddress?: number;
-    isPolling?: boolean;
-    currentIniConfig?: IniConfig;
+  slaveAddress?: number;
+  isPolling?: boolean;
+  currentIniConfig?: IniConfig | null;
 }
 
 /**

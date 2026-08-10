@@ -1,10 +1,9 @@
 // src/serial/serial.ts
 import type { ISerialPort, SerialPortInfo } from './ISerialPort.js';
 import type { WebSerialPort } from './web-serial-types.js';
-// ↑ Убрали declare global — типы теперь в web-serial-types.ts
 
 export class SerialConnection implements ISerialPort {
-  public port: WebSerialPort | null;          // ← был any
+  public port: WebSerialPort | null;
   public reader: ReadableStreamDefaultReader<Uint8Array> | null;
   public readableStream: ReadableStream<Uint8Array> | null;
   public isConnected: boolean;
@@ -17,27 +16,37 @@ export class SerialConnection implements ISerialPort {
     this.isConnected = false;
   }
 
+  /**
+   * Подписка на событие обрыва связи (вызывается при release()).
+   */
   public onDisconnect(cb: () => void): void {
     this.onDisconnectCallback = cb;
   }
 
+  /**
+   * Информация об устройстве (VID/PID) для определения чипа.
+   */
   public getPortInfo(): SerialPortInfo {
-    if (this.port) {
-      return this.port.getInfo();             // ← без проверки typeof, тип гарантирует метод
+    if (this.port && typeof this.port.getInfo === 'function') {
+      return this.port.getInfo();
     }
     return {};
   }
 
+  /**
+   * Запрос разрешения у пользователя и открытие физического COM-порта.
+   */
   public async connect(baudRate: number = 115200): Promise<void> {
-    if (!navigator.serial) {
+    const serialApi = navigator.serial;
+    if (!serialApi) {
       throw new Error(
-        'Ваш браузер не поддерживает Web Serial API. Используйте Chrome или Edge.',
+        "Ваш браузер не поддерживает Web Serial API. Используйте Chrome или Edge."
       );
     }
     try {
-      const port = await navigator.serial.requestPort();
+      const port = await serialApi.requestPort();
       if (!port) {
-        throw new Error('Порт не выбран.');
+        throw new Error("Порт не выбран.");
       }
       await port.open({ baudRate });
       const readable = port.readable;
@@ -61,9 +70,14 @@ export class SerialConnection implements ISerialPort {
     }
   }
 
+  /**
+   * Асинхронное чтение очередной порции сырых байт из буфера.
+   */
   public async readChunk(): Promise<Uint8Array | null> {
     const reader = this.reader;
-    if (!this.isConnected || !reader) return null;
+    if (!this.isConnected || !reader) {
+      return null;
+    }
     try {
       const { value, done } = await reader.read();
       if (done) {
@@ -73,26 +87,70 @@ export class SerialConnection implements ISerialPort {
       return value ?? null;
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error('[Serial] Ошибка критического чтения из порта:', message);
+      console.error("[Serial] Ошибка критического чтения из порта:", message);
       this.release();
       throw error;
     }
   }
 
+  /**
+   * Отправка массива байт в устройство.
+   */
   public async write(data: Uint8Array): Promise<void> {
     const port = this.port;
-    if (!this.isConnected || !port || !port.writable) return;
+    if (!this.isConnected || !port || !port.writable) {
+      return;
+    }
     const writer = port.writable.getWriter();
     await writer.write(data);
     writer.releaseLock();
   }
 
+  /**
+   * Освобождает reader без закрытия порта.
+   */
+  public async unlockReader(): Promise<void> {
+    const reader = this.reader;
+    if (!reader) {
+      return;
+    }
+    try {
+      await reader.cancel();
+      reader.releaseLock();
+    } catch {
+      // ignore
+    }
+    this.reader = null;
+  }
+
+  /**
+   * Возвращает reader себе.
+   */
+  public async lockReader(): Promise<void> {
+    const port = this.port;
+    if (!port || !port.readable) {
+      this.readableStream = null;
+      this.reader = null;
+      return;
+    }
+    const readable = port.readable;
+    this.readableStream = readable;
+    this.reader = readable.getReader();
+  }
+
+  /**
+   * Корректное освобождение ресурсов.
+   */
   public release(): void {
     const wasConnected = this.isConnected;
     this.isConnected = false;
     const reader = this.reader;
     if (reader) {
-      try { reader.releaseLock(); } catch { /* ignore */ }
+      try {
+        reader.releaseLock();
+      } catch {
+        // ignore
+      }
     }
     this.reader = null;
     this.readableStream = null;
