@@ -2,7 +2,7 @@
 
 import { populateDeviceForm } from '../ui/ui.js';
 import { renderModbusTable } from '../ui/tree.js';
-import { deviceRegistry, setCurrentDeviceConfig, setCurrentIniConfig, hexToFloat32, float32ToHex } from './tree-core.js';
+import { deviceRegistry, setCurrentIniConfig, hexToFloat32, float32ToHex } from './tree-core.js';
 
 export function renderDeviceTree(): void {
     const container = document.querySelector('.sidebar-tree-container');
@@ -30,8 +30,6 @@ export function renderDeviceTree(): void {
             liElement.addEventListener('click', () => {
                 document.querySelectorAll('.tree-id-item.is-selected').forEach(el => el.classList.remove('is-selected'));
                 liElement.classList.add('is-selected');
-
-                setCurrentDeviceConfig(device.fullConfig);
                 setCurrentIniConfig(device.iniConfig);
                 populateDeviceForm(device.fullConfig['DEVICE']);
                 renderModbusTable(device.iniConfig);

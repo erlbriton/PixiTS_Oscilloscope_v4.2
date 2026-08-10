@@ -28,7 +28,6 @@ const appState: AppState = {
     isRefreshing: false,
     isLoopRunning: false,
     slaveAddress: 0x01,
-    //parser: iniParser,
     currentIniContent: null,
     currentIniConfig: null,
 };

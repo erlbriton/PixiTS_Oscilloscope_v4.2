@@ -16,11 +16,11 @@ export interface DeviceRegistryItem {
 /** Реестр: локации → массив устройств */
 export const deviceRegistry: Record<string, DeviceRegistryItem[]> = {};
 
-export let currentDeviceConfig: RawIniConfig | null = null;
+// export let currentDeviceConfig: RawIniConfig | null = null;
 
-export function setCurrentDeviceConfig(config: RawIniConfig | null): void {
-  currentDeviceConfig = config;
-}
+// export function setCurrentDeviceConfig(config: RawIniConfig | null): void {
+//   currentDeviceConfig = config;
+// }
 
 export let currentIniConfig: IniConfig | null = null;
 
