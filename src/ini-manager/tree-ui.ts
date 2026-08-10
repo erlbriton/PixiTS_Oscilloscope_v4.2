@@ -38,8 +38,8 @@ export function renderDeviceTree(): void {
 
                 // SYNC WITH OSCILLOSCOPE
                 if (window.osc) {
-    window.osc.setActiveIni(device.id);
-}
+                 window.osc.setActiveIni(device.id);
+             }
             });
 
             ulElement.appendChild(liElement);

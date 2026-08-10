@@ -47,9 +47,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const serial = new SerialConnection();
         const parser = new ModbusParser();
 
-        const buffers = Array.from({ length: 70 }, () => {
-            const data: number[] = [];
-            return {
+        const buffers: import('./ui/uiManager.js').ChannelBuffer[] = Array.from({ length: 70 }, () => {
+         const data: number[] = [];
+         return {
                 push: (v: number) => {
                     data.push(v);
                     if (data.length > 200) data.shift();

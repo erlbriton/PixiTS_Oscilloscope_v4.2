@@ -1,26 +1,22 @@
 // src/ini-manager/file-loader.ts
 import { showIdModal, populateDeviceForm } from '../ui/ui.js';
-import {
-  addDeviceToRegistry,
-  deviceRegistry,
-  setCurrentIniConfig,
-  type RawIniConfig,
-} from './tree-core.js';
+import { addDeviceToRegistry, deviceRegistry, setCurrentIniConfig } from './tree-core.js';
+import type { RawIniConfig, DeviceRegistryItem } from './tree-core.js';
 import { renderDeviceTree } from './tree-ui.js';
 import { renderModbusTable } from '../ui/tree.js';
-import {
-  IniParser as CoreIniParser,
-  IniConfig,
-  iniParamsToChannelConfigs,
-} from '../core/ini/index.js';
+import { IniParser as CoreIniParser, IniConfig, iniParamsToChannelConfigs } from '../core/ini/index.js';
 import type { AppState } from '../core/app-state.js';
 
-// БЫЛО: appState: any
-// СТАЛО:
-export function setupFileHandling(
-  fileInput: HTMLInputElement,
-  appState: AppState
-): void {
+/** Элемент списка INI-файлов для синхронизации с осциллографом */
+interface OscIniFile {
+  id: string;
+  name: string;
+  content: string;
+  size: number;
+  lastModified: number;
+}
+
+export function setupFileHandling(fileInput: HTMLInputElement, appState: AppState): void {
   let processingQueue: Promise<void> = Promise.resolve();
 
   fileInput.addEventListener('change', (event: Event) => {
@@ -39,8 +35,6 @@ export function setupFileHandling(
   });
 }
 
-// БЫЛО: appState: any
-// СТАЛО:
 async function processSingleFile(file: File, appState: AppState): Promise<void> {
   let content: string;
   try {
@@ -52,14 +46,16 @@ async function processSingleFile(file: File, appState: AppState): Promise<void> 
   }
 
   try {
-    if (!content) throw new Error('Файл пуст');
+    if (!content) {
+      throw new Error('Файл пуст');
+    }
 
+    // ЕДИНЫЙ парсинг через core/ini
     const coreParser = new CoreIniParser();
     const parseResult = coreParser.parse(content);
     const iniConfig = new IniConfig(parseResult);
 
-    // БЫЛО: const config = parseResult.rawSections as any;
-    // СТАЛО:
+    // Совместимость: rawSections — тот же формат, что и старый ParsedData
     const config = parseResult.rawSections as RawIniConfig;
 
     if (!config || !(config['DEVICE'] || config['RAM'] || config['CD'] || config['FLASH'])) {
@@ -73,12 +69,15 @@ async function processSingleFile(file: File, appState: AppState): Promise<void> 
     const isAdded = addDeviceToRegistry(iniConfig);
     setCurrentIniConfig(iniConfig);
 
-    if (isAdded) renderDeviceTree();
-    if (config['DEVICE']) populateDeviceForm(config['DEVICE']);
+    if (isAdded) {
+      renderDeviceTree();
+    }
+    if (config['DEVICE']) {
+      populateDeviceForm(config['DEVICE']);
+    }
     renderModbusTable(iniConfig);
 
-    // БЫЛО: const osc = (window as any).osc;
-    // СТАЛО:
+    // Осциллограф: используем уже распарсенный iniConfig
     const osc = window.osc;
     if (osc && typeof osc.applyChannelConfigs === 'function') {
       try {
@@ -126,29 +125,23 @@ function readFileAsText(file: File): Promise<string> {
         reject(new Error('Не удалось прочитать файл как текст'));
       }
     };
-    reader.onerror = () => reject(new Error('Ошибка чтения файла'));
+    reader.onerror = () => {
+      reject(new Error('Ошибка чтения файла'));
+    };
     reader.readAsText(file, 'windows-1251');
   });
 }
 
 function syncFilesToOscilloscope(): void {
-  // БЫЛО: const osc = (window as any).osc;
-  // СТАЛО:
   const osc = window.osc;
   if (!osc || typeof osc.setIniFiles !== 'function') return;
 
-  const allFiles: Array<{
-    id: string;
-    name: string;
-    content: string;
-    size: number;
-    lastModified: number;
-  }> = [];
+  const allFiles: OscIniFile[] = [];
 
   for (const location in deviceRegistry) {
     const group = deviceRegistry[location];
     if (!Array.isArray(group)) continue;
-    group.forEach((dev) => {
+    group.forEach((dev: DeviceRegistryItem) => {
       try {
         if (!dev || dev.id == null) return;
         const configStr = serializeConfig(dev.fullConfig);
@@ -157,7 +150,7 @@ function syncFilesToOscilloscope(): void {
           name: dev.displayText ?? String(dev.id),
           content: configStr,
           size: new Blob([configStr]).size,
-          lastModified: Date.now(),
+          lastModified: Date.now()
         });
       } catch (err) {
         console.warn('[file-loader] Failed to serialize device config:', err);
@@ -172,8 +165,6 @@ function syncFilesToOscilloscope(): void {
   }
 }
 
-// БЫЛО: config: any
-// СТАЛО:
 function findDeviceIdByConfig(config: RawIniConfig): string | null {
   if (!config) return null;
 
@@ -204,8 +195,6 @@ function findDeviceIdByConfig(config: RawIniConfig): string | null {
   return null;
 }
 
-// БЫЛО: config: any
-// СТАЛО:
 function serializeConfig(config: RawIniConfig): string {
   if (!config || typeof config !== 'object') return '';
   let out = '';
