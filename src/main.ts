@@ -1,5 +1,5 @@
 // src/main.ts
-import { IniParser } from './ini-manager/iniParser.js';
+
 import { SerialConnection } from './serial/serial.js';
 import { initUI } from './ui/uiManager.js';
 import { ModbusParser } from './serial/modbus.js';
@@ -22,16 +22,13 @@ declare global {
     }
 }
 
-const iniParser = new IniParser();
-
 const appState: AppState = {
     isIdentifying: false,
     isPolling: false,
     isRefreshing: false,
     isLoopRunning: false,
     slaveAddress: 0x01,
-    parser: iniParser,
-    currentDeviceConfig: null,
+    //parser: iniParser,
     currentIniContent: null,
     currentIniConfig: null,
 };

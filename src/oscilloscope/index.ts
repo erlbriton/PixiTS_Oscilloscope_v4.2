@@ -7,7 +7,7 @@ export { Settings } from './config/Settings';
 export { Archive } from './core/Archive';
 export { Recorder } from './core/Recorder';
 export { Serial } from './comm/Serial';
-export { IniParser, type ParsedRamParam, type ParsedIniResult } from './core/IniParser';
+//export { IniParser, type ParsedRamParam, type ParsedIniResult } from './core/IniParser';
 export { type IniFileItem } from './ui/IniPanel';
 
 // Импорт стилей модуля
