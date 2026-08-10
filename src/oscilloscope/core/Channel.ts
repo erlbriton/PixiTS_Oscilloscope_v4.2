@@ -92,3 +92,31 @@ export class Channel {
         return this.scaledValue;
     }
 }
+
+export interface ParsedModbusReg {
+    address: number;
+    bit: number | null; // null, если это не битовый параметр
+}
+
+/**
+ * Парсит строку modbusReg (например, "r0001.6" или "100")
+ * @returns { address: number, bit: number | null } или null, если строка невалидна
+ */
+export function parseModbusReg(regStr: string): ParsedModbusReg | null {
+    if (!regStr) return null;
+    
+    // Убираем ведущую 'r' или 'R', если она есть
+    const cleanStr = regStr.replace(/^[rR]/, '');
+    const parts = cleanStr.split('.');
+    
+    const address = parseInt(parts[0], 10);
+    if (isNaN(address)) return null;
+    
+    let bit: number | null = null;
+    if (parts.length > 1) {
+        bit = parseInt(parts[1], 10);
+        if (isNaN(bit) || bit < 0 || bit > 15) return null; // Бит должен быть от 0 до 15
+    }
+    
+    return { address, bit };
+}

@@ -56,3 +56,63 @@ export class ModbusParser {
         return crc;
     }
 }
+
+/**
+ * Собирает Modbus-запрос на запись нескольких регистров (Function 0x10).
+ * @param slaveId Адрес устройства (например, 1)
+ * @param startAddress Начальный адрес регистра (например, 1)
+ * @param values Массив 16-битных значений для записи (Big-endian)
+ * @returns Uint8Array готовый пакет для отправки
+ */
+export function buildWriteMultipleRegistersRequest(
+    slaveId: number,
+    startAddress: number,
+    values: number[]
+): Uint8Array {
+    const byteCount = values.length * 2;
+    const length = 1 + 1 + 2 + 2 + 1 + byteCount + 2; // slave + func + addr(2) + qty(2) + bytes + data + crc(2)
+    const buffer = new Uint8Array(length);
+    let offset = 0;
+
+    buffer[offset++] = slaveId;
+    buffer[offset++] = 0x10; // Function code: Write Multiple Registers
+    buffer[offset++] = (startAddress >> 8) & 0xFF;
+    buffer[offset++] = startAddress & 0xFF;
+    buffer[offset++] = (values.length >> 8) & 0xFF;
+    buffer[offset++] = values.length & 0xFF;
+    buffer[offset++] = byteCount;
+
+    for (const val of values) {
+        // Big-endian: старший байт первым
+        buffer[offset++] = (val >> 8) & 0xFF;
+        buffer[offset++] = val & 0xFF;
+    }
+
+    // Вычисляем CRC для всего буфера, кроме последних 2 байт
+    const crc = calculateModbusCRC(buffer.subarray(0, length - 2));
+    // CRC в Modbus передаётся в Little-endian
+    buffer[offset++] = crc & 0xFF;
+    buffer[offset++] = (crc >> 8) & 0xFF;
+
+    return buffer;
+}
+
+/**
+ * Вычисляет CRC-16 (Modbus) для буфера.
+ * Вынесена отдельно, чтобы её можно было использовать и для сборки, и для парсинга.
+ */
+export function calculateModbusCRC(buffer: Uint8Array): number {
+    let crc = 0xFFFF;
+    for (let pos = 0; pos < buffer.length; pos++) {
+        crc ^= buffer[pos];
+        for (let i = 8; i !== 0; i--) {
+            if ((crc & 0x0001) !== 0) {
+                crc >>= 1;
+                crc ^= 0xA001;
+            } else {
+                crc >>= 1;
+            }
+        }
+    }
+    return crc;
+}

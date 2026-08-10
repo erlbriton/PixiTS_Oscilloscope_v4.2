@@ -1,5 +1,5 @@
 // src/oscilloscope/Oscilloscope.ts
-import { Channel, ChannelConfig } from './core/Channel';
+import { Channel, ChannelConfig, parseModbusReg } from './core/Channel.js';
 import { Archive } from './core/Archive';
 import { Recorder } from './core/Recorder';
 import { Settings } from './config/Settings';
@@ -47,12 +47,14 @@ export class Oscilloscope {
     private targetRoot: HTMLElement | null = null;
     private isDestroyed: boolean = false;
     private lastLoadedIniContent: string | null = null;
+    private selectedChannel: Channel | null = null;
+    private slaveAddress: number = 1;
 
     constructor() {
         this.settings = new Settings();
         this.archive = new Archive();
         this.serial = new Serial(this.archive);
-                this.recorder = new Recorder(this.archive, new BrowserFileSaver());
+        this.recorder = new Recorder(this.archive, new BrowserFileSaver());
         this.renderer = new Renderer(this.settings, this.archive);
     }
 
@@ -120,7 +122,7 @@ export class Oscilloscope {
         if (this.isDestroyed || !id) return;
         if (this.currentIniId === id && this.allChannels.length > 0 && !loadContent) {
             return;
-            }
+        }
         this.currentIniId = id;
         if (this.iniPanel) {
             this.iniPanel.selectFileById(id);
@@ -131,6 +133,10 @@ export class Oscilloscope {
                 void this.loadIniContent(file.content);
             }
         }
+    }
+
+    public setSlaveAddress(addr: number): void {
+        this.slaveAddress = addr;
     }
 
     public setConnectionStatus(connected: boolean, message?: string): void {
@@ -208,6 +214,10 @@ export class Oscilloscope {
         });
         this.toolbar.onToggleTimeZoom((enabled) => {
             this.settings.timeZoomEnabled = enabled;
+        });
+
+                this.bottomPanels.onCommandSubmit((text) => {
+            void this.handleCommandSubmit(text);
         });
     }
 
@@ -316,6 +326,7 @@ export class Oscilloscope {
                 this.updateVisibleChannels(this.visibleChannels.filter(c => c.id !== deletedChannel.id));
             };
             row.onSelect = (selectedChannel) => {
+                this.selectedChannel = selectedChannel;
                 this.bottomPanels.setCommandText(`${selectedChannel.name} = `);
             };
             const container = row.getGraphContainer();
@@ -366,5 +377,83 @@ export class Oscilloscope {
             this.settings.cursorX2Percent,
             this.settings.timeWindowMs
         );
+    }
+
+           private async handleCommandSubmit(text: string): Promise<void> {
+        const ch = this.selectedChannel;
+        if (!ch || !ch.modbusReg) {
+            console.warn('[Oscilloscope] No channel selected or missing modbusReg.');
+            return;
+        }
+
+        const parsedReg = parseModbusReg(ch.modbusReg);
+        if (!parsedReg) {
+            console.warn(`[Oscilloscope] Invalid modbusReg format: ${ch.modbusReg}`);
+            return;
+        }
+
+        // 1. Парсим введённое значение (hex с префиксом 'x' или десятичное)
+        const trimmed = text.trim();
+        let valueToWrite: number;
+        if (trimmed.toLowerCase().startsWith('x')) {
+            valueToWrite = parseInt(trimmed.substring(1), 16);
+        } else {
+            valueToWrite = parseInt(trimmed, 10);
+        }
+
+        if (isNaN(valueToWrite)) {
+            console.warn('[Oscilloscope] Invalid number format.');
+            return;
+        }
+
+        // 2. Обработка битовых параметров (Read-Modify-Write)
+        if (parsedReg.bit !== null) {
+            const currentVal = await this.serial.readRegister(this.slaveAddress, parsedReg.address);
+            if (currentVal === null) {
+                console.error('[Oscilloscope] Failed to read register for RMW operation.');
+                return;
+            }
+
+            let newVal = currentVal;
+            if (valueToWrite !== 0) {
+                newVal |= (1 << parsedReg.bit); // Установить бит
+            } else {
+                newVal &= ~(1 << parsedReg.bit); // Сбросить бит
+            }
+
+            console.log(`[Oscilloscope] Bit RMW: addr=${parsedReg.address}, bit=${parsedReg.bit}, old=${currentVal}, new=${newVal}`);
+            await this.serial.writeRegister(this.slaveAddress, parsedReg.address, [newVal]);
+            return;
+        }
+
+        // 3. Обработка 32-битных параметров (Float32, DWord, Int32)
+        const typeUpper = (ch.dataType || '').toUpperCase();
+        const is32Bit = typeUpper.includes('FLOAT') || typeUpper.includes('DWORD') || typeUpper.includes('LONG') || typeUpper.includes('INT32');
+
+        if (is32Bit) {
+            const buf = new ArrayBuffer(4);
+            const view = new DataView(buf);
+            
+            if (typeUpper.includes('FLOAT')) {
+                view.setFloat32(0, valueToWrite, false); // false = Big-endian
+            } else {
+                view.setUint32(0, valueToWrite, false);
+            }
+            
+            const reg1 = view.getUint16(0, false);
+            const reg2 = view.getUint16(2, false);
+            
+            console.log(`[Oscilloscope] 32-bit write: addr=${parsedReg.address}, val=${valueToWrite}, regs=[${reg1}, ${reg2}]`);
+            await this.serial.writeRegister(this.slaveAddress, parsedReg.address, [reg1, reg2]);
+        } else {
+            // 4. Обработка обычных 16-битных параметров
+            const val16 = valueToWrite & 0xFFFF;
+            console.log(`[Oscilloscope] 16-bit write: addr=${parsedReg.address}, val=${val16}`);
+            await this.serial.writeRegister(this.slaveAddress, parsedReg.address, [val16]);
+        }
+
+        // Очищаем поле ввода после успешной отправки
+        this.bottomPanels.setCommandText(`${ch.name} = `);
+        this.bottomPanels.focusCommand();
     }
 }

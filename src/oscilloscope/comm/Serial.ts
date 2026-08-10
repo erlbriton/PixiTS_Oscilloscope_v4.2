@@ -4,6 +4,7 @@ import { Channel } from '../core/Channel';
 import { Archive } from '../core/Archive';
 import { Modbus } from './Modbus';
 import type { WebSerialPort } from '../../serial/web-serial-types.js';
+import { buildWriteMultipleRegistersRequest } from '../../serial/modbus.js';
 
 export type SerialState = 'disconnected' | 'connecting' | 'connected' | 'error';
 
@@ -22,15 +23,14 @@ export class Serial {
     private lastResponseTime: number = 0;
     private hasReceivedData: boolean = false;
     private readonly TIMEOUT_MS: number = 2000;
+    
+    // Добавлено для операции Read-Modify-Write
+    private pendingReadResolve: ((val: number | null) => void) | null = null;
 
     constructor(archive: Archive) {
         this.archive = archive;
     }
 
-    /**
-     * Простая замена каналов.
-     * Никаких frameChannels и resetCommunication.
-     */
     public setChannels(channels: Channel[]): void {
         this.channels = Array.isArray(channels) ? channels : [];
     }
@@ -56,10 +56,6 @@ export class Serial {
         return 'serial' in navigator;
     }
 
-    /**
-     * Подключение через собственный диалог выбора порта,
-     * если осциллограф работает автономно.
-     */
     public async connect(baudRate: number = 115200): Promise<boolean> {
         this.baudRate = baudRate;
 
@@ -97,9 +93,6 @@ export class Serial {
         }
     }
 
-    /**
-     * Инжекция порта, открытого во внешнем проекте.
-     */
     public attachPort(port: WebSerialPort): void {
         this.port = port;
         this.setState('connected', 'Порт подключен из внешнего проекта.');
@@ -159,13 +152,6 @@ export class Serial {
         }
     }
 
-    /**
-     * Размер Modbus-запроса вычисляется автоматически
-     * по максимальному modbusReg всех каналов.
-     *
-     * Это ключевая логика рабочей версии:
-     * размер опроса НЕ привязан к количеству каналов.
-     */
     private async sendModbus03Request(slaveAddr: number = 1): Promise<void> {
         const port = this.port;
         if (!port || !port.writable || this.state !== 'connected') {
@@ -243,6 +229,70 @@ export class Serial {
         }
     }
 
+    /**
+     * Читает один регистр (для операции Read-Modify-Write битовых параметров).
+     */
+    public async readRegister(slaveId: number, address: number): Promise<number | null> {
+        const port = this.port;
+        if (!port || !port.writable || this.state !== 'connected') {
+            console.warn('[Serial] Cannot read: port not connected.');
+            return null;
+        }
+
+        const promise = new Promise<number | null>(resolve => {
+            this.pendingReadResolve = resolve;
+            // Таймаут 1 секунда на случай потери ответа
+            setTimeout(() => {
+                if (this.pendingReadResolve) {
+                    this.pendingReadResolve(null);
+                    this.pendingReadResolve = null;
+                }
+            }, 1000);
+        });
+
+        try {
+            const writer = port.writable.getWriter();
+            // Запрашиваем 1 регистр по функции 0x03
+            const frame = Modbus.createReadRequest(slaveId, 0x03, address, 1);
+            await writer.write(frame);
+            writer.releaseLock();
+        } catch (err: unknown) {
+            console.error('[Serial] Failed to send Modbus read request:', err);
+            if (this.pendingReadResolve) {
+                this.pendingReadResolve(null);
+                this.pendingReadResolve = null;
+            }
+        }
+
+        return promise;
+    }
+
+    /**
+     * Отправляет Modbus-запрос на запись регистров (Function 0x10).
+     */
+    public async writeRegister(slaveId: number, address: number, values: number[]): Promise<boolean> {
+        const port = this.port;
+        if (!port || !port.writable || this.state !== 'connected') {
+            console.warn('[Serial] Cannot write: port not connected or not writable.');
+            return false;
+        }
+
+        try {
+            const writer = port.writable.getWriter();
+            const frame = buildWriteMultipleRegistersRequest(slaveId, address, values);
+            
+            await writer.write(frame);
+            writer.releaseLock();
+            
+            console.log(`[Serial] Modbus 0x10 write sent: addr=${address}, values=${values}`);
+            return true;
+        } catch (err: unknown) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            console.error('[Serial] Failed to send Modbus 0x10 write request:', errMsg);
+            return false;
+        }
+    }
+
     private processIncomingBytes(data: Uint8Array): void {
         const now = Date.now();
 
@@ -281,86 +331,93 @@ export class Serial {
             const modbusRes = Modbus.parseReadResponse(new Uint8Array(this.rxBuffer));
 
             if (modbusRes && (modbusRes.functionCode === 0x03 || modbusRes.functionCode === 0x04)) {
-                this.channels.forEach((ch, idx) => {
-                    let val: number | null = null;
+                // Если кто-то ждёт результат чтения (Read-Modify-Write), отдаём его
+                if (this.pendingReadResolve && modbusRes.registers.length >= 1) {
+                    this.pendingReadResolve(modbusRes.registers[0]);
+                    this.pendingReadResolve = null;
+                } else {
+                    // Стандартная обработка для осциллографа
+                    this.channels.forEach((ch, idx) => {
+                        let val: number | null = null;
 
-                    if (ch.modbusReg) {
-                        const bitMatch = ch.modbusReg.match(/r([0-9a-fA-F]+)\.([0-9a-fA-F]+)/i);
-                        const regMatch = ch.modbusReg.match(/r([0-9a-fA-F]+)/i);
+                        if (ch.modbusReg) {
+                            const bitMatch = ch.modbusReg.match(/r([0-9a-fA-F]+)\.([0-9a-fA-F]+)/i);
+                            const regMatch = ch.modbusReg.match(/r([0-9a-fA-F]+)/i);
 
-                        if (bitMatch) {
-                            const regIdx = parseInt(bitMatch[1], 16);
-                            const bitIdx = parseInt(bitMatch[2], 16);
+                            if (bitMatch) {
+                                const regIdx = parseInt(bitMatch[1], 16);
+                                const bitIdx = parseInt(bitMatch[2], 16);
 
-                            if (regIdx < modbusRes.registers.length) {
-                                val = (modbusRes.registers[regIdx] >>> bitIdx) & 1;
-                            }
-                        } else if (regMatch) {
-                            const regIdx = parseInt(regMatch[1], 16);
-                            const typeUpper = (ch.dataType || '').toUpperCase();
-
-                            if (
-                                typeUpper === 'TFLOAT' ||
-                                typeUpper === 'TFLOAT32' ||
-                                typeUpper === 'FLOAT' ||
-                                typeUpper === 'REAL'
-                            ) {
-                                if (regIdx + 1 < modbusRes.registers.length) {
-                                    const w1 = modbusRes.registers[regIdx] & 0xFFFF;
-                                    const w2 = modbusRes.registers[regIdx + 1] & 0xFFFF;
-
-                                    const buf = new ArrayBuffer(4);
-                                    const view = new DataView(buf);
-
-                                    view.setUint16(0, w1, false);
-                                    view.setUint16(2, w2, false);
-
-                                    const fVal = view.getFloat32(0, false);
-                                    val = isNaN(fVal) || !isFinite(fVal) ? 0 : fVal;
-                                }
-                            } else if (
-                                typeUpper === 'TDWORD' ||
-                                typeUpper === 'TLONG' ||
-                                typeUpper === 'TINT32'
-                            ) {
-                                if (regIdx + 1 < modbusRes.registers.length) {
-                                    const w1 = modbusRes.registers[regIdx] & 0xFFFF;
-                                    const w2 = modbusRes.registers[regIdx + 1] & 0xFFFF;
-
-                                    val = (w1 << 16) | w2;
-                                }
-                            } else if (
-                                typeUpper === 'TSHORT' ||
-                                typeUpper === 'TINT16' ||
-                                typeUpper === 'TINTEGER' ||
-                                typeUpper === 'INT'
-                            ) {
                                 if (regIdx < modbusRes.registers.length) {
-                                    let s16 = modbusRes.registers[regIdx] & 0xFFFF;
+                                    val = (modbusRes.registers[regIdx] >>> bitIdx) & 1;
+                                }
+                            } else if (regMatch) {
+                                const regIdx = parseInt(regMatch[1], 16);
+                                const typeUpper = (ch.dataType || '').toUpperCase();
 
-                                    if (s16 & 0x8000) {
-                                        s16 -= 0x10000;
+                                if (
+                                    typeUpper === 'TFLOAT' ||
+                                    typeUpper === 'TFLOAT32' ||
+                                    typeUpper === 'FLOAT' ||
+                                    typeUpper === 'REAL'
+                                ) {
+                                    if (regIdx + 1 < modbusRes.registers.length) {
+                                        const w1 = modbusRes.registers[regIdx] & 0xFFFF;
+                                        const w2 = modbusRes.registers[regIdx + 1] & 0xFFFF;
+
+                                        const buf = new ArrayBuffer(4);
+                                        const view = new DataView(buf);
+
+                                        view.setUint16(0, w1, false);
+                                        view.setUint16(2, w2, false);
+
+                                        const fVal = view.getFloat32(0, false);
+                                        val = isNaN(fVal) || !isFinite(fVal) ? 0 : fVal;
                                     }
+                                } else if (
+                                    typeUpper === 'TDWORD' ||
+                                    typeUpper === 'TLONG' ||
+                                    typeUpper === 'TINT32'
+                                ) {
+                                    if (regIdx + 1 < modbusRes.registers.length) {
+                                        const w1 = modbusRes.registers[regIdx] & 0xFFFF;
+                                        const w2 = modbusRes.registers[regIdx + 1] & 0xFFFF;
 
-                                    val = s16;
-                                }
-                            } else {
-                                if (regIdx < modbusRes.registers.length) {
-                                    val = modbusRes.registers[regIdx] & 0xFFFF;
+                                        val = (w1 << 16) | w2;
+                                    }
+                                } else if (
+                                    typeUpper === 'TSHORT' ||
+                                    typeUpper === 'TINT16' ||
+                                    typeUpper === 'TINTEGER' ||
+                                    typeUpper === 'INT'
+                                ) {
+                                    if (regIdx < modbusRes.registers.length) {
+                                        let s16 = modbusRes.registers[regIdx] & 0xFFFF;
+
+                                        if (s16 & 0x8000) {
+                                            s16 -= 0x10000;
+                                        }
+
+                                        val = s16;
+                                    }
+                                } else {
+                                    if (regIdx < modbusRes.registers.length) {
+                                        val = modbusRes.registers[regIdx] & 0xFFFF;
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    if (val === null && idx < modbusRes.registers.length) {
-                        val = modbusRes.registers[idx] & 0xFFFF;
-                    }
+                        if (val === null && idx < modbusRes.registers.length) {
+                            val = modbusRes.registers[idx] & 0xFFFF;
+                        }
 
-                    if (val !== null) {
-                        ch.updateRawValue(val);
-                        this.archive.addSample(ch.id, now, ch.scaledValue);
-                    }
-                });
+                        if (val !== null) {
+                            ch.updateRawValue(val);
+                            this.archive.addSample(ch.id, now, ch.scaledValue);
+                        }
+                    });
+                }
 
                 this.rxBuffer = [];
             }
