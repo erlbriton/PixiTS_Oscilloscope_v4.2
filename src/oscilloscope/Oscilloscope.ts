@@ -1,4 +1,5 @@
 // src/oscilloscope/Oscilloscope.ts
+
 import { Channel, ChannelConfig, parseModbusReg } from './core/Channel.js';
 import { Archive } from './core/Archive';
 import { Recorder } from './core/Recorder';
@@ -106,7 +107,6 @@ export class Oscilloscope {
         });
     }
 
-    // ИСПРАВЛЕНО: строгая типизация вместо any
     public setSerialPort(port: WebSerialPort): void {
         this.serial.attachPort(port);
     }
@@ -141,6 +141,12 @@ export class Oscilloscope {
 
     public setConnectionStatus(connected: boolean, message?: string): void {
         if (this.isDestroyed) return;
+
+        // Передаем статус связи в индикатор панели инструментов
+        if (this.toolbar) {
+            this.toolbar.updateStatus(connected);
+        }
+
         if (connected) {
             if (!this.connectionLost) return;
             this.connectionLost = false;
@@ -216,7 +222,7 @@ export class Oscilloscope {
             this.settings.timeZoomEnabled = enabled;
         });
 
-                this.bottomPanels.onCommandSubmit((text) => {
+        this.bottomPanels.onCommandSubmit((text) => {
             void this.handleCommandSubmit(text);
         });
     }
@@ -243,7 +249,6 @@ export class Oscilloscope {
         );
     }
 
-    // ИСПРАВЛЕНО: использует единый CoreIniParser и applyChannelConfigs
     public async loadIniContent(iniContent: string): Promise<void> {
         if (this.isDestroyed || typeof iniContent !== 'string') return;
         if (this.allChannels.length > 0 && iniContent === this.lastLoadedIniContent) {
@@ -379,7 +384,7 @@ export class Oscilloscope {
         );
     }
 
-           private async handleCommandSubmit(text: string): Promise<void> {
+    private async handleCommandSubmit(text: string): Promise<void> {
         const ch = this.selectedChannel;
         if (!ch || !ch.modbusReg) {
             console.warn('[Oscilloscope] No channel selected or missing modbusReg.');
@@ -392,7 +397,6 @@ export class Oscilloscope {
             return;
         }
 
-        // 1. Парсим введённое значение (hex с префиксом 'x' или десятичное)
         const trimmed = text.trim();
         let valueToWrite: number;
         if (trimmed.toLowerCase().startsWith('x')) {
@@ -406,7 +410,6 @@ export class Oscilloscope {
             return;
         }
 
-        // 2. Обработка битовых параметров (Read-Modify-Write)
         if (parsedReg.bit !== null) {
             const currentVal = await this.serial.readRegister(this.slaveAddress, parsedReg.address);
             if (currentVal === null) {
@@ -416,9 +419,9 @@ export class Oscilloscope {
 
             let newVal = currentVal;
             if (valueToWrite !== 0) {
-                newVal |= (1 << parsedReg.bit); // Установить бит
+                newVal |= (1 << parsedReg.bit);
             } else {
-                newVal &= ~(1 << parsedReg.bit); // Сбросить бит
+                newVal &= ~(1 << parsedReg.bit);
             }
 
             console.log(`[Oscilloscope] Bit RMW: addr=${parsedReg.address}, bit=${parsedReg.bit}, old=${currentVal}, new=${newVal}`);
@@ -426,7 +429,6 @@ export class Oscilloscope {
             return;
         }
 
-        // 3. Обработка 32-битных параметров (Float32, DWord, Int32)
         const typeUpper = (ch.dataType || '').toUpperCase();
         const is32Bit = typeUpper.includes('FLOAT') || typeUpper.includes('DWORD') || typeUpper.includes('LONG') || typeUpper.includes('INT32');
 
@@ -435,7 +437,7 @@ export class Oscilloscope {
             const view = new DataView(buf);
             
             if (typeUpper.includes('FLOAT')) {
-                view.setFloat32(0, valueToWrite, false); // false = Big-endian
+                view.setFloat32(0, valueToWrite, false);
             } else {
                 view.setUint32(0, valueToWrite, false);
             }
@@ -446,13 +448,11 @@ export class Oscilloscope {
             console.log(`[Oscilloscope] 32-bit write: addr=${parsedReg.address}, val=${valueToWrite}, regs=[${reg1}, ${reg2}]`);
             await this.serial.writeRegister(this.slaveAddress, parsedReg.address, [reg1, reg2]);
         } else {
-            // 4. Обработка обычных 16-битных параметров
             const val16 = valueToWrite & 0xFFFF;
             console.log(`[Oscilloscope] 16-bit write: addr=${parsedReg.address}, val=${val16}`);
             await this.serial.writeRegister(this.slaveAddress, parsedReg.address, [val16]);
         }
 
-        // Очищаем поле ввода после успешной отправки
         this.bottomPanels.setCommandText(`${ch.name} = `);
         this.bottomPanels.focusCommand();
     }

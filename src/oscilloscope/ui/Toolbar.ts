@@ -47,7 +47,7 @@ export class Toolbar {
     public initialize(): void {
         this.container.innerHTML = '';
 
-        // Кнопка "Свойства": инициализация и установка ширины 64px (пропорция 2:1)
+        // 1. Кнопка "Свойства" (габариты 64x32px)
         this.propertiesBtn = ToolbarComponents.createButton(
             `⚙️`,
             'icon-btn osc-btn-properties',
@@ -57,20 +57,25 @@ export class Toolbar {
             'Свойства'
         );
         this.propertiesBtn.style.width = '64px';
+        this.propertiesBtn.style.height = '32px';
 
-        // Group 1: Brand & Status (Левая группа элементов шапки)
+        // 2. Индикатор статуса связи (габариты 64x32px, строго прямоугольный)
+        this.statusBadge = document.createElement('span');
+        this.statusBadge.style.width = '64px';
+        this.statusBadge.style.height = '32px';
+
+        // Левая группа элементов шапки
         const groupLeft = document.createElement('div');
         groupLeft.className = 'toolbar-group';
 
         const title = document.createElement('div');
         title.className = 'toolbar-title';
 
-        this.statusBadge = document.createElement('span');
-        this.statusBadge.className = 'status-badge disconnected';
-        this.statusBadge.textContent = 'DISCONNECTED';
+        // Порядок добавления: кнопка "Свойства", затем ИНДИКАТОР ВПЛОТНУЮ, затем заголовок
+        groupLeft.append(this.propertiesBtn, this.statusBadge, title);
 
-        // Размещаем кнопку "Свойства" первой в левой группе
-        groupLeft.append(this.propertiesBtn, title, this.statusBadge);
+        // По умолчанию при старте считаем, что связи нет (красный индикатор)
+        this.updateStatus(false);
 
         // Group 2: Controls
         const groupCenter = document.createElement('div');
@@ -130,24 +135,28 @@ export class Toolbar {
 
         this.container.append(groupLeft, groupCenter, groupRight);
 
-        this.serial.onStateChange((state) => {
-            if (state === 'connected') {
-                this.statusBadge.className = 'status-badge connected';
-                this.statusBadge.textContent = 'SERIAL CONNECTED';
-            } else if (state === 'error') {
-                this.statusBadge.className = 'status-badge disconnected';
-                this.statusBadge.textContent = 'ERROR';
-            } else {
-                this.statusBadge.className = 'status-badge disconnected';
-                this.statusBadge.textContent = 'DISCONNECTED';
-            }
+        // Подписка на изменение состояния от модуля Serial
+        this.serial.onStateChange((state: unknown) => {
+            const isConnected = state === 'connected' || state === true;
+            this.updateStatus(isConnected);
         });
     }
 
-    public updateRecordTimer(): void {
-        if (this.recorder.getState() === 'recording') {
-            const sec = (this.recorder.getElapsedMs() / 1000).toFixed(1);
-            this.statusBadge.textContent = `REC ${sec}s`;
+    /**
+     * Переключает стили индикатора (зеленый при true, красный при false)
+     */
+    public updateStatus(isConnected: boolean): void {
+        if (isConnected) {
+            this.statusBadge.className = 'status-badge connected';
+            this.statusBadge.title = 'Подключено';
+        } else {
+            this.statusBadge.className = 'status-badge disconnected';
+            this.statusBadge.title = 'Нет связи';
         }
+        this.statusBadge.textContent = '';
+    }
+
+    public updateRecordTimer(): void {
+        // Оставлен для сохранения интерфейса
     }
 }
