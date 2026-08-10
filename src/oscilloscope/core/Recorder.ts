@@ -1,19 +1,20 @@
-// src/core/Recorder.ts
-
+// src/oscilloscope/core/Recorder.ts
 import { Archive } from './Archive';
 import { Channel } from './Channel';
+import type { IFileSaver } from '../../core/platform/fs.js';
 
 export type RecordState = 'idle' | 'recording' | 'paused';
-
 export class Recorder {
     private state: RecordState = 'idle';
     private startTime: number = 0;
     private pauseTime: number = 0;
     private totalPausedDuration: number = 0;
     private archive: Archive;
+    private fileSaver: IFileSaver;
 
-    constructor(archive: Archive) {
+    constructor(archive: Archive, fileSaver: IFileSaver) {
         this.archive = archive;
+        this.fileSaver = fileSaver;
     }
 
     public start(): void {
@@ -85,15 +86,9 @@ export class Recorder {
         return lines.join('\n');
     }
 
-    public downloadCSV(channels: Channel[], filename: string = 'oscilloscope_record.csv'): void {
+    // ИСПРАВЛЕНО: Убрана прямая работа с DOM. Делегировано в IFileSaver.
+    public async downloadCSV(channels: Channel[], filename: string = 'oscilloscope_record.csv'): Promise<void> {
         const csvContent = this.exportCSV(channels);
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.setAttribute('href', url);
-        link.setAttribute('download', filename);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        await this.fileSaver.saveTextFile(filename, csvContent, 'text/csv;charset=utf-8');
     }
 }

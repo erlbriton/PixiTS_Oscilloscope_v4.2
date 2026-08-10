@@ -17,6 +17,7 @@ import { BottomPanels, ReadoutSlot } from './ui/BottomPanels';
 import { CursorsFooter } from './ui/CursorsFooter';
 import { ConnectionModal } from './ui/ConnectionModal';
 import type { WebSerialPort } from '../serial/web-serial-types.js';
+import { BrowserFileSaver } from '../core/platform/browser-fs.js';
 
 export class Oscilloscope {
     private settings: Settings;
@@ -51,7 +52,7 @@ export class Oscilloscope {
         this.settings = new Settings();
         this.archive = new Archive();
         this.serial = new Serial(this.archive);
-        this.recorder = new Recorder(this.archive);
+                this.recorder = new Recorder(this.archive, new BrowserFileSaver());
         this.renderer = new Renderer(this.settings, this.archive);
     }
 
