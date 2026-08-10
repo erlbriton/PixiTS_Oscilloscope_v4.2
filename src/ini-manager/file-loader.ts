@@ -62,7 +62,7 @@ async function processSingleFile(file: File, appState: AppState): Promise<void> 
       throw new Error('Неверный формат INI файла (отсутствуют стандартные секции)');
     }
 
-    appState.currentDeviceConfig = config;
+   // appState.currentDeviceConfig = config;
     appState.currentIniContent = content;
     appState.currentIniConfig = iniConfig;
 

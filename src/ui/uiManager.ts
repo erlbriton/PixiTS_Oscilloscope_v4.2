@@ -94,12 +94,8 @@ export function initUI(deps: UiManagerDeps): void {
     (view as unknown as Record<string, unknown>).__loadIniContentWrapped = true;
     view.loadIniContent = async (iniContent: string) => {
       try {
-        if (typeof iniContent === 'string' && iniContent.trim().length > 0) {
-          appState.currentIniContent = iniContent;
-          const parsedConfig = appState.parser.parse(iniContent);
-          if (parsedConfig && (parsedConfig['RAM'] || parsedConfig['DEVICE'] || parsedConfig['CD'] || parsedConfig['FLASH'])) {
-            appState.currentDeviceConfig = parsedConfig;
-          }
+                        if (typeof iniContent === 'string' && iniContent.trim().length > 0) {
+                    appState.currentIniContent = iniContent;
           const coreParser = new CoreIniParser();
           const parseResult = coreParser.parse(iniContent);
           appState.currentIniConfig = new IniConfig(parseResult);
