@@ -59,10 +59,20 @@ export class Toolbar {
         this.propertiesBtn.style.width = '64px';
         this.propertiesBtn.style.height = '32px';
 
-        // 2. Индикатор статуса связи (габариты 64x32px, строго прямоугольный)
+        // 2. Индикатор статуса связи (прямоугольная плашка с чётким текстом)
         this.statusBadge = document.createElement('span');
-        this.statusBadge.style.width = '64px';
+        this.statusBadge.style.minWidth = '95px';
         this.statusBadge.style.height = '32px';
+        this.statusBadge.style.display = 'inline-flex';
+        this.statusBadge.style.alignItems = 'center';
+        this.statusBadge.style.justifyContent = 'center';
+        this.statusBadge.style.padding = '0 8px';
+        this.statusBadge.style.fontSize = '13px';
+        this.statusBadge.style.fontWeight = 'bold';
+        this.statusBadge.style.color = '#0f110b'; // Яркий белый цвет для максимального контраста
+        this.statusBadge.style.textShadow = '0 1px 2px rgba(0, 0, 0, 0.5)'; // Тень для чёткости букв
+        this.statusBadge.style.userSelect = 'none';
+        this.statusBadge.style.borderRadius = '4px';
 
         // Левая группа элементов шапки
         const groupLeft = document.createElement('div');
@@ -74,7 +84,7 @@ export class Toolbar {
         // Порядок добавления: кнопка "Свойства", затем ИНДИКАТОР ВПЛОТНУЮ, затем заголовок
         groupLeft.append(this.propertiesBtn, this.statusBadge, title);
 
-        // По умолчанию при старте считаем, что связи нет (красный индикатор)
+        // По умолчанию при старте устанавливаем состояние "Нет связи"
         this.updateStatus(false);
 
         // Group 2: Controls
@@ -143,17 +153,20 @@ export class Toolbar {
     }
 
     /**
-     * Переключает стили индикатора (зеленый при true, красный при false)
+     * Обновляет цвет и надпись индикатора состояния связи без всплывающих подсказок.
+     * @param isConnected - true, если связь установлена, false — если потеряна
      */
     public updateStatus(isConnected: boolean): void {
+        // Убираем всплывающую подсказку, если она была установлена ранее
+        this.statusBadge.removeAttribute('title');
+
         if (isConnected) {
             this.statusBadge.className = 'status-badge connected';
-            this.statusBadge.title = 'Подключено';
+            this.statusBadge.textContent = 'Подключено';
         } else {
             this.statusBadge.className = 'status-badge disconnected';
-            this.statusBadge.title = 'Нет связи';
+            this.statusBadge.textContent = 'Нет связи';
         }
-        this.statusBadge.textContent = '';
     }
 
     public updateRecordTimer(): void {
