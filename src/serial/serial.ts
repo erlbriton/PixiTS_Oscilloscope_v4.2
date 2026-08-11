@@ -8,6 +8,8 @@ export class SerialConnection implements ISerialPort {
   public readableStream: ReadableStream<Uint8Array> | null;
   public isConnected: boolean;
   private onDisconnectCallback?: () => void;
+      private isReadingRegister: boolean = false;
+  private pendingReadResolve: ((val: number | null) => void) | null = null;
 
   constructor() {
     this.port = null;
@@ -73,26 +75,173 @@ export class SerialConnection implements ISerialPort {
   /**
    * Асинхронное чтение очередной порции сырых байт из буфера.
    */
-  public async readChunk(): Promise<Uint8Array | null> {
-    const reader = this.reader;
-    if (!this.isConnected || !reader) {
-      return null;
+     public async readChunk(): Promise<Uint8Array | null> {
+        const reader = this.reader;
+        if (!this.isConnected || !reader) {
+            return null;
+        }
+        try {
+            const { value, done } = await reader.read();
+            if (done) {
+                if (!this.isReadingRegister) {
+                    this.release();
+                }
+                return null;
+            }
+            return value ?? null;
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.error("[Serial] Ошибка критического чтения из порта:", message);
+            if (!this.isReadingRegister) {
+                this.release();
+            }
+            throw error;
+        }
     }
-    try {
-      const { value, done } = await reader.read();
-      if (done) {
-        this.release();
-        return null;
-      }
-      return value ?? null;
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error("[Serial] Ошибка критического чтения из порта:", message);
-      this.release();
-      throw error;
-    }
-  }
 
+      /**
+     * Читает один регистр (для RMW битовых параметров).
+     * Возвращает Promise, который разрешится, когда придёт ответ.
+     */
+       /**
+     * Читает один регистр (для RMW битовых параметров).
+     * Временно освобождает основной reader, создает временный для чтения ответа, затем возвращает основной.
+     */
+        /**
+     * Читает один регистр (для RMW битовых параметров).
+     */
+    public async readRegister(slaveId: number, address: number): Promise<number | null> {
+        // Сохраняем ссылку на порт ДО любых операций
+        const port = this.port;
+        if (!this.isConnected || !port || !port.writable || !port.readable) {
+            console.warn('[SerialConnection] Cannot read: not connected or port unavailable.');
+            return null;
+        }
+
+        this.isReadingRegister = true;
+
+        // Формируем запрос Modbus FC 0x03 на 1 регистр
+        const frame = new Uint8Array(8);
+        frame[0] = slaveId;
+        frame[1] = 0x03;
+        frame[2] = (address >> 8) & 0xFF;
+        frame[3] = address & 0xFF;
+        frame[4] = 0x00;
+        frame[5] = 0x01;
+
+        let crc = 0xFFFF;
+        for (let pos = 0; pos < 6; pos++) {
+            crc ^= frame[pos];
+            for (let i = 8; i !== 0; i--) {
+                if ((crc & 0x0001) !== 0) { crc >>= 1; crc ^= 0xA001; }
+                else { crc >>= 1; }
+            }
+        }
+        frame[6] = crc & 0xFF;
+        frame[7] = (crc >> 8) & 0xFF;
+
+        try {
+            // 1. Освобождаем текущий reader
+            await this.unlockReader();
+
+            // 2. Восстанавливаем port если release() его обнулил
+            if (!this.port) {
+                this.port = port;
+                this.isConnected = true;
+            }
+
+            // 3. Создаем временный reader через сохранённую ссылку
+            const tempReader = port.readable.getReader();
+
+            // 4. Отправляем запрос
+            const writer = port.writable.getWriter();
+            await writer.write(frame);
+            writer.releaseLock();
+
+            // 5. Читаем ответ
+            let buffer: number[] = [];
+            const startTime = Date.now();
+            while (Date.now() - startTime < 500) {
+                const { value, done } = await tempReader.read();
+                if (done) break;
+                if (value) {
+                    for (let i = 0; i < value.length; i++) {
+                        buffer.push(value[i]);
+                    }
+                }
+
+                if (buffer.length >= 5 && buffer[1] === 0x03) {
+                    const byteCount = buffer[2];
+                    const expectedLength = 3 + byteCount + 2;
+                    if (buffer.length >= expectedLength) {
+                        const val = (buffer[3] << 8) | buffer[4];
+                        tempReader.releaseLock();
+                        await this.lockReader();
+                        this.isReadingRegister = false;
+                        return val;
+                    }
+                }
+            }
+
+            tempReader.releaseLock();
+            await this.lockReader();
+            console.warn('[SerialConnection] readRegister: таймаут или неполный ответ');
+            this.isReadingRegister = false;
+            return null;
+        } catch (err) {
+            console.error('[SerialConnection] readRegister error:', err);
+            try {
+                if (!this.port) {
+                    this.port = port;
+                    this.isConnected = true;
+                }
+                await this.lockReader();
+            } catch (e) {
+                console.error('[SerialConnection] Failed to lock reader after error:', e);
+            }
+            this.isReadingRegister = false;
+            return null;
+        }
+    }
+    /**
+     * Разрешает ожидающий запрос на чтение (вызывается из readLoop).
+     */
+    public resolvePendingRead(value: number): void {
+        if (this.pendingReadResolve) {
+            this.pendingReadResolve(value);
+            this.pendingReadResolve = null;
+        }
+    }
+
+    private buildReadRequest(slaveAddr: number, startAddr: number, count: number): Uint8Array {
+        const frame = new Uint8Array(8);
+        frame[0] = slaveAddr;
+        frame[1] = 0x03;
+        frame[2] = (startAddr >> 8) & 0xFF;
+        frame[3] = startAddr & 0xFF;
+        frame[4] = (count >> 8) & 0xFF;
+        frame[5] = count & 0xFF;
+        const crc = this.calculateCRC(frame, 6);
+        frame[6] = crc & 0xFF;
+        frame[7] = (crc >> 8) & 0xFF;
+        return frame;
+    }
+
+    private calculateCRC(buffer: Uint8Array, length: number): number {
+        let crc = 0xFFFF;
+        for (let pos = 0; pos < length; pos++) {
+            crc ^= buffer[pos];
+            for (let i = 8; i !== 0; i--) {
+                if ((crc & 0x0001) !== 0) {
+                    crc >>= 1;
+                    crc ^= 0xA001;
+                } else {
+                    crc >>= 1;
+                }
+            }
+        }
+        return crc;
+    }
   /**
    * Отправка массива байт в устройство.
    */
@@ -105,6 +254,11 @@ export class SerialConnection implements ISerialPort {
     await writer.write(data);
     writer.releaseLock();
   }
+
+      /**
+     * Читает один регистр (для RMW битовых параметров).
+     * Временно освобождает reader, чтобы перехватить ответ, затем возвращает его.
+     */
 
   /**
    * Освобождает reader без закрытия порта.

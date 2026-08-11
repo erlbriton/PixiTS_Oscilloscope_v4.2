@@ -432,9 +432,39 @@ export class Oscilloscope {
             return;
         }
 
-        // 3. Временно пропускаем битовые параметры (TODO: добавить Read-Modify-Write)
+                // 3. Обработка битовых параметров (Read-Modify-Write)
         if (parsedReg.bit !== null) {
-            console.warn('[Oscilloscope] Bit parameters not supported yet (TODO: RMW).');
+            const serialWithRead = this.externalSerial as { readRegister?(slaveId: number, address: number): Promise<number | null> };
+            
+            if (!serialWithRead.readRegister) {
+                console.error('[Oscilloscope] externalSerial does not support readRegister.');
+                return;
+                }
+
+            const currentVal = await serialWithRead.readRegister(this.slaveAddress, parsedReg.address);
+            if (currentVal === null) {
+                console.error('[Oscilloscope] Failed to read register for RMW operation.');
+                return;
+            }
+
+            let newVal = currentVal;
+            if (valueToWrite !== 0) {
+                newVal |= (1 << parsedReg.bit); // Установить бит в 1
+            } else {
+                newVal &= ~(1 << parsedReg.bit); // Сбросить бит в 0
+            }
+
+            console.log(`[Oscilloscope] Bit RMW: addr=${parsedReg.address}, bit=${parsedReg.bit}, old=${currentVal}, new=${newVal}`);
+            
+            // Записываем новое значение
+            const packet = buildWriteMultipleRegistersRequest(this.slaveAddress, parsedReg.address, [newVal]);
+            const hexDump = Array.from(packet).map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
+            console.log(`[Oscilloscope] Bit RMW packet HEX: ${hexDump}`);
+            
+            await this.externalSerial.write(packet);
+            console.log('[Oscilloscope] Bit RMW write sent successfully.');
+            
+            this.bottomPanels.focusCommand();
             return;
         }
 

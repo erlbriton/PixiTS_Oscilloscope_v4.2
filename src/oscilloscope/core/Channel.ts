@@ -112,11 +112,11 @@ export function parseModbusReg(regStr: string): ParsedModbusReg | null {
     const address = parseInt(parts[0], 16);
     if (isNaN(address)) return null;
     
-    let bit: number | null = null;
-    if (parts.length > 1) {
-        bit = parseInt(parts[1], 10);
-        if (isNaN(bit) || bit < 0 || bit > 15) return null; // Бит должен быть от 0 до 15
-    }
+   let bit: number | null = null;
+      if (parts.length > 1) {
+          bit = parseInt(parts[1], 16); // <-- Изменили 10 на 16 для поддержки hex (например, 'B' = 11)
+          if (isNaN(bit) || bit < 0 || bit > 15) return null; // Бит должен быть от 0 до 15
+      }
     
     return { address, bit };
 }

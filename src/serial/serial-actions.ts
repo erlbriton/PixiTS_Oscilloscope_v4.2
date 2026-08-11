@@ -353,7 +353,7 @@ export async function readLoop(serial: ISerialPort, _parser: unknown, view: IOsc
         stateObj.isLoopRunning = false;
         console.log("DEBUG: Единый батчевый readLoop остановлен");
     }
-}
+}////////////////////////////////////////////////////////////////////////
 // ── Вспомогательные функции декодирования Modbus-значений ──
 /**
  * Декодирует 32-битное значение из двух 16-битных слов Modbus.
