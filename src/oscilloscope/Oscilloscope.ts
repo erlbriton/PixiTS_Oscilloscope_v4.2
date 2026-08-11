@@ -455,7 +455,7 @@ export class Oscilloscope {
             
             const reg1 = view.getUint16(0, false);
             const reg2 = view.getUint16(2, false);
-            values = [reg1, reg2];
+            values = [reg2, reg1];
             
             console.log(`[Oscilloscope] 32-bit write: addr=${parsedReg.address}, val=${valueToWrite}, regs=[${reg1}, ${reg2}]`);
         } else {
