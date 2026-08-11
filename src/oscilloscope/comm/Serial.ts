@@ -232,10 +232,27 @@ export class Serial {
     /**
      * Читает один регистр (для операции Read-Modify-Write битовых параметров).
      */
-    public async readRegister(slaveId: number, address: number): Promise<number | null> {
+       public async readRegister(slaveId: number, address: number): Promise<number | null> {
         const port = this.port;
-        if (!port || !port.writable || this.state !== 'connected') {
-            console.warn('[Serial] Cannot read: port not connected.');
+        
+        // Детальная диагностика
+        console.log('[Serial] readRegister check:', {
+            hasPort: !!port,
+            hasWritable: !!port?.writable,
+            state: this.state,
+            portType: port?.constructor?.name || 'unknown'
+        });
+        
+        if (!port) {
+            console.warn('[Serial] Cannot read: port is null.');
+            return null;
+        }
+        if (!port.writable) {
+            console.warn('[Serial] Cannot read: port.writable is null.');
+            return null;
+        }
+        if (this.state !== 'connected') {
+            console.warn(`[Serial] Cannot read: state is "${this.state}", expected "connected".`);
             return null;
         }
 

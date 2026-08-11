@@ -19,6 +19,7 @@ import { CursorsFooter } from './ui/CursorsFooter';
 import { ConnectionModal } from './ui/ConnectionModal';
 import type { WebSerialPort } from '../serial/web-serial-types.js';
 import { BrowserFileSaver } from '../core/platform/browser-fs.js';
+import { buildWriteMultipleRegistersRequest } from '../serial/modbus.js';
 
 export class Oscilloscope {
     private settings: Settings;
@@ -50,6 +51,7 @@ export class Oscilloscope {
     private lastLoadedIniContent: string | null = null;
     private selectedChannel: Channel | null = null;
     private slaveAddress: number = 1;
+    private externalSerial: { write(data: Uint8Array): Promise<void> } | null = null;
 
     constructor() {
         this.settings = new Settings();
@@ -57,6 +59,16 @@ export class Oscilloscope {
         this.serial = new Serial(this.archive);
         this.recorder = new Recorder(this.archive, new BrowserFileSaver());
         this.renderer = new Renderer(this.settings, this.archive);
+    }
+
+    public setSerialPort(port: unknown): void {
+        if (port && typeof (port as { write: unknown }).write === 'function') {
+            this.externalSerial = port as { write(data: Uint8Array): Promise<void> };
+            console.log('[Oscilloscope] External serial port attached.');
+        } else {
+            this.externalSerial = null;
+            console.warn('[Oscilloscope] Invalid serial port object.');
+        }
     }
 
     public async initialize(targetContainer?: HTMLElement | string): Promise<void> {
@@ -105,10 +117,6 @@ export class Oscilloscope {
                 }
             }
         });
-    }
-
-    public setSerialPort(port: WebSerialPort): void {
-        this.serial.attachPort(port);
     }
 
     public setIniFiles(files: IniFileItem[]): void {
@@ -397,12 +405,26 @@ export class Oscilloscope {
             return;
         }
 
-        const trimmed = text.trim();
+        if (!this.externalSerial) {
+            console.warn('[Oscilloscope] No external serial port attached for write.');
+            return;
+        }
+
+        // 1. Извлекаем значение после '='
+        const parts = text.split('=');
+        if (parts.length < 2) {
+            console.warn('[Oscilloscope] No "=" found in command.');
+            return;
+        }
+
+        const valueStr = parts.slice(1).join('=').trim();
+        
+        // 2. Парсим введённое значение (hex с префиксом 'x' или десятичное)
         let valueToWrite: number;
-        if (trimmed.toLowerCase().startsWith('x')) {
-            valueToWrite = parseInt(trimmed.substring(1), 16);
+        if (valueStr.toLowerCase().startsWith('x')) {
+            valueToWrite = parseInt(valueStr.substring(1), 16);
         } else {
-            valueToWrite = parseInt(trimmed, 10);
+            valueToWrite = parseInt(valueStr, 10);
         }
 
         if (isNaN(valueToWrite)) {
@@ -410,50 +432,52 @@ export class Oscilloscope {
             return;
         }
 
+        // 3. Временно пропускаем битовые параметры (TODO: добавить Read-Modify-Write)
         if (parsedReg.bit !== null) {
-            const currentVal = await this.serial.readRegister(this.slaveAddress, parsedReg.address);
-            if (currentVal === null) {
-                console.error('[Oscilloscope] Failed to read register for RMW operation.');
-                return;
-            }
-
-            let newVal = currentVal;
-            if (valueToWrite !== 0) {
-                newVal |= (1 << parsedReg.bit);
-            } else {
-                newVal &= ~(1 << parsedReg.bit);
-            }
-
-            console.log(`[Oscilloscope] Bit RMW: addr=${parsedReg.address}, bit=${parsedReg.bit}, old=${currentVal}, new=${newVal}`);
-            await this.serial.writeRegister(this.slaveAddress, parsedReg.address, [newVal]);
+            console.warn('[Oscilloscope] Bit parameters not supported yet (TODO: RMW).');
             return;
         }
 
+        // 4. Обработка 32-битных параметров (Float32, DWord, Int32)
         const typeUpper = (ch.dataType || '').toUpperCase();
         const is32Bit = typeUpper.includes('FLOAT') || typeUpper.includes('DWORD') || typeUpper.includes('LONG') || typeUpper.includes('INT32');
 
+        let values: number[];
         if (is32Bit) {
             const buf = new ArrayBuffer(4);
             const view = new DataView(buf);
             
             if (typeUpper.includes('FLOAT')) {
-                view.setFloat32(0, valueToWrite, false);
+                view.setFloat32(0, valueToWrite, false); // false = Big-endian
             } else {
                 view.setUint32(0, valueToWrite, false);
             }
             
             const reg1 = view.getUint16(0, false);
             const reg2 = view.getUint16(2, false);
+            values = [reg1, reg2];
             
             console.log(`[Oscilloscope] 32-bit write: addr=${parsedReg.address}, val=${valueToWrite}, regs=[${reg1}, ${reg2}]`);
-            await this.serial.writeRegister(this.slaveAddress, parsedReg.address, [reg1, reg2]);
         } else {
+            // 5. Обработка обычных 16-битных параметров
             const val16 = valueToWrite & 0xFFFF;
+            values = [val16];
             console.log(`[Oscilloscope] 16-bit write: addr=${parsedReg.address}, val=${val16}`);
-            await this.serial.writeRegister(this.slaveAddress, parsedReg.address, [val16]);
         }
 
-        this.bottomPanels.setCommandText(`${ch.name} = `);
+        // 6. Строим Modbus-пакет и отправляем через внешний порт
+                try {
+            const packet = buildWriteMultipleRegistersRequest(this.slaveAddress, parsedReg.address, values);
+            const hexDump = Array.from(packet).map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
+            console.log(`[Oscilloscope] Write packet HEX (${packet.length} bytes): ${hexDump}`);
+            await this.externalSerial.write(packet);
+            console.log('[Oscilloscope] Write packet sent successfully.');
+        } catch (err: unknown) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            console.error('[Oscilloscope] Failed to send write packet:', errMsg);
+        }
+
+         // НЕ очищаем поле ввода — пользователь должен видеть отправленное значение
         this.bottomPanels.focusCommand();
     }
 }

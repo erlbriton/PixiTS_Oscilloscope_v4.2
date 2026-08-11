@@ -82,7 +82,7 @@ export function buildWriteMultipleRegistersRequest(
     buffer[offset++] = values.length & 0xFF;
     buffer[offset++] = byteCount;
 
-    for (const val of values) {
+     for (const val of values) {
         // Big-endian: старший байт первым
         buffer[offset++] = (val >> 8) & 0xFF;
         buffer[offset++] = val & 0xFF;

@@ -109,12 +109,25 @@ export function initUI(deps: UiManagerDeps): void {
   }
 
   if (connectBtn) {
-    connectBtn.addEventListener("click", async () => {
+        connectBtn.addEventListener("click", async () => {
+          console.log('[DEBUG] Клик по кнопке "Подключить" обработан!');
       if (serial.isConnected) { showIdModal("Порт уже открыт!"); return; }
       try {
         await serial.connect(115200);
+                console.log('[DEBUG] serial.connect завершен, isConnected:', serial.isConnected);
         const chipName = updateComInterfaceName(serial, comSelect);
         console.log(`Успешно подключено к: ${chipName}`);
+        
+        // === ВСТАВЬТЕ ЭТОТ БЛОК ===
+        const osc = window.osc;
+        if (osc && typeof osc.setSerialPort === 'function') {
+            console.log('[uiManager] Передаю порт в осциллограф для записи...');
+            osc.setSerialPort(serial);
+        } else {
+            console.warn('[uiManager] Осциллограф не найден или нет метода setSerialPort!');
+        }
+        // ============================
+
         restoreConnection();
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -136,8 +149,17 @@ export function initUI(deps: UiManagerDeps): void {
 
   if (idBtn) {
     idBtn.addEventListener("click", async () => {
-      if (serial.isConnected) { showIdModal("Порт уже открыт!"); return; }
+            if (serial.isConnected) { showIdModal("Порт уже открыт!"); return; }
       await executeDeviceIdentification(serial, comSelect, appState);
+      
+      // === ПЕРЕДАЧА ПОРТА В ОСЦИЛЛОГРАФ ===
+      const osc = window.osc;
+      if (osc && typeof osc.setSerialPort === 'function') {
+          console.log('[uiManager] Передаю порт в осциллограф для записи (после ID)...');
+          osc.setSerialPort(serial);
+      }
+      // ====================================
+
       restoreConnection();
     });
   }

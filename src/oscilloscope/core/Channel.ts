@@ -109,7 +109,7 @@ export function parseModbusReg(regStr: string): ParsedModbusReg | null {
     const cleanStr = regStr.replace(/^[rR]/, '');
     const parts = cleanStr.split('.');
     
-    const address = parseInt(parts[0], 10);
+    const address = parseInt(parts[0], 16);
     if (isNaN(address)) return null;
     
     let bit: number | null = null;
