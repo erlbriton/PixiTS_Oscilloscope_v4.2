@@ -197,14 +197,22 @@ export class Oscilloscope {
         this.toolbar.onOpenProperties(() => {
             this.propertiesModal.open(this.allChannels, this.visibleChannels);
         });
-        this.toolbar.onToggleWindowSize((isHalf) => {
+                       this.toolbar.onToggleWindowSize((isHalf) => {
             if (this.splitContainer) {
+                const viewport = this.splitContainer.parentElement;
+                // Находим #osc-container — самый верхний контейнер осциллографа
+                const oscContainer = document.querySelector('#osc-container');
+                
                 if (isHalf) {
                     this.splitContainer.classList.add('half-window-left');
                     this.splitContainer.classList.remove('full-window');
+                    if (viewport) viewport.classList.remove('full-window');
+                    if (oscContainer) oscContainer.classList.remove('full-window');
                 } else {
                     this.splitContainer.classList.remove('half-window-left');
                     this.splitContainer.classList.add('full-window');
+                    if (viewport) viewport.classList.add('full-window');
+                    if (oscContainer) oscContainer.classList.add('full-window');
                 }
             }
         });

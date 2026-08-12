@@ -1,11 +1,21 @@
 #osc-container {
     display: flex;
-    flex-direction: column; /* Теперь это колонка: сверху тулбар, снизу рабочая область */
+    flex-direction: column;
     flex: 1;
     height: 100%;
     width: 100%;
     overflow: hidden;
     background: #000;
+    position: relative;
+}
+
+/* В режиме full-window скрываем таблицу справа */
+#osc-container.full-window {
+    z-index: 1000;
+}
+
+#osc-container.full-window ~ .panel-right {
+    display: none !important;
 }
 
 /* =========================================

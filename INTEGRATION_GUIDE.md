@@ -112,3 +112,5 @@ function onFileHighlighted(fileId: string) {
 3. **Z-Index**: The oscilloscope uses fixed and relative positioning. Ensure your main project container has `position: relative` or `overflow: hidden` if you want to constrain it.
 
 Кнопка "Свойства", стили - файл src/css/oscilloscope.css
+
+Частота подачи записи при проверке цифровых выходов -  await new Promise(resolve => setTimeout(resolve, 100));  в файле src\oscilloscope\Oscilloscope.ts
