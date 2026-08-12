@@ -17,6 +17,7 @@ import { PropertiesModal } from './ui/PropertiesModal';
 import { BottomPanels, ReadoutSlot } from './ui/BottomPanels';
 import { CursorsFooter } from './ui/CursorsFooter';
 import { ConnectionModal } from './ui/ConnectionModal';
+import { TimelineScrollbar } from './ui/TimelineScrollbar';
 import type { WebSerialPort } from '../serial/web-serial-types.js';
 import { BrowserFileSaver } from '../core/platform/browser-fs.js';
 import { buildWriteMultipleRegistersRequest } from '../serial/modbus.js';
@@ -34,6 +35,7 @@ export class Oscilloscope {
     private bottomPanels!: BottomPanels;
     private cursorsFooter!: CursorsFooter;
     private connectionModal!: ConnectionModal;
+    private timelineScrollbar!: TimelineScrollbar;
     private connectionLost: boolean = false;
     private rowsContainer!: HTMLElement;
     private splitContainer!: HTMLElement;
@@ -87,6 +89,17 @@ export class Oscilloscope {
         this.settings.applyCSSTemplateVariables();
         const layoutElements = Layout.createSkeleton(rootElement);
         this.splitContainer = layoutElements.splitContainer;
+
+        // Инициализация скроллбара времени
+        this.timelineScrollbar = new TimelineScrollbar(layoutElements.timelineContainer);
+        this.timelineScrollbar.onChange((timestamp) => {
+            if (this.timelineScrollbar.isAtLivePosition()) {
+                this.settings.followLive();
+            } else {
+                this.settings.setViewTime(timestamp);
+            }
+        });
+
         this.table = new Table(layoutElements.rowsContainer);
         this.toolbar = new Toolbar(layoutElements.toolbarContainer, this.settings, this.recorder, this.serial);
         this.toolbar.initialize();
@@ -150,7 +163,6 @@ export class Oscilloscope {
     public setConnectionStatus(connected: boolean, message?: string): void {
         if (this.isDestroyed) return;
 
-        // Передаем статус связи в индикатор панели инструментов
         if (this.toolbar) {
             this.toolbar.updateStatus(connected);
         }
@@ -197,12 +209,11 @@ export class Oscilloscope {
         this.toolbar.onOpenProperties(() => {
             this.propertiesModal.open(this.allChannels, this.visibleChannels);
         });
-                       this.toolbar.onToggleWindowSize((isHalf) => {
+        this.toolbar.onToggleWindowSize((isHalf) => {
             if (this.splitContainer) {
                 const viewport = this.splitContainer.parentElement;
-                // Находим #osc-container — самый верхний контейнер осциллографа
                 const oscContainer = document.querySelector('#osc-container');
-                
+
                 if (isHalf) {
                     this.splitContainer.classList.add('half-window-left');
                     this.splitContainer.classList.remove('full-window');
@@ -234,18 +245,18 @@ export class Oscilloscope {
         window.addEventListener('oscilloscope-export-csv', () => {
             this.recorder.downloadCSV(this.visibleChannels);
         });
-                this.toolbar.onToggleTimeZoom((enabled) => {
+        this.toolbar.onToggleTimeZoom((enabled) => {
             this.settings.timeZoomEnabled = enabled;
         });
 
-                // Обработка кнопки Пуск-Стоп опроса
+        // Обработка кнопки Пуск-Стоп опроса
         this.toolbar.onTogglePolling((isPolling) => {
             if (isPolling) {
                 this.serial.resumePolling();
-                this.settings.followLive(); // Размораживаем время: графики снова бегут вперед
+                this.settings.followLive();
             } else {
                 this.serial.pausePolling();
-                this.settings.setViewTime(Date.now()); // Замораживаем время ровно на моменте клика
+                this.settings.setViewTime(Date.now());
             }
         });
 
@@ -361,7 +372,7 @@ export class Oscilloscope {
             row.onDelete = (deletedChannel) => {
                 this.updateVisibleChannels(this.visibleChannels.filter(c => c.id !== deletedChannel.id));
             };
-           row.onSelect = (selectedChannel: Channel) => {
+            row.onSelect = (selectedChannel: Channel) => {
                 this.selectedChannel = selectedChannel;
                 this.bottomPanels.setCommandText(`${selectedChannel.name} = `);
             };
@@ -392,6 +403,17 @@ export class Oscilloscope {
         this.animFrameId = null;
         if (this.isDestroyed || !this.isRunning || !this.table) return;
         this.lastFrameTime = now;
+
+        // Обновляем диапазон и позицию скроллбара
+        const range = this.archive.getTimeRange();
+        this.timelineScrollbar.setRange(range.min, range.max);
+
+        if (this.settings.isFollowingLive) {
+            this.timelineScrollbar.setPosition(range.max);
+        } else {
+            this.timelineScrollbar.setPosition(this.settings.getCurrentViewTime());
+        }
+
         try {
             this.table.updateValues();
             this.toolbar.updateRecordTimer();
@@ -422,9 +444,6 @@ export class Oscilloscope {
         );
     }
 
-    /**
-     * Обработка кнопки x10: очередь из 10 записей с частотой 5 Гц.
-     */
     private async handleMultiplyCommand(): Promise<void> {
         if (!this.selectedChannel) {
             console.warn('[Oscilloscope] x10: Нет выбранного канала.');
@@ -446,8 +465,6 @@ export class Oscilloscope {
         for (let i = 0; i < 10; i++) {
             console.log(`[Oscilloscope] x10: запись ${i + 1}/10`);
             await this.handleCommandSubmit(commandText);
-
-            // Задержка между записями: 200 мс = 5 Гц
             await new Promise(resolve => setTimeout(resolve, 100));
         }
 
@@ -472,7 +489,6 @@ export class Oscilloscope {
             return;
         }
 
-        // 1. Извлекаем значение после '='
         const parts = text.split('=');
         if (parts.length < 2) {
             console.warn('[Oscilloscope] No "=" found in command.');
@@ -480,8 +496,7 @@ export class Oscilloscope {
         }
 
         const valueStr = parts.slice(1).join('=').trim();
-        
-        // 2. Парсим введённое значение (hex с префиксом 'x' или десятичное)
+
         let valueToWrite: number;
         if (valueStr.toLowerCase().startsWith('x')) {
             valueToWrite = parseInt(valueStr.substring(1), 16);
@@ -494,14 +509,13 @@ export class Oscilloscope {
             return;
         }
 
-                // 3. Обработка битовых параметров (Read-Modify-Write)
         if (parsedReg.bit !== null) {
             const serialWithRead = this.externalSerial as { readRegister?(slaveId: number, address: number): Promise<number | null> };
-            
+
             if (!serialWithRead.readRegister) {
                 console.error('[Oscilloscope] externalSerial does not support readRegister.');
                 return;
-                }
+            }
 
             const currentVal = await serialWithRead.readRegister(this.slaveAddress, parsedReg.address);
             if (currentVal === null) {
@@ -511,26 +525,24 @@ export class Oscilloscope {
 
             let newVal = currentVal;
             if (valueToWrite !== 0) {
-                newVal |= (1 << parsedReg.bit); // Установить бит в 1
+                newVal |= (1 << parsedReg.bit);
             } else {
-                newVal &= ~(1 << parsedReg.bit); // Сбросить бит в 0
+                newVal &= ~(1 << parsedReg.bit);
             }
 
             console.log(`[Oscilloscope] Bit RMW: addr=${parsedReg.address}, bit=${parsedReg.bit}, old=${currentVal}, new=${newVal}`);
-            
-            // Записываем новое значение
+
             const packet = buildWriteMultipleRegistersRequest(this.slaveAddress, parsedReg.address, [newVal]);
             const hexDump = Array.from(packet).map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
             console.log(`[Oscilloscope] Bit RMW packet HEX: ${hexDump}`);
-            
+
             await this.externalSerial.write(packet);
             console.log('[Oscilloscope] Bit RMW write sent successfully.');
-            
+
             this.bottomPanels.focusCommand();
             return;
         }
 
-        // 4. Обработка 32-битных параметров (Float32, DWord, Int32)
         const typeUpper = (ch.dataType || '').toUpperCase();
         const is32Bit = typeUpper.includes('FLOAT') || typeUpper.includes('DWORD') || typeUpper.includes('LONG') || typeUpper.includes('INT32');
 
@@ -538,27 +550,25 @@ export class Oscilloscope {
         if (is32Bit) {
             const buf = new ArrayBuffer(4);
             const view = new DataView(buf);
-            
+
             if (typeUpper.includes('FLOAT')) {
-                view.setFloat32(0, valueToWrite, false); // false = Big-endian
+                view.setFloat32(0, valueToWrite, false);
             } else {
                 view.setUint32(0, valueToWrite, false);
             }
-            
+
             const reg1 = view.getUint16(0, false);
             const reg2 = view.getUint16(2, false);
             values = [reg2, reg1];
-            
+
             console.log(`[Oscilloscope] 32-bit write: addr=${parsedReg.address}, val=${valueToWrite}, regs=[${reg1}, ${reg2}]`);
         } else {
-            // 5. Обработка обычных 16-битных параметров
             const val16 = valueToWrite & 0xFFFF;
             values = [val16];
             console.log(`[Oscilloscope] 16-bit write: addr=${parsedReg.address}, val=${val16}`);
         }
 
-        // 6. Строим Modbus-пакет и отправляем через внешний порт
-                try {
+        try {
             const packet = buildWriteMultipleRegistersRequest(this.slaveAddress, parsedReg.address, values);
             const hexDump = Array.from(packet).map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
             console.log(`[Oscilloscope] Write packet HEX (${packet.length} bytes): ${hexDump}`);
@@ -569,7 +579,6 @@ export class Oscilloscope {
             console.error('[Oscilloscope] Failed to send write packet:', errMsg);
         }
 
-         // НЕ очищаем поле ввода — пользователь должен видеть отправленное значение
         this.bottomPanels.focusCommand();
     }
 }

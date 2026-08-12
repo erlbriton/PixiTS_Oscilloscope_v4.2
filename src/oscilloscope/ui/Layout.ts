@@ -9,6 +9,7 @@ export class Layout {
         iniPanelContainer: HTMLElement;
         splitContainer: HTMLElement;
         bottomPanelsContainer: HTMLElement;
+        timelineContainer: HTMLElement;
     } {
         rootElement.innerHTML = `
             <div id="app-viewport">
@@ -23,6 +24,7 @@ export class Layout {
                             <div class="col-graph">Graph</div>
                         </div>
                         <div id="channelRows"></div>
+                        <div id="timeline-container" class="timeline-container"></div>
                         <div id="bottom-panels">
                             <div class="bottom-row bottom-row-edit">
                                 <input id="bottom-edit-input" class="bottom-edit-input" type="text"
@@ -56,6 +58,11 @@ export class Layout {
             throw new Error('[Layout] Не найден #bottom-panels после создания скелета.');
         }
 
+                const timelineContainer = rootElement.querySelector('#timeline-container') as HTMLElement | null;
+        if (!timelineContainer) {
+            throw new Error('[Layout] Не найден #timeline-container после создания скелета.');
+        }
+
         return {
             toolbarContainer: rootElement.querySelector('#toolbar') as HTMLElement,
             headerContainer: rootElement.querySelector('#header') as HTMLElement,
@@ -64,6 +71,7 @@ export class Layout {
             iniPanelContainer: rootElement.querySelector('#iniPanel') as HTMLElement,
             splitContainer: rootElement.querySelector('#app-split-container') as HTMLElement,
             bottomPanelsContainer,
+            timelineContainer,
         };
     }
 }

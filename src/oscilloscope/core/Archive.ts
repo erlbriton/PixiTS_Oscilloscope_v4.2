@@ -149,7 +149,36 @@ export class Archive {
         return buffer.getMinMax(durationMs, currentTime);
     }
 
-    public clear(): void {
+       public clear(): void {
         this.buffers.forEach(b => b.clear());
+    }
+
+    /**
+     * Возвращает минимальное и максимальное время, доступное во всех буферах
+     */
+    public getTimeRange(): { min: number; max: number } {
+        let min = Infinity;
+        let max = -Infinity;
+        let hasData = false;
+
+        this.buffers.forEach(buffer => {
+            if (buffer.size > 0) {
+                hasData = true;
+                const startIndex = (buffer.head - buffer.size + buffer.capacity) % buffer.capacity;
+                const firstTime = buffer.timestamps[startIndex];
+                const lastIdx = (buffer.head - 1 + buffer.capacity) % buffer.capacity;
+                const lastTime = buffer.timestamps[lastIdx];
+
+                if (firstTime < min) min = firstTime;
+                if (lastTime > max) max = lastTime;
+            }
+        });
+
+        if (!hasData) {
+            const now = Date.now();
+            return { min: now, max: now };
+        }
+
+        return { min, max };
     }
 }
