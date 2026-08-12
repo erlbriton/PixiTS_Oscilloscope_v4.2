@@ -17,6 +17,8 @@ export class ChannelRow {
     public onChannelUpdated?: (channel: Channel) => void;
     public onDelete?: (channel: Channel) => void;
     public onSelect?: (channel: Channel) => void;
+    public onToggleBit?: (channel: Channel) => void;
+    
 
     constructor(public readonly channel: Channel) {
         this.element = document.createElement('div');
@@ -60,26 +62,33 @@ export class ChannelRow {
         this.graphElement.className = 'col-graph';
 
         this.element.append(
-            this.nameElement,
-            this.hexElement,
-            this.valueElement,
-            this.unitElement,
-            this.graphElement
+          this.nameElement,
+          this.hexElement,
+          this.valueElement,
+          this.unitElement,
+          this.graphElement,
         );
 
         this.updateValue();
 
-               this.element.addEventListener('click', () => {
-            const container = this.element.parentElement;
-            if (container) {
-                container.querySelectorAll('.channel-row.selected').forEach(el => {
-                    if (el !== this.element) el.classList.remove('selected');
+        this.element.addEventListener("click", () => {
+          const container = this.element.parentElement;
+          if (container) {
+            container
+              .querySelectorAll(".channel-row.selected")
+              .forEach((el) => {
+                if (el !== this.element) el.classList.remove("selected");
+                this.element.addEventListener("dblclick", () => {
+                  if (this.channel.isBit && this.onToggleBit) {
+                    this.onToggleBit(this.channel);
+                  }
                 });
-            }
-            this.element.classList.add('selected');
-            if (this.onSelect) {
-                this.onSelect(this.channel);
-            }
+              });
+          }
+          this.element.classList.add("selected");
+          if (this.onSelect) {
+            this.onSelect(this.channel);
+          }
         });
 
         this.element.addEventListener('contextmenu', (e) => {

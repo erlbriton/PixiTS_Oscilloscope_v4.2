@@ -230,8 +230,12 @@ export class Oscilloscope {
             this.settings.timeZoomEnabled = enabled;
         });
 
-        this.bottomPanels.onCommandSubmit((text) => {
+              this.bottomPanels.onCommandSubmit((text) => {
             void this.handleCommandSubmit(text);
+        });
+
+        this.bottomPanels.onMultiplyCommand(() => {
+            void this.handleMultiplyCommand();
         });
     }
 
@@ -338,9 +342,16 @@ export class Oscilloscope {
             row.onDelete = (deletedChannel) => {
                 this.updateVisibleChannels(this.visibleChannels.filter(c => c.id !== deletedChannel.id));
             };
-            row.onSelect = (selectedChannel) => {
+           row.onSelect = (selectedChannel: Channel) => {
                 this.selectedChannel = selectedChannel;
                 this.bottomPanels.setCommandText(`${selectedChannel.name} = `);
+            };
+            row.onToggleBit = (toggledChannel: Channel) => {
+                this.selectedChannel = toggledChannel;
+                const currentVal = toggledChannel.scaledValue;
+                const newVal = currentVal === 0 ? 1 : 0;
+                console.log(`[Oscilloscope] Double-click toggle bit: ${toggledChannel.name}, ${currentVal} -> ${newVal}`);
+                void this.handleCommandSubmit(`${toggledChannel.name} = ${newVal}`);
             };
             const container = row.getGraphContainer();
             if (container) {
@@ -390,6 +401,38 @@ export class Oscilloscope {
             this.settings.cursorX2Percent,
             this.settings.timeWindowMs
         );
+    }
+
+    /**
+     * Обработка кнопки x10: очередь из 10 записей с частотой 5 Гц.
+     */
+    private async handleMultiplyCommand(): Promise<void> {
+        if (!this.selectedChannel) {
+            console.warn('[Oscilloscope] x10: Нет выбранного канала.');
+            return;
+        }
+        if (!this.externalSerial) {
+            console.warn('[Oscilloscope] x10: Нет подключения к порту.');
+            return;
+        }
+        const parsedReg = parseModbusReg(this.selectedChannel.modbusReg);
+        if (!parsedReg || parsedReg.bit === null) {
+            console.warn('[Oscilloscope] x10: Выбранный параметр не является битовым.');
+            return;
+        }
+
+        const commandText = this.bottomPanels.getCommandText();
+        console.log(`[Oscilloscope] x10: Запуск очереди из 10 записей (5 Гц) для "${commandText}"`);
+
+        for (let i = 0; i < 10; i++) {
+            console.log(`[Oscilloscope] x10: запись ${i + 1}/10`);
+            await this.handleCommandSubmit(commandText);
+
+            // Задержка между записями: 200 мс = 5 Гц
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+
+        console.log('[Oscilloscope] x10: Очередь записей завершена.');
     }
 
     private async handleCommandSubmit(text: string): Promise<void> {
