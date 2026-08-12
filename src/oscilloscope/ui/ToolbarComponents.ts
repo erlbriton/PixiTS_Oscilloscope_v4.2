@@ -1,4 +1,4 @@
-// src/ui/ToolbarComponents.ts
+// src/oscilloscope/ui/ToolbarComponents.ts
 
 export class ToolbarComponents {
     public static createSelect(options: { label: string; val: number }[], selectedVal: number, onChange: (val: number) => void): HTMLSelectElement {
