@@ -1,4 +1,4 @@
-// src/graphics/Renderer.ts
+// src/oscilloscope/graphics/Renderer.ts
 
 import { Channel } from '../core/Channel';
 import { Archive } from '../core/Archive';
@@ -15,12 +15,12 @@ export class Renderer {
         this.archive = archive;
     }
 
-    public renderChannelGraph(channel: Channel, view: PixiView): void {
+        public renderChannelGraph(channel: Channel, view: PixiView): void {
         const { width, height } = view.bounds;
         if (width <= 0 || height <= 0) return;
 
-        const now = Date.now();
-        // 1 деление маркеров = 1 секунда. Базовая скорость 40 px/с умножается на коэффициент развертки.
+        // Используем время из настроек: оно заморожено при паузе и идет в реальном времени при работе
+        const now = this.settings.getCurrentViewTime(); 
         const spacing = 40 * this.settings.timeScale;
         const duration = (width / spacing) * 1000;
 

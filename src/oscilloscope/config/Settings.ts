@@ -46,10 +46,48 @@ export class Settings {
     public textColor: string = '#94a3b8';
 
     // Half window mode (default: true - occupy left half of browser)
+        // Half window mode (default: true - occupy left half of browser)
     public isHalfWindow: boolean = true;
 
     // Timebase options in ms (100ms, 200ms, 500ms, 1s, 2s, 5s, 10s, 20s)
     public availableTimeWindows: number[] = [200, 500, 1000, 2000, 5000, 10000, 20000];
+
+    // === УПРАВЛЕНИЕ ЗАПИСЬЮ И ПРОСМОТРОМ ИСТОРИИ ===
+    
+    // Идёт ли опрос контроллера (false = стоп, true = пуск)
+    public isPolling: boolean = true;
+    
+    // Момент времени, относительно которого показываем данные (timestamp в мс)
+    // null = следим за реальным временем (живой режим)
+    public viewTime: number | null = null;
+    
+    // Следим ли за реальным временем (true = автопрокрутка, false = ручной просмотр)
+    public isFollowingLive: boolean = true;
+
+    /**
+     * Переключает в режим просмотра истории
+     * @param timestamp - момент времени для просмотра
+     */
+    public setViewTime(timestamp: number): void {
+        this.viewTime = timestamp;
+        this.isFollowingLive = false;
+    }
+
+    /**
+     * Возвращает в режим слежения за реальным временем
+     */
+    public followLive(): void {
+        this.viewTime = null;
+        this.isFollowingLive = true;
+    }
+
+    /**
+     * Возвращает текущий момент времени для отрисовки
+     * Если следим за реальным временем - возвращает Date.now()
+     */
+    public getCurrentViewTime(): number {
+        return this.viewTime ?? Date.now();
+    }
 
     public updateColumnWidth(column: keyof ColumnWidths, width: number): void {
         this.columnWidths[column] = Math.max(30, width);

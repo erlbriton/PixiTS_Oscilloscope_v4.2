@@ -14,6 +14,7 @@ export class Toolbar {
     private autoscaleBtn!: HTMLButtonElement;
     private cursorBtn!: HTMLButtonElement;
     private sweepBtn!: HTMLButtonElement;
+    private pollingBtn!: HTMLButtonElement;
     private propertiesBtn!: HTMLButtonElement;
     private exportBtn!: HTMLButtonElement;
     private windowSizeBtn!: HTMLButtonElement;
@@ -21,6 +22,7 @@ export class Toolbar {
     private onOpenPropertiesCallback?: () => void;
     private onToggleWindowSizeCallback?: (isHalf: boolean) => void;
     private onToggleTimeZoomCallback?: (enabled: boolean) => void;
+    private onTogglePollingCallback?: (isPolling: boolean) => void;
 
     constructor(
         container: HTMLElement,
@@ -42,6 +44,9 @@ export class Toolbar {
     }
     public onToggleTimeZoom(cb: (enabled: boolean) => void): void {
         this.onToggleTimeZoomCallback = cb;
+    }
+    public onTogglePolling(cb: (isPolling: boolean) => void): void {
+        this.onTogglePollingCallback = cb;
     }
 
     public initialize(): void {
@@ -74,18 +79,17 @@ export class Toolbar {
         this.statusBadge.style.userSelect = 'none';
         this.statusBadge.style.borderRadius = '4px';
 
-        // 3. Кнопка переключения размера окна (теперь СРАЗУ после статуса, с иконкой)
+                // 3. Кнопка переключения размера окна (сразу после статуса, с иконкой)
         this.windowSizeBtn = ToolbarComponents.createButton(
             `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
                 <path d="M9 3v18"/>
                 <path d="M15 3v18"/>
             </svg>`,
-            'window-toggle-btn',
+            'tool-btn-dark window-toggle-btn',
             () => {
                 this.settings.isHalfWindow = !this.settings.isHalfWindow;
-                // Меняем иконку: одна панель / две панели
-                this.windowSizeBtn.innerHTML = this.settings.isHalfWindow 
+                this.windowSizeBtn.innerHTML = this.settings.isHalfWindow
                     ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
                         <path d="M9 3v18"/>
@@ -101,49 +105,42 @@ export class Toolbar {
             },
             'Переключить ширину окна (50% слева / 100% на весь экран)'
         );
-        // Стили кнопки в темном стиле, как в таблице
         this.windowSizeBtn.style.width = '32px';
         this.windowSizeBtn.style.height = '32px';
-        this.windowSizeBtn.style.backgroundColor = '#1e293b';
-        this.windowSizeBtn.style.color = '#e2e8f0';
-        this.windowSizeBtn.style.border = '1px solid #334155';
-        this.windowSizeBtn.style.borderTop = '1px solid #475569';
-        this.windowSizeBtn.style.borderBottom = '1px solid #0f172a';
-        this.windowSizeBtn.style.borderRadius = '4px';
-        this.windowSizeBtn.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08)';
         this.windowSizeBtn.style.padding = '0';
-        this.windowSizeBtn.style.cursor = 'pointer';
-        this.windowSizeBtn.style.display = 'inline-flex';
-        this.windowSizeBtn.style.alignItems = 'center';
-        this.windowSizeBtn.style.justifyContent = 'center';
         this.windowSizeBtn.style.marginLeft = '4px';
-        this.windowSizeBtn.style.transition = 'all 0.1s ease';
 
-        // Эффекты hover/active
-        this.windowSizeBtn.addEventListener('mouseenter', () => {
-            this.windowSizeBtn.style.background = 'linear-gradient(180deg, #3a4a62 0%, #253348 50%, #1a2436 100%)';
-        });
-        this.windowSizeBtn.addEventListener('mouseleave', () => {
-            this.windowSizeBtn.style.background = 'linear-gradient(180deg, #2d3a4f 0%, #1e293b 50%, #141c2a 100%)';
-        });
-        this.windowSizeBtn.addEventListener('mousedown', () => {
-            this.windowSizeBtn.style.boxShadow = 'inset 0 2px 4px rgba(0, 0, 0, 0.6)';
-            this.windowSizeBtn.style.transform = 'translateY(1px)';
-        });
-        this.windowSizeBtn.addEventListener('mouseup', () => {
-            this.windowSizeBtn.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08)';
-            this.windowSizeBtn.style.transform = 'translateY(0)';
-        });
+        // 4. Кнопка Пуск-Стоп опроса (ВПЛОТНУЮ к кнопке 50%)
+        const playIcon = `
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M8 5v14l11-7z"/>
+            </svg>`;
+        const pauseIcon = `
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
+            </svg>`;
 
-        // Левая группа элементов: кнопка "Свойства", статус, кнопка размера окна, заголовок
+        this.pollingBtn = ToolbarComponents.createButton(pauseIcon, 'tool-btn-dark active', () => {
+            this.settings.isPolling = !this.settings.isPolling;
+            this.pollingBtn.innerHTML = this.settings.isPolling ? pauseIcon : playIcon;
+            this.pollingBtn.classList.toggle('active', this.settings.isPolling);
+            if (this.onTogglePollingCallback) {
+                this.onTogglePollingCallback(this.settings.isPolling);
+            }
+        }, 'Пуск/Стоп опроса контроллера');
+        this.pollingBtn.style.width = '32px';
+        this.pollingBtn.style.height = '32px';
+        this.pollingBtn.style.padding = '0';
+        this.pollingBtn.style.marginLeft = '0'; // Вплотную, без отступа
+
+        // Левая группа: Свойства → Статус → Кнопка размера → Пуск/Стоп → Заголовок
         const groupLeft = document.createElement('div');
         groupLeft.className = 'toolbar-group';
 
         const title = document.createElement('div');
         title.className = 'toolbar-title';
 
-        // Порядок: Свойства → Статус → Кнопка размера → Заголовок
-        groupLeft.append(this.propertiesBtn, this.statusBadge, this.windowSizeBtn, title);
+        groupLeft.append(this.propertiesBtn, this.statusBadge, this.windowSizeBtn, this.pollingBtn, title);
 
         // По умолчанию при старте устанавливаем состояние "Нет связи"
         this.updateStatus(false);
@@ -179,9 +176,10 @@ export class Toolbar {
             }
         }, 'Развертка: колесо мыши над графиками растягивает / сжимает их по времени');
         this.sweepBtn.style.width = '64px';
+
         groupCenter.append(this.autoscaleBtn, this.cursorBtn, this.sweepBtn);
 
-        // Group 3: Export (кнопка размера окна перенесена в groupLeft)
+        // Правая группа: Экспорт
         const groupRight = document.createElement('div');
         groupRight.className = 'toolbar-group';
 
@@ -200,12 +198,7 @@ export class Toolbar {
         });
     }
 
-    /**
-     * Обновляет цвет и надпись индикатора состояния связи без всплывающих подсказок.
-     * @param isConnected - true, если связь установлена, false — если потеряна
-     */
     public updateStatus(isConnected: boolean): void {
-        // Убираем всплывающую подсказку, если она была установлена ранее
         this.statusBadge.removeAttribute('title');
 
         if (isConnected) {

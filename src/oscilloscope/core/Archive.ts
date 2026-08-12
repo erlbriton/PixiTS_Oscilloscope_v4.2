@@ -12,7 +12,7 @@ export class ChannelRingBuffer {
     public head: number = 0; // write index
     public size: number = 0; // current count
 
-    constructor(capacity: number = 50000) {
+    constructor(capacity: number = 100000) { // 30 минут при 50 Гц
         this.capacity = capacity;
         this.timestamps = new Float64Array(capacity);
         this.values = new Float32Array(capacity);
@@ -113,7 +113,7 @@ export class Archive {
     private buffers: Map<string, ChannelRingBuffer> = new Map();
     private capacityPerChannel: number;
 
-    constructor(capacityPerChannel: number = 50000) {
+    constructor(capacityPerChannel: number = 100000) { // 30 минут при 50 Гц
         this.capacityPerChannel = capacityPerChannel;
     }
 

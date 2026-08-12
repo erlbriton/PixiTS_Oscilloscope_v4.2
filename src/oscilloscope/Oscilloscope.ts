@@ -234,11 +234,22 @@ export class Oscilloscope {
         window.addEventListener('oscilloscope-export-csv', () => {
             this.recorder.downloadCSV(this.visibleChannels);
         });
-        this.toolbar.onToggleTimeZoom((enabled) => {
+                this.toolbar.onToggleTimeZoom((enabled) => {
             this.settings.timeZoomEnabled = enabled;
         });
 
-              this.bottomPanels.onCommandSubmit((text) => {
+                // Обработка кнопки Пуск-Стоп опроса
+        this.toolbar.onTogglePolling((isPolling) => {
+            if (isPolling) {
+                this.serial.resumePolling();
+                this.settings.followLive(); // Размораживаем время: графики снова бегут вперед
+            } else {
+                this.serial.pausePolling();
+                this.settings.setViewTime(Date.now()); // Замораживаем время ровно на моменте клика
+            }
+        });
+
+        this.bottomPanels.onCommandSubmit((text) => {
             void this.handleCommandSubmit(text);
         });
 

@@ -17,16 +17,18 @@ export class Serial {
     private channels: Channel[] = [];
     private stateChangeCallbacks: ((state: SerialState, msg?: string) => void)[] = [];
 
-    private rxBuffer: number[] = [];
+        private rxBuffer: number[] = [];
     private asciiTextBuffer: string = '';
     private pollIntervalId: number | null = null;
     private lastResponseTime: number = 0;
     private hasReceivedData: boolean = false;
     private readonly TIMEOUT_MS: number = 2000;
     
-    // Добавлено для операции Read-Modify-Write
+    // Добавлено для операции Read-Modify-Write битовых параметров
     private pendingReadResolve: ((val: number | null) => void) | null = null;
-
+    
+    // Флаг паузы опроса (кнопка Пуск-Стоп)
+    private isPaused: boolean = false;
     constructor(archive: Archive) {
         this.archive = archive;
     }
@@ -103,7 +105,7 @@ export class Serial {
         this.startModbusPolling();
     }
 
-    public async disconnect(): Promise<void> {
+        public async disconnect(): Promise<void> {
         this.stopModbusPolling();
 
         try {
@@ -125,6 +127,31 @@ export class Serial {
 
         this.setState('disconnected', 'Serial port disconnected.');
         this.hasReceivedData = false;
+    }
+
+    /**
+     * Приостанавливает опрос контроллера (кнопка Стоп)
+     */
+    public pausePolling(): void {
+        this.isPaused = true;
+        this.stopModbusPolling();
+    }
+
+    /**
+     * Возобновляет опрос контроллера (кнопка Пуск)
+     */
+    public resumePolling(): void {
+        this.isPaused = false;
+        if (this.state === 'connected') {
+            this.startModbusPolling();
+        }
+    }
+
+    /**
+     * Возвращает текущее состояние опроса
+     */
+    public isPollingPaused(): boolean {
+        return this.isPaused;
     }
 
     private startModbusPolling(): void {
