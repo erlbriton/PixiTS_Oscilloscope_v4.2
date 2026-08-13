@@ -61,15 +61,25 @@ export class Settings {
     // null = следим за реальным временем (живой режим)
         // Смещение относительно текущего времени (в миллисекундах)
     // 0 = живой режим, -10000 = показываем данные 10-секундной давности
+        // Смещение относительно текущего времени (в миллисекундах)
+    // 0 = живой режим, -10000 = показываем данные 10-секундной давности
     private timeOffset: number = 0;
+    
+    // Зафиксированное время (когда опрос остановлен)
+    private frozenTime: number | null = null;
 
     /**
      * Переключает в режим просмотра истории
      * @param timestamp - момент времени для просмотра
      */
     public setViewTime(timestamp: number): void {
-        // Вычисляем смещение относительно текущего времени
-        this.timeOffset = timestamp - Date.now();
+        // Если опрос остановлен - фиксируем время
+        if (!this.isPolling) {
+            this.frozenTime = timestamp;
+        } else {
+            // Если опрос идёт - вычисляем смещение
+            this.timeOffset = timestamp - Date.now();
+        }
     }
 
     /**
@@ -77,13 +87,25 @@ export class Settings {
      */
     public followLive(): void {
         this.timeOffset = 0;
+        this.frozenTime = null;
+    }
+
+    /**
+     * Фиксирует текущее время (вызывается при остановке опроса)
+     */
+    public freezeTime(): void {
+        this.frozenTime = this.getCurrentViewTime();
     }
 
     /**
      * Возвращает текущий момент времени для отрисовки
-     * Всегда возвращает текущее время + смещение
      */
     public getCurrentViewTime(): number {
+        // Если опрос остановлен - показываем зафиксированное время
+        if (!this.isPolling && this.frozenTime !== null) {
+            return this.frozenTime;
+        }
+        // Если опрос идёт - используем смещение (графики движутся)
         return Date.now() + this.timeOffset;
     }
 
