@@ -36,12 +36,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         const oscContainer = document.getElementById('osc-container');
 
-        const osc = new Oscilloscope();
+                        const osc = new Oscilloscope();
         window.osc = osc;
         await osc.initialize(oscContainer ?? undefined);
 
         const serial = new SerialConnection();
         const parser = new ModbusParser();
+
+        // Связываем кнопку Стоп/Пуск осциллографа с глобальным состоянием опроса
+        osc.setOnPollingStateChange((isPolling: boolean) => {
+            appState.isPolling = isPolling;
+            console.log("[Main] appState.isPolling изменён на:", isPolling);
+            
+            if (isPolling) {
+                // Перезапускаем цикл опроса, так как при остановке он полностью завершился
+                readLoop(serial, parser, osc, buffers, appState).catch(err => 
+                    console.error("Ошибка перезапуска readLoop:", err)
+                );
+            }
+        });
 
         const buffers: import('./ui/uiManager.js').ChannelBuffer[] = Array.from({ length: 70 }, () => {
          const data: number[] = [];

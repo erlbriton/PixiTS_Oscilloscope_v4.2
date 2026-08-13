@@ -54,6 +54,7 @@ export class Oscilloscope {
     private selectedChannel: Channel | null = null;
     private slaveAddress: number = 1;
     private externalSerial: { write(data: Uint8Array): Promise<void> } | null = null;
+    private onPollingStateChangeCallback?: (isPolling: boolean) => void;
 
     constructor() {
         this.settings = new Settings();
@@ -63,7 +64,7 @@ export class Oscilloscope {
         this.renderer = new Renderer(this.settings, this.archive);
     }
 
-    public setSerialPort(port: unknown): void {
+        public setSerialPort(port: unknown): void {
         if (port && typeof (port as { write: unknown }).write === 'function') {
             this.externalSerial = port as { write(data: Uint8Array): Promise<void> };
             console.log('[Oscilloscope] External serial port attached.');
@@ -71,6 +72,10 @@ export class Oscilloscope {
             this.externalSerial = null;
             console.warn('[Oscilloscope] Invalid serial port object.');
         }
+    }
+
+    public setOnPollingStateChange(cb: (isPolling: boolean) => void): void {
+        this.onPollingStateChangeCallback = cb;
     }
 
     public async initialize(targetContainer?: HTMLElement | string): Promise<void> {
@@ -90,7 +95,6 @@ export class Oscilloscope {
         const layoutElements = Layout.createSkeleton(rootElement);
         this.splitContainer = layoutElements.splitContainer;
 
-        // Инициализация скроллбара времени
         this.timelineScrollbar = new TimelineScrollbar(layoutElements.timelineContainer);
         this.timelineScrollbar.onChange((timestamp) => {
             if (this.timelineScrollbar.isAtLivePosition()) {
@@ -249,8 +253,8 @@ export class Oscilloscope {
             this.settings.timeZoomEnabled = enabled;
         });
 
-        // Обработка кнопки Пуск-Стоп опроса
-        this.toolbar.onTogglePolling((isPolling) => {
+                        this.toolbar.onTogglePolling((isPolling) => {
+            console.log('[Oscilloscope] Кнопка Пуск/Стоп нажата. isPolling =', isPolling);
             if (isPolling) {
                 this.serial.resumePolling();
                 this.settings.followLive();
@@ -258,8 +262,11 @@ export class Oscilloscope {
                 this.serial.pausePolling();
                 this.settings.setViewTime(Date.now());
             }
+            // Уведомляем основное приложение об изменении состояния опроса
+            if (this.onPollingStateChangeCallback) {
+                this.onPollingStateChangeCallback(isPolling);
+            }
         });
-
         this.bottomPanels.onCommandSubmit((text) => {
             void this.handleCommandSubmit(text);
         });
@@ -404,7 +411,6 @@ export class Oscilloscope {
         if (this.isDestroyed || !this.isRunning || !this.table) return;
         this.lastFrameTime = now;
 
-        // Обновляем диапазон и позицию скроллбара
         const range = this.archive.getTimeRange();
         this.timelineScrollbar.setRange(range.min, range.max);
 

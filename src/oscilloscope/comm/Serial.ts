@@ -17,18 +17,16 @@ export class Serial {
     private channels: Channel[] = [];
     private stateChangeCallbacks: ((state: SerialState, msg?: string) => void)[] = [];
 
-        private rxBuffer: number[] = [];
+    private rxBuffer: number[] = [];
     private asciiTextBuffer: string = '';
     private pollIntervalId: number | null = null;
     private lastResponseTime: number = 0;
     private hasReceivedData: boolean = false;
     private readonly TIMEOUT_MS: number = 2000;
-    
-    // Добавлено для операции Read-Modify-Write битовых параметров
     private pendingReadResolve: ((val: number | null) => void) | null = null;
     
-    // Флаг паузы опроса (кнопка Пуск-Стоп)
     private isPaused: boolean = false;
+
     constructor(archive: Archive) {
         this.archive = archive;
     }
@@ -105,7 +103,7 @@ export class Serial {
         this.startModbusPolling();
     }
 
-        public async disconnect(): Promise<void> {
+    public async disconnect(): Promise<void> {
         this.stopModbusPolling();
 
         try {
@@ -129,57 +127,58 @@ export class Serial {
         this.hasReceivedData = false;
     }
 
-    /**
-     * Приостанавливает опрос контроллера (кнопка Стоп)
-     */
-    public pausePolling(): void {
+       public pausePolling(): void {
+        console.log('[Serial] pausePolling ВЫЗВАН. isPaused был:', this.isPaused, ', pollIntervalId:', this.pollIntervalId);
         this.isPaused = true;
         this.stopModbusPolling();
+        console.log('[Serial] pausePolling ОТРАБОТАЛ. isPaused стал:', this.isPaused, ', pollIntervalId:', this.pollIntervalId);
     }
 
-    /**
-     * Возобновляет опрос контроллера (кнопка Пуск)
-     */
     public resumePolling(): void {
         this.isPaused = false;
         if (this.state === 'connected') {
             this.startModbusPolling();
+            console.log('[Serial] Polling resumed.');
         }
     }
 
-    /**
-     * Возвращает текущее состояние опроса
-     */
     public isPollingPaused(): boolean {
         return this.isPaused;
     }
 
-    private startModbusPolling(): void {
+         private startModbusPolling(): void {//////////////////////////////////////
+        console.log('[Serial] startModbusPolling ВЫЗВАН. Стек:');
+        console.trace();
         this.stopModbusPolling();
 
         this.pollIntervalId = window.setInterval(() => {
-            if (this.state === 'connected') {
+            // Добавлено условие !this.isPaused для реальной остановки опроса
+            if (this.state === 'connected' && !this.isPaused) {
                 if (this.hasReceivedData && (Date.now() - this.lastResponseTime > this.TIMEOUT_MS)) {
                     this.setState('error', 'Связь потеряна: тайм-аут ответа.');
                     this.disconnect();
                     return;
                 }
 
-                if (this.channels.length > 0) {
+                              if (this.channels.length > 0) {
+                    console.log('[Serial] Отправка Modbus запроса. isPaused:', this.isPaused);
                     this.sendModbus03Request();
                 }
             }
         }, 100);
     }
 
-    private stopModbusPolling(): void {
+       private stopModbusPolling(): void {
+        console.log('[Serial] stopModbusPolling ВЫЗВАН. pollIntervalId:', this.pollIntervalId);
         if (this.pollIntervalId !== null) {
             clearInterval(this.pollIntervalId);
             this.pollIntervalId = null;
+            console.log('[Serial] Интервал остановлен.');
         }
     }
 
-    private async sendModbus03Request(slaveAddr: number = 1): Promise<void> {
+        private async sendModbus03Request(slaveAddr: number = 1): Promise<void> {
+        console.trace('[Serial] sendModbus03Request вызван. Стек вызовов:');
         const port = this.port;
         if (!port || !port.writable || this.state !== 'connected') {
             return;
@@ -256,13 +255,9 @@ export class Serial {
         }
     }
 
-    /**
-     * Читает один регистр (для операции Read-Modify-Write битовых параметров).
-     */
-       public async readRegister(slaveId: number, address: number): Promise<number | null> {
+    public async readRegister(slaveId: number, address: number): Promise<number | null> {
         const port = this.port;
         
-        // Детальная диагностика
         console.log('[Serial] readRegister check:', {
             hasPort: !!port,
             hasWritable: !!port?.writable,
@@ -285,7 +280,6 @@ export class Serial {
 
         const promise = new Promise<number | null>(resolve => {
             this.pendingReadResolve = resolve;
-            // Таймаут 1 секунда на случай потери ответа
             setTimeout(() => {
                 if (this.pendingReadResolve) {
                     this.pendingReadResolve(null);
@@ -296,7 +290,6 @@ export class Serial {
 
         try {
             const writer = port.writable.getWriter();
-            // Запрашиваем 1 регистр по функции 0x03
             const frame = Modbus.createReadRequest(slaveId, 0x03, address, 1);
             await writer.write(frame);
             writer.releaseLock();
@@ -311,9 +304,6 @@ export class Serial {
         return promise;
     }
 
-    /**
-     * Отправляет Modbus-запрос на запись регистров (Function 0x10).
-     */
     public async writeRegister(slaveId: number, address: number, values: number[]): Promise<boolean> {
         const port = this.port;
         if (!port || !port.writable || this.state !== 'connected') {
@@ -375,12 +365,10 @@ export class Serial {
             const modbusRes = Modbus.parseReadResponse(new Uint8Array(this.rxBuffer));
 
             if (modbusRes && (modbusRes.functionCode === 0x03 || modbusRes.functionCode === 0x04)) {
-                // Если кто-то ждёт результат чтения (Read-Modify-Write), отдаём его
                 if (this.pendingReadResolve && modbusRes.registers.length >= 1) {
                     this.pendingReadResolve(modbusRes.registers[0]);
                     this.pendingReadResolve = null;
                 } else {
-                    // Стандартная обработка для осциллографа
                     this.channels.forEach((ch, idx) => {
                         let val: number | null = null;
 
