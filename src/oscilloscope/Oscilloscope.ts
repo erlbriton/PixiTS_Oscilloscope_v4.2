@@ -95,11 +95,13 @@ export class Oscilloscope {
         const layoutElements = Layout.createSkeleton(rootElement);
         this.splitContainer = layoutElements.splitContainer;
 
-        this.timelineScrollbar = new TimelineScrollbar(layoutElements.timelineContainer);
+                this.timelineScrollbar = new TimelineScrollbar(layoutElements.timelineContainer);
         this.timelineScrollbar.onChange((timestamp) => {
-            if (this.timelineScrollbar.isAtLivePosition()) {
+            if (this.timelineScrollbar.isAtLivePosition() && this.settings.isPolling) {
+                // Возвращаемся в живой режим ТОЛЬКО если опрос уже идёт
                 this.settings.followLive();
             } else {
+                // Иначе просто показываем историю на этом времени
                 this.settings.setViewTime(timestamp);
             }
         });
@@ -411,14 +413,14 @@ export class Oscilloscope {
         if (this.isDestroyed || !this.isRunning || !this.table) return;
         this.lastFrameTime = now;
 
-        const range = this.archive.getTimeRange();
-        this.timelineScrollbar.setRange(range.min, range.max);
-
+                        // Обновляем диапазон и позицию скроллбара ТОЛЬКО если мы в живом режиме
         if (this.settings.isFollowingLive) {
+            const range = this.archive.getTimeRange();
+            this.timelineScrollbar.setRange(range.min, range.max);
             this.timelineScrollbar.setPosition(range.max);
-        } else {
-            this.timelineScrollbar.setPosition(this.settings.getCurrentViewTime());
         }
+        // Если пользователь сдвинул скроллбар (смотрит историю) — не трогаем range и позицию
+        // В противном случае не трогаем скроллбар — он остаётся там, где его оставил пользователь
 
         try {
             this.table.updateValues();

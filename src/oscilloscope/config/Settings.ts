@@ -85,7 +85,12 @@ export class Settings {
      * Возвращает текущий момент времени для отрисовки
      * Если следим за реальным временем - возвращает Date.now()
      */
-    public getCurrentViewTime(): number {
+                     public getCurrentViewTime(): number {
+        // Если мы следим за реальным временем — показываем текущее время
+        if (this.isFollowingLive) {
+            return Date.now();
+        }
+        // Иначе показываем зафиксированное время (из скроллбара или кнопки Стоп)
         return this.viewTime ?? Date.now();
     }
 
