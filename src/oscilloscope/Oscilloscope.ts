@@ -414,7 +414,7 @@ export class Oscilloscope {
         this.lastFrameTime = now;
 
                         // Обновляем диапазон и позицию скроллбара ТОЛЬКО если мы в живом режиме
-        if (this.settings.isFollowingLive) {
+        if (this.settings.isLive()) {
             const range = this.archive.getTimeRange();
             this.timelineScrollbar.setRange(range.min, range.max);
             this.timelineScrollbar.setPosition(range.max);

@@ -59,39 +59,39 @@ export class Settings {
     
     // Момент времени, относительно которого показываем данные (timestamp в мс)
     // null = следим за реальным временем (живой режим)
-    public viewTime: number | null = null;
-    
-    // Следим ли за реальным временем (true = автопрокрутка, false = ручной просмотр)
-    public isFollowingLive: boolean = true;
+        // Смещение относительно текущего времени (в миллисекундах)
+    // 0 = живой режим, -10000 = показываем данные 10-секундной давности
+    private timeOffset: number = 0;
 
     /**
      * Переключает в режим просмотра истории
      * @param timestamp - момент времени для просмотра
      */
     public setViewTime(timestamp: number): void {
-        this.viewTime = timestamp;
-        this.isFollowingLive = false;
+        // Вычисляем смещение относительно текущего времени
+        this.timeOffset = timestamp - Date.now();
     }
 
     /**
      * Возвращает в режим слежения за реальным временем
      */
     public followLive(): void {
-        this.viewTime = null;
-        this.isFollowingLive = true;
+        this.timeOffset = 0;
     }
 
     /**
      * Возвращает текущий момент времени для отрисовки
-     * Если следим за реальным временем - возвращает Date.now()
+     * Всегда возвращает текущее время + смещение
      */
-                     public getCurrentViewTime(): number {
-        // Если мы следим за реальным временем — показываем текущее время
-        if (this.isFollowingLive) {
-            return Date.now();
-        }
-        // Иначе показываем зафиксированное время (из скроллбара или кнопки Стоп)
-        return this.viewTime ?? Date.now();
+    public getCurrentViewTime(): number {
+        return Date.now() + this.timeOffset;
+    }
+
+    /**
+     * Проверяет, находимся ли мы в "живом" режиме (смещение близко к нулю)
+     */
+    public isLive(): boolean {
+        return Math.abs(this.timeOffset) < 100;
     }
 
     public updateColumnWidth(column: keyof ColumnWidths, width: number): void {
