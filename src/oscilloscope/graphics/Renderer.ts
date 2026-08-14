@@ -24,18 +24,18 @@ export class Renderer {
         const spacing = 40 * this.settings.timeScale;
         const duration = (width / spacing) * 1000;
 
-        this.renderGrid(view, width, height);
-        this.renderMarkers(view, width, height, now, spacing);
+              this.renderGrid(view, width, height);
+        this.renderMarkers(view, width, height, now, spacing, duration);
 
         const samples = this.archive.getRecentSamples(channel.id, duration, now);
 
-        if (samples.length > 0) {
+                if (samples.length > 0) {
             if (channel.type === 'digital') {
                 WaveformRenderer.renderDigitalWaveform(channel, samples, view, width, height, now, duration);
             } else {
                 WaveformRenderer.renderAnalogWaveform(channel, samples, view, width, height, now, duration, this.settings, this.archive);
             }
-        } else {
+                } else {
             view.waveGraphics.clear();
         }
 
@@ -68,7 +68,7 @@ export class Renderer {
         g.stroke({ width: 1.5, color: 0xf59e0b, alpha: 0.9 });
     }
 
-    private renderMarkers(view: PixiView, width: number, height: number, now: number, spacing: number): void {
+      private renderMarkers(view: PixiView, width: number, height: number, now: number, spacing: number, duration: number): void {
         const g = view.markerGraphics;
         g.clear();
 
@@ -81,6 +81,21 @@ export class Renderer {
                 g.moveTo(roundedX, 0);
                 g.lineTo(roundedX, height);
                 g.stroke({ width: 1, color: '#94a3b8', alpha: 0.5 });
+            }
+        }
+
+        // Рисуем вертикальную черту измерения, если режим активен и время задано
+        if (this.settings.isAmplitudeMode && this.settings.amplitudeMarkerTime !== null) {
+            const startTime = now - duration;
+            const markerTime = this.settings.amplitudeMarkerTime;
+            
+            // Если черта в пределах видимого окна
+            if (markerTime >= startTime && markerTime <= now) {
+                const x = ((markerTime - startTime) / duration) * width;
+                const roundedX = Math.round(x);
+                g.moveTo(roundedX, 0);
+                g.lineTo(roundedX, height);
+                g.stroke({ width: 2, color: '#ffffff', alpha: 0.9 });
             }
         }
     }

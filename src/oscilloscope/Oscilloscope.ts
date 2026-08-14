@@ -200,6 +200,10 @@ export class Oscilloscope {
       if (this.animFrameId === null) {
         this.animFrameId = requestAnimationFrame((t) => this.loop(t));
       }
+      // Если опрос должен идти, явно возобновляем его после переподключения
+      if (this.settings.isPolling) {
+        this.serial.resumePolling();
+      }
     } else {
       if (this.connectionLost) return;
       this.connectionLost = true;
@@ -282,24 +286,80 @@ export class Oscilloscope {
       this.settings.timeZoomEnabled = enabled;
     });
 
-            this.toolbar.onTogglePolling((isPolling) => {
-            console.log('[Oscilloscope] Кнопка Пуск/Стоп нажата. isPolling =', isPolling);
-            if (isPolling) {
-                this.serial.resumePolling();
-                this.settings.followLive();
-            } else {
-                this.serial.pausePolling();
-                this.settings.freezeTime();
-            }
-            if (this.onPollingStateChangeCallback) {
-                this.onPollingStateChangeCallback(isPolling);
-            }
-        });
+    this.toolbar.onTogglePolling((isPolling) => {
+      // Тихо игнорируем нажатие, если активен режим измерения
+      if (this.settings.isAmplitudeMode) {
+        return;
+      }
 
-        this.toolbar.onAutoScale(() => {
-            this.allChannels.forEach(ch => {
-                ch.autoScale = true;
-            });
+      console.log('[Oscilloscope] Кнопка Пуск/Стоп нажата. isPolling =', isPolling);
+      if (isPolling) {
+        this.serial.resumePolling();
+        this.settings.followLive();
+      } else {
+        this.serial.pausePolling();
+        this.settings.freezeTime();
+      }
+      if (this.onPollingStateChangeCallback) {
+        this.onPollingStateChangeCallback(isPolling);
+      }
+    });
+
+    this.toolbar.onAutoScale(() => {
+      this.allChannels.forEach(ch => {
+        ch.autoScale = true;
+      });
+      const allAutoScale = this.allChannels.every(ch => ch.autoScale);
+      this.toolbar.setAutoScaleButtonState(allAutoScale);
+    });
+
+    this.toolbar.onToggleAmplitudeMode(() => {
+      if (this.settings.isAmplitudeMode) {
+        // === ВЫХОД ИЗ РЕЖИМА ===
+        this.settings.isAmplitudeMode = false;
+        this.settings.amplitudeMarkerTime = null;
+        this.cursorsFooter.setAmplitudeTime(null);
+        this.toolbar.setAmplitudeModeButtonState(false);
+
+        // Возвращаем опрос, если он был до входа в режим
+        if (this.settings.wasPollingBeforeMeasure) {
+          this.settings.isPolling = true;
+          this.serial.resumePolling();
+          this.settings.followLive();
+          this.toolbar.updatePollingButtonState();
+
+          // КРИТИЧЕСКИ ВАЖНО: Сообщаем main.ts, чтобы он перезапустил readLoop
+          if (this.onPollingStateChangeCallback) {
+            this.onPollingStateChangeCallback(true);
+          }
+        }
+      } else {
+        // === ВХОД В РЕЖИМ ===
+        this.settings.wasPollingBeforeMeasure = this.settings.isPolling;
+
+        // ГАРАНТИРОВАННО останавливаем опрос и замораживаем время
+        this.settings.isPolling = false;
+        this.serial.pausePolling();
+                this.settings.freezeTime();
+                this.toolbar.updatePollingButtonState();
+                if (this.onPollingStateChangeCallback) {
+                    this.onPollingStateChangeCallback(false);
+                }
+
+                this.settings.isAmplitudeMode = true;
+                
+                // Вычисляем duration ТОЧНО так же, как в Renderer.ts, чтобы маркер был по центру
+                const firstView = this.pixiViews.values().next().value;
+                const width = firstView ? firstView.bounds.width : 800;
+                const spacing = 40 * this.settings.timeScale;
+                const duration = (width / spacing) * 1000;
+                
+                const now = this.settings.getCurrentViewTime();
+                this.settings.amplitudeMarkerTime = now - (duration / 2);
+
+                this.toolbar.setAmplitudeModeButtonState(true);
+                this.cursorsFooter.setAmplitudeTime(this.settings.amplitudeMarkerTime);
+            }
         });
     this.bottomPanels.onCommandSubmit((text) => {
       void this.handleCommandSubmit(text);
@@ -381,6 +441,7 @@ export class Oscilloscope {
     } catch (err) {
       console.error("[Oscilloscope] Failed to set serial channels:", err);
     }
+
     await this.renderVisibleChannels();
     console.log(`[Oscilloscope] Switch complete.`);
   }
@@ -448,19 +509,53 @@ export class Oscilloscope {
         );
         void this.handleCommandSubmit(`${toggledChannel.name} = ${newVal}`);
       };
-      const container = row.getGraphContainer();
-      if (container) {
-        const pixiView = new PixiView(container);
-        try {
-          await pixiView.init();
-          tempPixiViews.set(channel.id, pixiView);
-        } catch (err) {
-          console.warn(
-            `[Oscilloscope] PixiView init failed for channel ${channel.id}:`,
-            err,
-          );
+              const container = row.getGraphContainer();
+        if (container) {
+          const pixiView = new PixiView(container);
+          try {
+            await pixiView.init();
+
+                        // Добавляем обработчик клика для режима измерения величины сигнала
+            pixiView.canvas.addEventListener('click', (e: MouseEvent) => {
+              if (!this.settings.isAmplitudeMode) return;
+
+              const rect = pixiView.canvas.getBoundingClientRect();
+              const x = e.clientX - rect.left;
+              const width = rect.width;
+              
+              if (width <= 0) return;
+
+              // Вычисляем duration ТОЧНО так же, как в Renderer.ts
+              const spacing = 40 * this.settings.timeScale;
+              const duration = (width / spacing) * 1000;
+              
+              const currentTime = this.settings.getCurrentViewTime();
+              const startTime = currentTime - duration;
+
+              // Вычисляем абсолютное время по координате X клика
+              const markerTime = startTime + (x / width) * duration;
+
+              // Обновляем состояние маркера и подвал
+              this.settings.amplitudeMarkerTime = markerTime;
+              this.cursorsFooter.setAmplitudeTime(markerTime);
+              
+              // Принудительно вызываем перерисовку всех графиков для мгновенного отклика
+              this.visibleChannels.forEach((ch) => {
+                const v = this.pixiViews.get(ch.id);
+                if (v) {
+                  this.renderer.renderChannelGraph(ch, v);
+                }
+              });
+            });
+
+            tempPixiViews.set(channel.id, pixiView);
+          } catch (err) {
+            console.warn(
+              `[Oscilloscope] PixiView init failed for channel ${channel.id}:`,
+              err,
+            );
+          }
         }
-      }
     }
            if (!this.isDestroyed) {
             this.pixiViews = tempPixiViews;

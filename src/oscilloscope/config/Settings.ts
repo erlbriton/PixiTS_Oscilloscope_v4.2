@@ -54,8 +54,19 @@ export class Settings {
 
     // === УПРАВЛЕНИЕ ЗАПИСЬЮ И ПРОСМОТРОМ ИСТОРИИ ===
     
-    // Идёт ли опрос контроллера (false = стоп, true = пуск)
+        // Идёт ли опрос контроллера (false = стоп, true = пуск)
     public isPolling: boolean = true;
+
+    // === РЕЖИМ ИЗМЕРЕНИЯ ВЕЛИЧИНЫ СИГНАЛА ===
+
+    // Активен ли режим измерения (false = выключен, true = включен)
+    public isAmplitudeMode: boolean = false;
+
+    // Момент времени вертикальной черты (timestamp в мс), null = черты нет
+    public amplitudeMarkerTime: number | null = null;
+
+    // Шли ли графики до входа в режим измерения (для восстановления при выходе)
+    public wasPollingBeforeMeasure: boolean = false;
     
     // Момент времени, относительно которого показываем данные (timestamp в мс)
     // null = следим за реальным временем (живой режим)

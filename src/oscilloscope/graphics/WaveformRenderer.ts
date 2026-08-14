@@ -153,6 +153,40 @@ export class WaveformRenderer {
             }
         }
 
-        g.stroke({ width: 2, color: waveColor, alpha: 0.9 });
+                g.stroke({ width: 2, color: waveColor, alpha: 0.9 });
+    }
+
+    /**
+     * Рисует вертикальную черту измерения на отдельном слое markerGraphics.
+     * Вызывается для каждого канала (или один раз для любого канала — не важно,
+     * так как markerGraphics — отдельный слой каждого PixiView).
+     */
+    public static renderVerticalMarker(
+        view: PixiView,
+        markerTime: number | null,
+        currentTime: number,
+        duration: number,
+        width: number,
+        height: number
+    ): void {
+        const mg = view.markerGraphics;
+        mg.clear();
+
+        // Если время черты не задано — ничего не рисуем
+        if (markerTime === null) return;
+
+        const startTime = currentTime - duration;
+        const endTime = currentTime;
+
+        // Если черта вне видимого окна — не рисуем
+        if (markerTime < startTime || markerTime > endTime) return;
+
+        // Вычисляем X-координату черты
+        const x = ((markerTime - startTime) / duration) * width;
+
+        // Рисуем вертикальную линию
+        mg.moveTo(x, 0);
+        mg.lineTo(x, height);
+        mg.stroke({ width: 1, color: '#ffffff', alpha: 0.9 });
     }
 }
