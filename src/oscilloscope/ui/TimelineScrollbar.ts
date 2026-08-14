@@ -38,15 +38,18 @@ export class TimelineScrollbar {
         }
     }
 
-    public setPosition(timestamp: number): void {
+        public setPosition(timestamp: number): void {
+        // Если диапазон еще не задан или минимальное и максимальное время равны (пустой архив)
         if (this.minTime === this.maxTime) {
             this.slider.value = String(this.maxTime);
             return;
         }
         
+        // Ограничиваем timestamp пределами диапазона
         const clampedTime = Math.max(this.minTime, Math.min(this.maxTime, timestamp));
         this.slider.value = String(clampedTime);
     }
+
 
     public onChange(callback: (timestamp: number) => void): void {
         this.onChangeCallback = callback;

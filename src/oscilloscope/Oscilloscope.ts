@@ -102,22 +102,17 @@ export class Oscilloscope {
     const layoutElements = Layout.createSkeleton(rootElement);
     this.splitContainer = layoutElements.splitContainer;
 
-    this.timelineScrollbar = new TimelineScrollbar(
-      layoutElements.timelineContainer,
-    );
-    this.timelineScrollbar.onChange((timestamp) => {
-      if (
-        this.timelineScrollbar.isAtLivePosition() &&
-        this.settings.isPolling
-      ) {
-        // Возвращаемся в живой режим ТОЛЬКО если опрос уже идёт
-        this.settings.followLive();
-      } else {
-        // Иначе просто показываем историю на этом времени
-        this.settings.setViewTime(timestamp);
-      }
-    });
-
+            this.timelineScrollbar = new TimelineScrollbar(layoutElements.timelineContainer);
+        this.timelineScrollbar.onChange((timestamp) => {
+            console.log('[Oscilloscope] Скроллбар onChange. timestamp:', timestamp, ', isPolling:', this.settings.isPolling, ', isAtLive:', this.timelineScrollbar.isAtLivePosition());
+            if (this.timelineScrollbar.isAtLivePosition() && this.settings.isPolling) {
+                // Возвращаемся в живой режим ТОЛЬКО если опрос уже идёт
+                this.settings.followLive();
+            } else {
+                // Иначе просто показываем историю на этом времени
+                this.settings.setViewTime(timestamp);
+            }
+        });
     this.table = new Table(layoutElements.rowsContainer);
     this.toolbar = new Toolbar(
       layoutElements.toolbarContainer,
@@ -457,15 +452,15 @@ export class Oscilloscope {
     if (this.isDestroyed || !this.isRunning || !this.table) return;
     this.lastFrameTime = now;
 
-    // Обновляем диапазон и позицию скроллбара ТОЛЬКО если мы в живом режиме
-    if (this.settings.isLive()) {
-      const range = this.archive.getTimeRange();
-      this.timelineScrollbar.setRange(range.min, range.max);
+    // Всегда обновляем диапазон (нужно, чтобы ползунок знал границы)
+    const range = this.archive.getTimeRange();
+    this.timelineScrollbar.setRange(range.min, range.max);
+
+    // Обновляем позицию ползунка ТОЛЬКО если опрос идёт И мы в живом режиме
+    if (this.settings.isPolling && this.settings.isLive()) {
       this.timelineScrollbar.setPosition(range.max);
     }
-    // Если пользователь сдвинул скроллбар (смотрит историю) — не трогаем range и позицию
-    // В противном случае не трогаем скроллбар — он остаётся там, где его оставил пользователь
-
+    // Иначе не трогаем ползунок — пользователь сам им управляет
     try {
       this.table.updateValues();
       this.toolbar.updateRecordTimer();
