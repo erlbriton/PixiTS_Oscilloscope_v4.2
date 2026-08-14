@@ -401,10 +401,14 @@ export class Oscilloscope {
         console.warn("[Oscilloscope] Failed to destroy old PixiView:", err);
       }
     });
-    this.pixiViews.clear();
-    const tempPixiViews: Map<string, PixiView> = new Map();
-    this.table.clear();
-    for (const channel of this.visibleChannels) {
+           this.pixiViews.clear();
+        const tempPixiViews: Map<string, PixiView> = new Map();
+        
+                // Запоминаем позицию прокрутки перед очисткой таблицы
+        const savedScrollTop = this.rowsContainer.scrollTop;
+        
+        this.table.clear();
+        for (const channel of this.visibleChannels) {
       if (this.isDestroyed) break;
       const row = this.table.addChannel(channel);
       row.onChannelUpdated = () => {
@@ -442,10 +446,15 @@ export class Oscilloscope {
         }
       }
     }
-    if (!this.isDestroyed) {
-      this.pixiViews = tempPixiViews;
+           if (!this.isDestroyed) {
+            this.pixiViews = tempPixiViews;
+            
+                       // Восстанавливаем позицию прокрутки после перерисовки
+            requestAnimationFrame(() => {
+                this.rowsContainer.scrollTop = savedScrollTop;
+            });
+        }
     }
-  }
 
   private loop(now: number): void {
     this.animFrameId = null;
