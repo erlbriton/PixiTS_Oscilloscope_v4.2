@@ -114,14 +114,16 @@ export class Oscilloscope {
             }
         });
     this.table = new Table(layoutElements.rowsContainer);
-    this.toolbar = new Toolbar(
-      layoutElements.toolbarContainer,
-      this.settings,
-      this.recorder,
-      this.serial,
-    );
-    this.toolbar.initialize();
-    this.resizer = new Resizer(this.settings, layoutElements.headerContainer);
+          this.toolbar = new Toolbar(
+        layoutElements.toolbarContainer,
+        this.settings,
+        this.recorder,
+        this.serial,
+      );
+      this.toolbar.initialize();
+      // При загрузке все каналы в режиме автомасштаба — активируем кнопку
+      this.toolbar.setAutoScaleButtonState(true);
+      this.resizer = new Resizer(this.settings, layoutElements.headerContainer);
     this.resizer.initialize();
     this.iniPanel = new IniPanel(layoutElements.iniPanelContainer);
     this.bottomPanels = new BottomPanels(layoutElements.bottomPanelsContainer);
@@ -249,9 +251,18 @@ export class Oscilloscope {
         }
       }
     });
-    this.propertiesModal.onApply((newVisible) => {
-      this.updateVisibleChannels(newVisible);
-    });
+        //              this.propertiesModal.onApply((newVisible) => {
+        //       this.updateVisibleChannels(newVisible);
+        //       // Диагностика: показываем состояние autoScale всех каналов
+        //       console.log('[Oscilloscope] Состояние autoScale после применения:');
+        //       this.allChannels.forEach(ch => {
+        //           console.log(`  ${ch.name}: autoScale = ${ch.autoScale}`);
+        //       });
+        //       // Если хотя бы один канал не в автомасштабе — гасим кнопку
+        //       const allAutoScale = this.allChannels.every(ch => ch.autoScale);
+        //       console.log('[Oscilloscope] allAutoScale =', allAutoScale);
+        //       this.toolbar.setAutoScaleButtonState(allAutoScale);
+        //   });
     this.serial.onStateChange((state, msg) => {
       if (state === "error") {
         this.setConnectionStatus(false, msg || "Связь с устройством потеряна.");
@@ -271,23 +282,25 @@ export class Oscilloscope {
       this.settings.timeZoomEnabled = enabled;
     });
 
-    this.toolbar.onTogglePolling((isPolling) => {
-      console.log(
-        "[Oscilloscope] Кнопка Пуск/Стоп нажата. isPolling =",
-        isPolling,
-      );
-      if (isPolling) {
-        this.serial.resumePolling();
-        this.settings.followLive();
-      } else {
-        this.serial.pausePolling();
-        this.settings.freezeTime(); // Фиксируем текущее время
-      }
-      // Уведомляем основное приложение об изменении состояния опроса
-      if (this.onPollingStateChangeCallback) {
-        this.onPollingStateChangeCallback(isPolling);
-      }
-    });
+            this.toolbar.onTogglePolling((isPolling) => {
+            console.log('[Oscilloscope] Кнопка Пуск/Стоп нажата. isPolling =', isPolling);
+            if (isPolling) {
+                this.serial.resumePolling();
+                this.settings.followLive();
+            } else {
+                this.serial.pausePolling();
+                this.settings.freezeTime();
+            }
+            if (this.onPollingStateChangeCallback) {
+                this.onPollingStateChangeCallback(isPolling);
+            }
+        });
+
+        this.toolbar.onAutoScale(() => {
+            this.allChannels.forEach(ch => {
+                ch.autoScale = true;
+            });
+        });
     this.bottomPanels.onCommandSubmit((text) => {
       void this.handleCommandSubmit(text);
     });
@@ -411,9 +424,12 @@ export class Oscilloscope {
         for (const channel of this.visibleChannels) {
       if (this.isDestroyed) break;
       const row = this.table.addChannel(channel);
-      row.onChannelUpdated = () => {
-        if (this.settings.enableCursors) this.updateCursorsFooter();
-      };
+              row.onChannelUpdated = () => {
+          if (this.settings.enableCursors) this.updateCursorsFooter();
+          // Обновляем состояние кнопки автомасштабирования
+          const allAutoScale = this.allChannels.every(ch => ch.autoScale);
+          this.toolbar.setAutoScaleButtonState(allAutoScale);
+        };
       row.onDelete = (deletedChannel) => {
         this.updateVisibleChannels(
           this.visibleChannels.filter((c) => c.id !== deletedChannel.id),
