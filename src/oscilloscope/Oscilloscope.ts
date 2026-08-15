@@ -286,12 +286,36 @@ export class Oscilloscope {
       this.settings.timeZoomEnabled = enabled;
     });
 
-    this.toolbar.onTogglePolling((isPolling) => {////////////////////////////////////////////\
-      // Тихо игнорируем нажатие, если активен режим измерения
-      if (this.settings.isAmplitudeMode) {
+        this.toolbar.onTogglePolling((isPolling) => {
+      // СПЕЦИАЛЬНАЯ ЛОГИКА: Если активен режим измерения и нажали ПУСК (isPolling === true)
+      if (this.settings.isAmplitudeMode && isPolling) {
+        console.log('[Oscilloscope] Аварийный выход из режима измерения через кнопку Пуск');
+
+        // 1. Выключаем режим измерения
+        this.settings.isAmplitudeMode = false;
+        this.settings.amplitudeMarkerTime = null;
+        this.cursorsFooter.setAmplitudeTime(null);
+        this.toolbar.setAmplitudeModeButtonState(false);
+
+        // 2. Запускаем стандартный опрос и движение графиков
+        this.settings.isPolling = true;
+        this.serial.resumePolling();
+        this.settings.followLive();
+        this.toolbar.updatePollingButtonState();
+
+        // 3. Синхронизируем с main.ts (точно так же, как это делает рабочий код выхода из режима)
+        if (this.onPollingStateChangeCallback) {
+          this.onPollingStateChangeCallback(true);
+        }
+        return; // Прерываем выполнение, стандартная логика ниже не сработает
+      }
+
+      // Если нажали СТОП во время измерения - просто игнорируем (опрос внутри режима и так на паузе)
+      if (this.settings.isAmplitudeMode && !isPolling) {
         return;
       }
 
+      // Стандартная логика переключения Пуск/Стоп (вне режима измерения)
       console.log('[Oscilloscope] Кнопка Пуск/Стоп нажата. isPolling =', isPolling);
       if (isPolling) {
         this.serial.resumePolling();
@@ -303,7 +327,7 @@ export class Oscilloscope {
       if (this.onPollingStateChangeCallback) {
         this.onPollingStateChangeCallback(isPolling);
       }
-    });/////////////////////////////////////////////////////////////////////////////////////\
+    });
 
     this.toolbar.onAutoScale(() => {
       this.allChannels.forEach(ch => {
@@ -314,12 +338,12 @@ export class Oscilloscope {
     });
 
     this.toolbar.onToggleAmplitudeMode(() => {
-      if (this.settings.isAmplitudeMode) {
-        // === ВЫХОД ИЗ РЕЖИМА ===
-        this.settings.isAmplitudeMode = false;
-        this.settings.amplitudeMarkerTime = null;
-        this.cursorsFooter.setAmplitudeTime(null);
-        this.toolbar.setAmplitudeModeButtonState(false);
+                  if (this.settings.isAmplitudeMode) {
+                // === ВЫХОД ИЗ РЕЖИМА ===
+                this.settings.isAmplitudeMode = false;
+                this.settings.amplitudeMarkerTime = null;
+                this.bottomPanels.setReadout(ReadoutSlot.Reserved3, ''); // Очищаем третью ячейку
+                this.toolbar.setAmplitudeModeButtonState(false);
 
         // Возвращаем опрос, если он был до входа в режим
         if (this.settings.wasPollingBeforeMeasure) {
@@ -359,8 +383,8 @@ export class Oscilloscope {
 
                 this.toolbar.setAmplitudeModeButtonState(true);
                 this.cursorsFooter.setAmplitudeTime(this.settings.amplitudeMarkerTime);
-            }////////////////////////////////////////////////////////////////////////////////\\
-        });
+            }
+        });/////////////////////////////////////////////////////////////////////////
     this.bottomPanels.onCommandSubmit((text) => {
       void this.handleCommandSubmit(text);
     });
@@ -535,10 +559,21 @@ export class Oscilloscope {
               // Вычисляем абсолютное время по координате X клика
               const markerTime = startTime + (x / width) * duration;
 
-              // Обновляем состояние маркера и подвал
-              this.settings.amplitudeMarkerTime = markerTime;
-              this.cursorsFooter.setAmplitudeTime(markerTime);
+             this.settings.amplitudeMarkerTime = markerTime;
               
+              // Форматируем дату и время клика: 15.08.26 11:25:38
+              const date = new Date(markerTime);
+              const day = String(date.getDate()).padStart(2, '0');
+              const month = String(date.getMonth() + 1).padStart(2, '0');
+              const year = String(date.getFullYear()).slice(-2);
+              const hours = String(date.getHours()).padStart(2, '0');
+              const minutes = String(date.getMinutes()).padStart(2, '0');
+              const seconds = String(date.getSeconds()).padStart(2, '0');
+              const formattedTime = `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`;
+
+              // Выводим в ТРЕТЬЮ ячейку реального подвала
+              this.bottomPanels.setReadout(ReadoutSlot.Reserved3, formattedTime);
+             
               // Принудительно вызываем перерисовку всех графиков для мгновенного отклика
               this.visibleChannels.forEach((ch) => {
                 const v = this.pixiViews.get(ch.id);
