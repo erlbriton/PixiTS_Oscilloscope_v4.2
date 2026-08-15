@@ -267,6 +267,15 @@ export class Oscilloscope {
         //       console.log('[Oscilloscope] allAutoScale =', allAutoScale);
         //       this.toolbar.setAutoScaleButtonState(allAutoScale);
         //   });
+      this.propertiesModal.onApply((newVisible) => {
+        // Применяем новые настройки видимости и масштаба каналов
+        this.updateVisibleChannels(newVisible);
+        
+        // Обновляем состояние кнопки автомасштаба на панели инструментов
+        const allAutoScale = this.allChannels.every(ch => ch.autoScale);
+        this.toolbar.setAutoScaleButtonState(allAutoScale);
+    });
+
     this.serial.onStateChange((state, msg) => {
       if (state === "error") {
         this.setConnectionStatus(false, msg || "Связь с устройством потеряна.");
