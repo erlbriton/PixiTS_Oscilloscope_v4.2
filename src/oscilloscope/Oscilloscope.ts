@@ -286,7 +286,7 @@ export class Oscilloscope {
       this.settings.timeZoomEnabled = enabled;
     });
 
-    this.toolbar.onTogglePolling((isPolling) => {
+    this.toolbar.onTogglePolling((isPolling) => {////////////////////////////////////////////\
       // Тихо игнорируем нажатие, если активен режим измерения
       if (this.settings.isAmplitudeMode) {
         return;
@@ -303,7 +303,7 @@ export class Oscilloscope {
       if (this.onPollingStateChangeCallback) {
         this.onPollingStateChangeCallback(isPolling);
       }
-    });
+    });/////////////////////////////////////////////////////////////////////////////////////\
 
     this.toolbar.onAutoScale(() => {
       this.allChannels.forEach(ch => {
@@ -333,7 +333,7 @@ export class Oscilloscope {
             this.onPollingStateChangeCallback(true);
           }
         }
-      } else {
+      } else {//////////////////////////////////////////////////////////////////////\
         // === ВХОД В РЕЖИМ ===
         this.settings.wasPollingBeforeMeasure = this.settings.isPolling;
 
@@ -359,7 +359,7 @@ export class Oscilloscope {
 
                 this.toolbar.setAmplitudeModeButtonState(true);
                 this.cursorsFooter.setAmplitudeTime(this.settings.amplitudeMarkerTime);
-            }
+            }////////////////////////////////////////////////////////////////////////////////\\
         });
     this.bottomPanels.onCommandSubmit((text) => {
       void this.handleCommandSubmit(text);
