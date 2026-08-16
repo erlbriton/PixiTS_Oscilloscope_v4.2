@@ -479,7 +479,7 @@ export class Oscilloscope {
     console.log(`[Oscilloscope] Switch complete.`);
   }
 
-     /**
+       /**
    * Измеряет значение канала в указанный момент времени и отображает его в таблице.
    * Этот метод будет использоваться для записи в файл части или полного буфера.
    * @param channelId - ID канала для измерения
@@ -490,17 +490,22 @@ export class Oscilloscope {
     const channel = this.allChannels.find(c => c.id === channelId);
     if (!channel) return;
 
-    // 2. Берем ФИЗИЧЕСКОЕ значение из архива в момент маркера
-    const physicalValue = this.archive.getValueAtTime(channelId, timeMs);
-    if (physicalValue === null) return;
-
-    // 3. Восстанавливаем сырое значение регистра.
-    //    В архиве хранится scaledValue, а updateRawValue() ожидает raw.
-    //    Без этого преобразования scale применился бы второй раз и число исказилось бы.
+    // 2. Читаем значение из архива в момент маркера.
+    //    Для битовых — семантика sample-and-hold (последний сэмпл ДО или в момент T),
+    //    иначе клик во вторую половину "полки" давал бы следующее значение.
+    //    Для аналоговых — ближайший сэмпл (плавная линия графика).
     let rawValue: number;
     if (channel.isBit) {
-      rawValue = physicalValue > 0 ? 1 : 0;
+      const stepValue = this.archive.getStepValueAtTime(channelId, timeMs);
+      if (stepValue === null) return;
+      rawValue = stepValue > 0 ? 1 : 0;
     } else {
+      const physicalValue = this.archive.getValueAtTime(channelId, timeMs);
+      if (physicalValue === null) return;
+
+      // 3. Восстанавливаем сырое значение регистра.
+      //    В архиве хранится scaledValue, а updateRawValue() ожидает raw.
+      //    Без этого преобразования scale применился бы второй раз и число исказилось бы.
       rawValue = channel.scale !== 0
         ? Math.round(physicalValue / channel.scale)
         : Math.round(physicalValue);

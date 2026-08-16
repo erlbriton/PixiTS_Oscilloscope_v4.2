@@ -79,7 +79,7 @@ export class ChannelRingBuffer {
         return result;
     }
 
-    /**
+        /**
      * Возвращает значение сэмпла, ближайшего по времени к указанному моменту.
      * Бинарный поиск по хронологическому порядку кольцевого буфера — O(log N).
      * Возвращает null, если буфер пуст.
@@ -116,6 +116,37 @@ export class ChannelRingBuffer {
         }
 
         return this.values[idxAfter];
+    }
+
+    /**
+     * Возвращает значение ПОСЛЕДНЕГО сэмпла, записанного ДО или в момент timeMs
+     * (семантика sample-and-hold для дискретных сигналов).
+     * Возвращает null, если буфер пуст или время раньше первого сэмпла.
+     */
+    public getStepValueAtTime(timeMs: number): number | null {
+        if (this.size === 0) return null;
+
+        const startIndex = (this.head - this.size + this.capacity) % this.capacity;
+
+        // Если время раньше первого сэмпла — данных ещё нет
+        if (this.timestamps[startIndex] > timeMs) return null;
+
+        let lo = 0;
+        let hi = this.size - 1;
+
+        while (lo < hi) {
+            const mid = (lo + hi + 1) >> 1;
+            const midIdx = (startIndex + mid) % this.capacity;
+            if (this.timestamps[midIdx] <= timeMs) {
+                lo = mid;
+            } else {
+                hi = mid - 1;
+            }
+        }
+
+        // lo — индекс последнего сэмпла с time <= timeMs
+        const idx = (startIndex + lo) % this.capacity;
+        return this.values[idx];
     }
 
     public getMinMax(durationMs?: number, currentTime?: number): { min: number; max: number } {
@@ -182,7 +213,7 @@ export class Archive {
         return buffer.getAllSamples();
     }
 
-    /**
+        /**
      * Возвращает значение канала, ближайшее по времени к указанному моменту.
      * Возвращает null, если данных по каналу нет.
      */
@@ -190,6 +221,17 @@ export class Archive {
         const buffer = this.buffers.get(channelId);
         if (!buffer) return null;
         return buffer.getValueAtTime(timeMs);
+    }
+
+    /**
+     * Возвращает значение канала по семантике sample-and-hold:
+     * последний сэмпл, записанный ДО или в момент timeMs.
+     * Возвращает null, если данных по каналу нет.
+     */
+    public getStepValueAtTime(channelId: string, timeMs: number): number | null {
+        const buffer = this.buffers.get(channelId);
+        if (!buffer) return null;
+        return buffer.getStepValueAtTime(timeMs);
     }
 
     public getMinMax(channelId: string, durationMs?: number, currentTime?: number): { min: number; max: number } {
