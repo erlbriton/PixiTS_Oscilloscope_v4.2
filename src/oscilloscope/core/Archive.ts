@@ -68,7 +68,7 @@ export class ChannelRingBuffer {
         return result;
     }
 
-    public getAllSamples(): Sample[] {
+       public getAllSamples(): Sample[] {
         if (this.size === 0) return [];
         const result: Sample[] = [];
         const startIndex = (this.head - this.size + this.capacity) % this.capacity;
@@ -77,6 +77,45 @@ export class ChannelRingBuffer {
             result.push({ time: this.timestamps[idx], value: this.values[idx] });
         }
         return result;
+    }
+
+    /**
+     * Возвращает значение сэмпла, ближайшего по времени к указанному моменту.
+     * Бинарный поиск по хронологическому порядку кольцевого буфера — O(log N).
+     * Возвращает null, если буфер пуст.
+     */
+    public getValueAtTime(timeMs: number): number | null {
+        if (this.size === 0) return null;
+
+        const startIndex = (this.head - this.size + this.capacity) % this.capacity;
+
+        let lo = 0;
+        let hi = this.size - 1;
+
+        while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            const midIdx = (startIndex + mid) % this.capacity;
+            if (this.timestamps[midIdx] < timeMs) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+
+        // lo — индекс первого сэмпла с time >= timeMs
+        const idxAfter = (startIndex + lo) % this.capacity;
+        const tAfter = this.timestamps[idxAfter];
+
+        // Сравниваем с предыдущим сэмплом и выбираем ближайший по времени
+        if (lo > 0) {
+            const idxBefore = (startIndex + lo - 1) % this.capacity;
+            const tBefore = this.timestamps[idxBefore];
+            if (timeMs - tBefore <= tAfter - timeMs) {
+                return this.values[idxBefore];
+            }
+        }
+
+        return this.values[idxAfter];
     }
 
     public getMinMax(durationMs?: number, currentTime?: number): { min: number; max: number } {
@@ -137,10 +176,20 @@ export class Archive {
         return buffer.getRecentSamples(durationMs, currentTime);
     }
 
-    public getAllSamples(channelId: string): Sample[] {
+       public getAllSamples(channelId: string): Sample[] {
         const buffer = this.buffers.get(channelId);
         if (!buffer) return [];
         return buffer.getAllSamples();
+    }
+
+    /**
+     * Возвращает значение канала, ближайшее по времени к указанному моменту.
+     * Возвращает null, если данных по каналу нет.
+     */
+    public getValueAtTime(channelId: string, timeMs: number): number | null {
+        const buffer = this.buffers.get(channelId);
+        if (!buffer) return null;
+        return buffer.getValueAtTime(timeMs);
     }
 
     public getMinMax(channelId: string, durationMs?: number, currentTime?: number): { min: number; max: number } {

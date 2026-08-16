@@ -479,6 +479,51 @@ export class Oscilloscope {
     console.log(`[Oscilloscope] Switch complete.`);
   }
 
+     /**
+   * Измеряет значение канала в указанный момент времени и отображает его в таблице.
+   * Этот метод будет использоваться для записи в файл части или полного буфера.
+   * @param channelId - ID канала для измерения
+   * @param timeMs - Абсолютное время в миллисекундах
+   */
+  private measureChannelAtTime(channelId: string, timeMs: number): void {
+    // 1. Находим канал
+    const channel = this.allChannels.find(c => c.id === channelId);
+    if (!channel) return;
+
+    // 2. Берем ФИЗИЧЕСКОЕ значение из архива в момент маркера
+    const physicalValue = this.archive.getValueAtTime(channelId, timeMs);
+    if (physicalValue === null) return;
+
+    // 3. Восстанавливаем сырое значение регистра.
+    //    В архиве хранится scaledValue, а updateRawValue() ожидает raw.
+    //    Без этого преобразования scale применился бы второй раз и число исказилось бы.
+    let rawValue: number;
+    if (channel.isBit) {
+      rawValue = physicalValue > 0 ? 1 : 0;
+    } else {
+      rawValue = channel.scale !== 0
+        ? Math.round(physicalValue / channel.scale)
+        : Math.round(physicalValue);
+    }
+
+    // 4. Обновляем значения канала (hex, scaled, physical)
+    channel.updateRawValue(rawValue);
+
+    // 5. Подсвечиваем строку этого канала
+    const allRows = this.table.getAllRows();
+    allRows.forEach(row => row.getElement().classList.remove('selected'));
+
+    const targetRow = this.table.getRow(channelId);
+    if (targetRow) {
+      targetRow.getElement().classList.add('selected');
+      targetRow.updateValue(); // Обновляет Hex и Physical в ячейках
+    }
+
+    // 6. Обновляем this.selectedChannel для совместимости с остальным кодом
+    this.selectedChannel = channel;
+    this.bottomPanels.setCommandText(`${channel.name} = `);
+  }
+
   public async updateVisibleChannels(
     newVisibleChannels: Channel[],
   ): Promise<void> {
@@ -580,8 +625,11 @@ export class Oscilloscope {
               const seconds = String(date.getSeconds()).padStart(2, '0');
               const formattedTime = `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`;
 
-              // Выводим в ТРЕТЬЮ ячейку реального подвала
+                            // Выводим в ТРЕТЬЮ ячейку реального подвала
               this.bottomPanels.setReadout(ReadoutSlot.Reserved3, formattedTime);
+
+              // ИЗМЕРЕНИЕ: Берем значение канала в момент маркера и отображаем в таблице
+              this.measureChannelAtTime(channel.id, markerTime);
              
               // Принудительно вызываем перерисовку всех графиков для мгновенного отклика
               this.visibleChannels.forEach((ch) => {
