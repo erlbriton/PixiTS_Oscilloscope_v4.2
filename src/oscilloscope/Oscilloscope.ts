@@ -346,7 +346,7 @@ export class Oscilloscope {
       this.toolbar.setAutoScaleButtonState(allAutoScale);
     });
 
-    this.toolbar.onToggleAmplitudeMode(() => {
+       this.toolbar.onToggleAmplitudeMode(() => {
                   if (this.settings.isAmplitudeMode) {
                 // === ВЫХОД ИЗ РЕЖИМА ===
                 this.settings.isAmplitudeMode = false;
@@ -393,7 +393,58 @@ export class Oscilloscope {
                 this.toolbar.setAmplitudeModeButtonState(true);
                 this.cursorsFooter.setAmplitudeTime(this.settings.amplitudeMarkerTime);
             }
-        });/////////////////////////////////////////////////////////////////////////
+        });
+
+        // Регистрируем callback для кнопки измерения временных интервалов
+    this.toolbar.onToggleIntervalMode(() => {
+      if (this.settings.isIntervalMode) {
+        // === ВЫХОД ИЗ РЕЖИМА ===
+        this.settings.isIntervalMode = false;
+        this.settings.intervalMarker1Time = null;
+        this.settings.intervalMarker2Time = null;
+        this.toolbar.setIntervalModeButtonState(false);
+
+        // Очищаем ячейку длительности интервала в подвале
+        this.bottomPanels.setReadout(ReadoutSlot.Reserved2, '');
+
+        // Возвращаем опрос, если он был остановлен
+        if (this.settings.wasPollingBeforeInterval) {
+          this.settings.isPolling = true;
+          this.serial.resumePolling();
+          this.settings.followLive();
+          this.toolbar.updatePollingButtonState();
+
+          if (this.onPollingStateChangeCallback) {
+            this.onPollingStateChangeCallback(true);
+          }
+        }
+
+        // Перерисовываем все графики для удаления маркеров
+        this.visibleChannels.forEach((ch) => {
+          const v = this.pixiViews.get(ch.id);
+          if (v) {
+            this.renderer.renderChannelGraph(ch, v);
+          }
+        });
+      } else {
+        // === ВХОД В РЕЖИМ ===
+        this.settings.wasPollingBeforeInterval = this.settings.isPolling;
+        this.settings.isIntervalMode = true;
+        this.settings.intervalMarker1Time = null;
+        this.settings.intervalMarker2Time = null;
+        this.toolbar.setIntervalModeButtonState(true);
+
+        // НЕ останавливаем опрос - маркеры работают и при движущихся графиках
+
+        // Перерисовываем все графики
+        this.visibleChannels.forEach((ch) => {
+          const v = this.pixiViews.get(ch.id);
+          if (v) {
+            this.renderer.renderChannelGraph(ch, v);
+          }
+        });
+      }
+    });
     this.bottomPanels.onCommandSubmit((text) => {
       void this.handleCommandSubmit(text);
     });
@@ -526,7 +577,46 @@ export class Oscilloscope {
 
     // 6. Обновляем this.selectedChannel для совместимости с остальным кодом
     this.selectedChannel = channel;
-    this.bottomPanels.setCommandText(`${channel.name} = `);
+       this.bottomPanels.setCommandText(`${channel.name} = `);
+  }
+
+  /**
+   * Форматирует длительность интервала в формат ЧЧ:ММ:СС.дсс
+   * @param timeMs - длительность в миллисекундах (всегда положительная)
+   * @returns строка вида "00:01:23.456"
+   */
+  private formatIntervalDuration(timeMs: number): string {
+    const absMs = Math.abs(timeMs);
+    const totalSeconds = Math.floor(absMs / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const milliseconds = Math.floor(absMs % 1000);
+
+    const hStr = String(hours).padStart(2, '0');
+    const mStr = String(minutes).padStart(2, '0');
+    const sStr = String(seconds).padStart(2, '0');
+    const msStr = String(milliseconds).padStart(3, '0');
+
+    return `${hStr}:${mStr}:${sStr}.${msStr}`;
+  }
+
+  /**
+   * Обновляет отображение длительности интервала в подвале.
+   * Если оба маркера установлены — показывает длительность.
+   * Если установлен только первый маркер — показывает "—" (ожидание второго).
+   * Если маркеров нет — очищает ячейку.
+   */
+  private updateIntervalDisplay(): void {
+    if (this.settings.intervalMarker1Time !== null && this.settings.intervalMarker2Time !== null) {
+      const durationMs = this.settings.intervalMarker2Time - this.settings.intervalMarker1Time;
+      const formatted = this.formatIntervalDuration(durationMs);
+      this.bottomPanels.setReadout(ReadoutSlot.Reserved2, formatted);
+    } else if (this.settings.intervalMarker1Time !== null) {
+      this.bottomPanels.setReadout(ReadoutSlot.Reserved2, '—');
+    } else {
+      this.bottomPanels.setReadout(ReadoutSlot.Reserved2, '');
+    }
   }
 
   public async updateVisibleChannels(
@@ -598,9 +688,17 @@ export class Oscilloscope {
           try {
             await pixiView.init();
 
-                        // Добавляем обработчик клика для режима измерения величины сигнала
+            // Добавляем обработчик клика для режима измерения величины сигнала
             pixiView.canvas.addEventListener('click', (e: MouseEvent) => {
-              if (!this.settings.isAmplitudeMode) return;
+              // Обработчик работает только если активен режим измерения амплитуды ИЛИ интервалов
+              if (!this.settings.isAmplitudeMode && !this.settings.isIntervalMode) return;
+
+              // В режиме интервалов: если оба маркера уже установлены - игнорируем дальнейшие клики
+              if (this.settings.isIntervalMode &&
+                this.settings.intervalMarker1Time !== null &&
+                this.settings.intervalMarker2Time !== null) {
+                return;
+              }
 
               const rect = pixiView.canvas.getBoundingClientRect();
               const x = e.clientX - rect.left;
@@ -618,23 +716,44 @@ export class Oscilloscope {
               // Вычисляем абсолютное время по координате X клика
               const markerTime = startTime + (x / width) * duration;
 
-             this.settings.amplitudeMarkerTime = markerTime;
-              
-              // Форматируем дату и время клика: 15.08.26 11:25:38
-              const date = new Date(markerTime);
-              const day = String(date.getDate()).padStart(2, '0');
-              const month = String(date.getMonth() + 1).padStart(2, '0');
-              const year = String(date.getFullYear()).slice(-2);
-              const hours = String(date.getHours()).padStart(2, '0');
-              const minutes = String(date.getMinutes()).padStart(2, '0');
-              const seconds = String(date.getSeconds()).padStart(2, '0');
-              const formattedTime = `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`;
+              // === Режим измерения амплитуды ===
+              if (this.settings.isAmplitudeMode) {
+                this.settings.amplitudeMarkerTime = markerTime;
+                
+                // Форматируем дату и время клика: 15.08.26 11:25:38
+                const date = new Date(markerTime);
+                const day = String(date.getDate()).padStart(2, '0');
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const year = String(date.getFullYear()).slice(-2);
+                const hours = String(date.getHours()).padStart(2, '0');
+                const minutes = String(date.getMinutes()).padStart(2, '0');
+                const seconds = String(date.getSeconds()).padStart(2, '0');
+                const formattedTime = `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`;
 
-                            // Выводим в ТРЕТЬЮ ячейку реального подвала
-              this.bottomPanels.setReadout(ReadoutSlot.Reserved3, formattedTime);
+                // Выводим в ТРЕТЬЮ ячейку реального подвала
+                this.bottomPanels.setReadout(ReadoutSlot.Reserved3, formattedTime);
 
-              // ИЗМЕРЕНИЕ: Берем значение канала в момент маркера и отображаем в таблице
-              this.measureChannelAtTime(channel.id, markerTime);
+                // ИЗМЕРЕНИЕ: Берем значение канала в момент маркера и отображаем в таблице
+                this.measureChannelAtTime(channel.id, markerTime);
+              }
+
+              // === Режим измерения временных интервалов ===
+              if (this.settings.isIntervalMode) {
+                // Если первый маркер не установлен - ставим его
+                if (this.settings.intervalMarker1Time === null) {
+                  this.settings.intervalMarker1Time = markerTime;
+                } 
+                // Если первый установлен, а второй нет - ставим второй (игнорируем нулевой интервал)
+                else if (this.settings.intervalMarker2Time === null) {
+                  if (markerTime !== this.settings.intervalMarker1Time) {
+                    this.settings.intervalMarker2Time = markerTime;
+                  }
+                  // Если время совпадает - игнорируем клик, ждём другой
+                }
+
+                // Обновляем отображение длительности интервала в подвале
+                this.updateIntervalDisplay();
+              }
              
               // Принудительно вызываем перерисовку всех графиков для мгновенного отклика
               this.visibleChannels.forEach((ch) => {

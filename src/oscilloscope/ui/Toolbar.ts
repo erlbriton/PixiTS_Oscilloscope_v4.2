@@ -13,6 +13,7 @@ export class Toolbar {
 
   private autoscaleBtn!: HTMLButtonElement;
   private amplitudeBtn!: HTMLButtonElement;
+  private intervalBtn!: HTMLButtonElement;
   private cursorBtn!: HTMLButtonElement;
   private sweepBtn!: HTMLButtonElement;
   private pollingBtn!: HTMLButtonElement;
@@ -188,10 +189,22 @@ export class Toolbar {
       this.amplitudeBtn.style.height = "32px";
       this.amplitudeBtn.style.padding = "0";
       this.amplitudeBtn.style.marginLeft = "0";
-      this.amplitudeBtn.style.width = "32px";
-      this.amplitudeBtn.style.height = "32px";
-      this.amplitudeBtn.style.padding = "0";
-      this.amplitudeBtn.style.marginLeft = "0";
+
+      // 7. Кнопка измерения временных интервалов (вплотную к кнопке Измерение)
+      this.intervalBtn = ToolbarComponents.createButton(
+        "T",
+        "tool-btn-dark",
+        () => {
+          if (this.onToggleIntervalModeCallback) {
+            this.onToggleIntervalModeCallback();
+          }
+        },
+        "Измерение временных интервалов",
+      );
+      this.intervalBtn.style.width = "32px";
+      this.intervalBtn.style.height = "32px";
+      this.intervalBtn.style.padding = "0";
+      this.intervalBtn.style.marginLeft = "0";
 
       //  Автомасштабирование 
 
@@ -209,6 +222,7 @@ export class Toolbar {
         this.pollingBtn,
         this.autoscaleBtn,
         this.amplitudeBtn,
+        this.intervalBtn,
         title,
       );
 
@@ -240,7 +254,7 @@ export class Toolbar {
         this.cursorBtn.classList.toggle("active", this.settings.enableCursors);
         const footer = document.getElementById("footer");
         if (footer)
-          footer.style.display = this.settings.enableCursors ? "flex" : "none"; //📐
+          footer.style.display = this.settings.enableCursors ? "flex" : "none";
       },
       "Курсоры измерения (Cursors)",
     );
@@ -308,27 +322,36 @@ export class Toolbar {
     // Оставлен для сохранения интерфейса
   }
 
-      private onToggleAmplitudeModeCallback?: () => void;
+  private onToggleAmplitudeModeCallback?: () => void;
+  private onToggleIntervalModeCallback?: () => void;
 
-    public onToggleAmplitudeMode(cb: () => void): void {
-        this.onToggleAmplitudeModeCallback = cb;
-    }
+  public onToggleAmplitudeMode(cb: () => void): void {
+    this.onToggleAmplitudeModeCallback = cb;
+  }
 
-        public setAmplitudeModeButtonState(isActive: boolean): void {
-        this.amplitudeBtn.classList.toggle("active", isActive);
-    }
+  public onToggleIntervalMode(cb: () => void): void {
+    this.onToggleIntervalModeCallback = cb;
+  }
 
-    public updatePollingButtonState(): void {
-        const playIcon = `
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M8 5v14l11-7z"/>
-            </svg>`;
-        const pauseIcon = `
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
-            </svg>`;
-        
-        this.pollingBtn.innerHTML = this.settings.isPolling ? pauseIcon : playIcon;
-        this.pollingBtn.classList.toggle("active", this.settings.isPolling);
-    }
+  public setAmplitudeModeButtonState(isActive: boolean): void {
+    this.amplitudeBtn.classList.toggle("active", isActive);
+  }
+
+  public setIntervalModeButtonState(isActive: boolean): void {
+    this.intervalBtn.classList.toggle("active", isActive);
+  }
+
+  public updatePollingButtonState(): void {
+    const playIcon = `
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M8 5v14l11-7z"/>
+      </svg>`;
+    const pauseIcon = `
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
+      </svg>`;
+    
+    this.pollingBtn.innerHTML = this.settings.isPolling ? pauseIcon : playIcon;
+    this.pollingBtn.classList.toggle("active", this.settings.isPolling);
+  }
 }

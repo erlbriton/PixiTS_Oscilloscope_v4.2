@@ -65,8 +65,19 @@ export class Settings {
     // Момент времени вертикальной черты (timestamp в мс), null = черты нет
     public amplitudeMarkerTime: number | null = null;
 
+
+    // Состояние режима измерения временных интервалов
+    public isIntervalMode: boolean = false;
+    // Время первого маркера (начало интервала) в мс, null если не установлен
+    public intervalMarker1Time: number | null = null;
+    // Время второго маркера (конец интервала) в мс, null если не установлен
+    public intervalMarker2Time: number | null = null;
+
     // Шли ли графики до входа в режим измерения (для восстановления при выходе)
-    public wasPollingBeforeMeasure: boolean = false;
+   public wasPollingBeforeMeasure: boolean = false;
+    
+    // Шли ли графики до входа в режим измерения интервалов (для восстановления при выходе)
+    public wasPollingBeforeInterval: boolean = false;
     
     // Момент времени, относительно которого показываем данные (timestamp в мс)
     // null = следим за реальным временем (живой режим)

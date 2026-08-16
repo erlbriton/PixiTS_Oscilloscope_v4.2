@@ -68,7 +68,7 @@ export class Renderer {
         g.stroke({ width: 1.5, color: 0xf59e0b, alpha: 0.9 });
     }
 
-      private renderMarkers(view: PixiView, width: number, height: number, now: number, spacing: number, duration: number): void {
+          private renderMarkers(view: PixiView, width: number, height: number, now: number, spacing: number, duration: number): void {
         const g = view.markerGraphics;
         g.clear();
 
@@ -84,9 +84,10 @@ export class Renderer {
             }
         }
 
-        // Рисуем вертикальную черту измерения, если режим активен и время задано
+        const startTime = now - duration;
+
+        // Рисуем вертикальную черту измерения амплитуды, если режим активен и время задано
         if (this.settings.isAmplitudeMode && this.settings.amplitudeMarkerTime !== null) {
-            const startTime = now - duration;
             const markerTime = this.settings.amplitudeMarkerTime;
             
             // Если черта в пределах видимого окна
@@ -96,6 +97,33 @@ export class Renderer {
                 g.moveTo(roundedX, 0);
                 g.lineTo(roundedX, height);
                 g.stroke({ width: 2, color: '#ffffff', alpha: 0.9 });
+            }
+        }
+
+        // Рисуем маркеры временных интервалов (красные, сплошные, 2px)
+        if (this.settings.isIntervalMode) {
+            // Первый маркер (начало интервала)
+            if (this.settings.intervalMarker1Time !== null) {
+                const marker1Time = this.settings.intervalMarker1Time;
+                if (marker1Time >= startTime && marker1Time <= now) {
+                    const x1 = ((marker1Time - startTime) / duration) * width;
+                    const roundedX1 = Math.round(x1);
+                    g.moveTo(roundedX1, 0);
+                    g.lineTo(roundedX1, height);
+                    g.stroke({ width: 2, color: '#dc2626', alpha: 1.0 });
+                }
+            }
+
+            // Второй маркер (конец интервала)
+            if (this.settings.intervalMarker2Time !== null) {
+                const marker2Time = this.settings.intervalMarker2Time;
+                if (marker2Time >= startTime && marker2Time <= now) {
+                    const x2 = ((marker2Time - startTime) / duration) * width;
+                    const roundedX2 = Math.round(x2);
+                    g.moveTo(roundedX2, 0);
+                    g.lineTo(roundedX2, height);
+                    g.stroke({ width: 2, color: '#dc2626', alpha: 1.0 });
+                }
             }
         }
     }
