@@ -219,6 +219,12 @@ export async function readLoop(serial: ISerialPort, _parser: unknown, view: IOsc
     console.log("DEBUG: Единый батчевый readLoop запущен");
     try {
         while (serial && serial.isConnected && stateObj.isPolling) {
+            // Явная проверка на случай, если флаг изменился во время await
+            if (!stateObj.isPolling) {
+                console.log("[readLoop] Остановка цикла: isPolling стал false");
+                break;
+            }
+            
             const iniConfig: IniConfig | null = stateObj.currentIniConfig;
             if (!iniConfig || !iniConfig.isValid) {
                 await new Promise(r => setTimeout(r, 500));
@@ -234,7 +240,10 @@ export async function readLoop(serial: ISerialPort, _parser: unknown, view: IOsc
             const mergedDataMap = new Map<number, number>();
             // 2. Последовательный опрос батчей
             for (const batch of batches) {
-                if (!serial.isConnected || !stateObj.isPolling) break;
+                if (!serial.isConnected || !stateObj.isPolling) {
+                    console.log("[readLoop] Прерывание батча: isPolling стал false");
+                    break;
+                }
                 const { start: startAddr, count: regCount } = batch;
                 const body = new Uint8Array([
                     stateObj.slaveAddress || 0x01,
@@ -353,7 +362,7 @@ export async function readLoop(serial: ISerialPort, _parser: unknown, view: IOsc
         stateObj.isLoopRunning = false;
         console.log("DEBUG: Единый батчевый readLoop остановлен");
     }
-}////////////////////////////////////////////////////////////////////////
+}
 // ── Вспомогательные функции декодирования Modbus-значений ──
 /**
  * Декодирует 32-битное значение из двух 16-битных слов Modbus.

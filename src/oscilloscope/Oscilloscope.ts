@@ -26,6 +26,11 @@ import type { WebSerialPort } from "../serial/web-serial-types.js";
 import { BrowserFileSaver } from "../core/platform/browser-fs.js";
 import { buildWriteMultipleRegistersRequest } from "../serial/modbus.js";
 import { handleCommandSubmit, handleMultiplyCommand, type CommandContext } from "./scope/OscilloscopeCommands";
+import { 
+  renderVisibleChannels, updateIntervalDisplay, 
+  measureChannelAtTime, formatIntervalDuration, 
+  type RenderingContext } from "./scope/OscilloscopeRenderer";
+  import { bindEvents, bindTimeZoomWheel, updateTimeScaleReadout, updateCursorsFooter, type BindingsContext } from "./scope/OscilloscopeBindings";
 
 export class Oscilloscope {
   private settings: Settings;
@@ -118,13 +123,13 @@ export class Oscilloscope {
           this.toolbar = new Toolbar(
         layoutElements.toolbarContainer,
         this.settings,
-        this.recorder,
-        this.serial,
-      );
-      this.toolbar.initialize();
-      // При загрузке все каналы в режиме автомасштаба — активируем кнопку
-      this.toolbar.setAutoScaleButtonState(true);
-      this.resizer = new Resizer(this.settings, layoutElements.headerContainer);
+            this.recorder,
+            this.serial,
+          );
+    this.toolbar.initialize();
+    // При загрузке все каналы в режиме автомасштаба — активируем кнопку
+    this.toolbar.setAutoScaleButtonState(true);
+    this.resizer = new Resizer(this.settings, layoutElements.headerContainer);
     this.resizer.initialize();
     this.iniPanel = new IniPanel(layoutElements.iniPanelContainer);
     this.bottomPanels = new BottomPanels(layoutElements.bottomPanelsContainer);
@@ -132,8 +137,8 @@ export class Oscilloscope {
     this.rowsContainer = layoutElements.rowsContainer;
     this.propertiesModal = new PropertiesModal();
     this.connectionModal = new ConnectionModal();
-    this.bindEvents();
-    this.bindTimeZoomWheel();
+    bindEvents(this.getBindingsContext());
+    bindTimeZoomWheel(this.getBindingsContext(), this.rowsContainer);
     this.isRunning = true;
     this.lastFrameTime = performance.now();
     this.animFrameId = requestAnimationFrame((t) => this.loop(t));
@@ -234,253 +239,253 @@ export class Oscilloscope {
     }
   }
 
-  private bindEvents(): void {
-    this.toolbar.onOpenProperties(() => {
-      this.propertiesModal.open(this.allChannels, this.visibleChannels);
-    });
-    this.toolbar.onToggleWindowSize((isHalf) => {
-      if (this.splitContainer) {
-        const viewport = this.splitContainer.parentElement;
-        const oscContainer = document.querySelector("#osc-container");
+  // private bindEvents(): void {//////////////////////////////////////////////
+  //   this.toolbar.onOpenProperties(() => {
+  //     this.propertiesModal.open(this.allChannels, this.visibleChannels);
+  //   });
+  //   this.toolbar.onToggleWindowSize((isHalf) => {
+  //     if (this.splitContainer) {
+  //       const viewport = this.splitContainer.parentElement;
+  //       const oscContainer = document.querySelector("#osc-container");
 
-        if (isHalf) {
-          this.splitContainer.classList.add("half-window-left");
-          this.splitContainer.classList.remove("full-window");
-          if (viewport) viewport.classList.remove("full-window");
-          if (oscContainer) oscContainer.classList.remove("full-window");
-        } else {
-          this.splitContainer.classList.remove("half-window-left");
-          this.splitContainer.classList.add("full-window");
-          if (viewport) viewport.classList.add("full-window");
-          if (oscContainer) oscContainer.classList.add("full-window");
-        }
-      }
-    });
-        //              this.propertiesModal.onApply((newVisible) => {
-        //       this.updateVisibleChannels(newVisible);
-        //       // Диагностика: показываем состояние autoScale всех каналов
-        //       console.log('[Oscilloscope] Состояние autoScale после применения:');
-        //       this.allChannels.forEach(ch => {
-        //           console.log(`  ${ch.name}: autoScale = ${ch.autoScale}`);
-        //       });
-        //       // Если хотя бы один канал не в автомасштабе — гасим кнопку
-        //       const allAutoScale = this.allChannels.every(ch => ch.autoScale);
-        //       console.log('[Oscilloscope] allAutoScale =', allAutoScale);
-        //       this.toolbar.setAutoScaleButtonState(allAutoScale);
-        //   });
-      this.propertiesModal.onApply((newVisible) => {
-        // Применяем новые настройки видимости и масштаба каналов
-        this.updateVisibleChannels(newVisible);
+  //       if (isHalf) {
+  //         this.splitContainer.classList.add("half-window-left");
+  //         this.splitContainer.classList.remove("full-window");
+  //         if (viewport) viewport.classList.remove("full-window");
+  //         if (oscContainer) oscContainer.classList.remove("full-window");
+  //       } else {
+  //         this.splitContainer.classList.remove("half-window-left");
+  //         this.splitContainer.classList.add("full-window");
+  //         if (viewport) viewport.classList.add("full-window");
+  //         if (oscContainer) oscContainer.classList.add("full-window");
+  //       }
+  //     }
+  //   });
+  //       //              this.propertiesModal.onApply((newVisible) => {
+  //       //       this.updateVisibleChannels(newVisible);
+  //       //       // Диагностика: показываем состояние autoScale всех каналов
+  //       //       console.log('[Oscilloscope] Состояние autoScale после применения:');
+  //       //       this.allChannels.forEach(ch => {
+  //       //           console.log(`  ${ch.name}: autoScale = ${ch.autoScale}`);
+  //       //       });
+  //       //       // Если хотя бы один канал не в автомасштабе — гасим кнопку
+  //       //       const allAutoScale = this.allChannels.every(ch => ch.autoScale);
+  //       //       console.log('[Oscilloscope] allAutoScale =', allAutoScale);
+  //       //       this.toolbar.setAutoScaleButtonState(allAutoScale);
+  //       //   });
+  //     this.propertiesModal.onApply((newVisible) => {
+  //       // Применяем новые настройки видимости и масштаба каналов
+  //       this.updateVisibleChannels(newVisible);
         
-        // Обновляем состояние кнопки автомасштаба на панели инструментов
-        const allAutoScale = this.allChannels.every(ch => ch.autoScale);
-        this.toolbar.setAutoScaleButtonState(allAutoScale);
-    });
+  //       // Обновляем состояние кнопки автомасштаба на панели инструментов
+  //       const allAutoScale = this.allChannels.every(ch => ch.autoScale);
+  //       this.toolbar.setAutoScaleButtonState(allAutoScale);
+  //   });
 
-    this.serial.onStateChange((state, msg) => {
-      if (state === "error") {
-        this.setConnectionStatus(false, msg || "Связь с устройством потеряна.");
-      } else if (state === "connected") {
-        this.setConnectionStatus(true);
-      }
-    });
-    this.iniPanel.onFileSelect((fileItem: IniFileItem) => {
-      if (this.isDestroyed) return;
-      this.currentIniId = fileItem.id;
-      this.loadIniContent(fileItem.content);
-    });
-    window.addEventListener("oscilloscope-export-csv", () => {
-      this.recorder.downloadCSV(this.visibleChannels);
-    });
-    this.toolbar.onToggleTimeZoom((enabled) => {
-      this.settings.timeZoomEnabled = enabled;
-    });
+  //   this.serial.onStateChange((state, msg) => {
+  //     if (state === "error") {
+  //       this.setConnectionStatus(false, msg || "Связь с устройством потеряна.");
+  //     } else if (state === "connected") {
+  //       this.setConnectionStatus(true);
+  //     }
+  //   });
+  //   this.iniPanel.onFileSelect((fileItem: IniFileItem) => {
+  //     if (this.isDestroyed) return;
+  //     this.currentIniId = fileItem.id;
+  //     this.loadIniContent(fileItem.content);
+  //   });
+  //   window.addEventListener("oscilloscope-export-csv", () => {
+  //     this.recorder.downloadCSV(this.visibleChannels);
+  //   });
+  //   this.toolbar.onToggleTimeZoom((enabled) => {
+  //     this.settings.timeZoomEnabled = enabled;
+  //   });
 
-        this.toolbar.onTogglePolling((isPolling) => {
-      // СПЕЦИАЛЬНАЯ ЛОГИКА: Если активен режим измерения и нажали ПУСК (isPolling === true)
-      if (this.settings.isAmplitudeMode && isPolling) {
-        console.log('[Oscilloscope] Аварийный выход из режима измерения через кнопку Пуск');
+  //       this.toolbar.onTogglePolling((isPolling) => {
+  //     // СПЕЦИАЛЬНАЯ ЛОГИКА: Если активен режим измерения и нажали ПУСК (isPolling === true)
+  //     if (this.settings.isAmplitudeMode && isPolling) {
+  //       console.log('[Oscilloscope] Аварийный выход из режима измерения через кнопку Пуск');
 
-        // 1. Выключаем режим измерения
-        this.settings.isAmplitudeMode = false;
-        this.settings.amplitudeMarkerTime = null;
-        this.cursorsFooter.setAmplitudeTime(null);
-        this.toolbar.setAmplitudeModeButtonState(false);
+  //       // 1. Выключаем режим измерения
+  //       this.settings.isAmplitudeMode = false;
+  //       this.settings.amplitudeMarkerTime = null;
+  //       this.cursorsFooter.setAmplitudeTime(null);
+  //       this.toolbar.setAmplitudeModeButtonState(false);
 
-        // 2. Запускаем стандартный опрос и движение графиков
-        this.settings.isPolling = true;
-        this.serial.resumePolling();
-        this.settings.followLive();
-        this.toolbar.updatePollingButtonState();
+  //       // 2. Запускаем стандартный опрос и движение графиков
+  //       this.settings.isPolling = true;
+  //       this.serial.resumePolling();
+  //       this.settings.followLive();
+  //       this.toolbar.updatePollingButtonState();
 
-        // 3. Синхронизируем с main.ts (точно так же, как это делает рабочий код выхода из режима)
-        if (this.onPollingStateChangeCallback) {
-          this.onPollingStateChangeCallback(true);
-        }
-        return; // Прерываем выполнение, стандартная логика ниже не сработает
-      }
+  //       // 3. Синхронизируем с main.ts (точно так же, как это делает рабочий код выхода из режима)
+  //       if (this.onPollingStateChangeCallback) {
+  //         this.onPollingStateChangeCallback(true);
+  //       }
+  //       return; // Прерываем выполнение, стандартная логика ниже не сработает
+  //     }
 
-      // Если нажали СТОП во время измерения - просто игнорируем (опрос внутри режима и так на паузе)
-      if (this.settings.isAmplitudeMode && !isPolling) {
-        return;
-      }
+  //     // Если нажали СТОП во время измерения - просто игнорируем (опрос внутри режима и так на паузе)
+  //     if (this.settings.isAmplitudeMode && !isPolling) {
+  //       return;
+  //     }
 
-      // Стандартная логика переключения Пуск/Стоп (вне режима измерения)
-      console.log('[Oscilloscope] Кнопка Пуск/Стоп нажата. isPolling =', isPolling);
-      if (isPolling) {
-        this.serial.resumePolling();
-        this.settings.followLive();
-      } else {
-        this.serial.pausePolling();
-        this.settings.freezeTime();
-      }
-      if (this.onPollingStateChangeCallback) {
-        this.onPollingStateChangeCallback(isPolling);
-      }
-    });
+  //     // Стандартная логика переключения Пуск/Стоп (вне режима измерения)
+  //     console.log('[Oscilloscope] Кнопка Пуск/Стоп нажата. isPolling =', isPolling);
+  //     if (isPolling) {
+  //       this.serial.resumePolling();
+  //       this.settings.followLive();
+  //     } else {
+  //       this.serial.pausePolling();
+  //       this.settings.freezeTime();
+  //     }
+  //     if (this.onPollingStateChangeCallback) {
+  //       this.onPollingStateChangeCallback(isPolling);
+  //     }
+  //   });
 
-    this.toolbar.onAutoScale(() => {
-      this.allChannels.forEach(ch => {
-        ch.autoScale = true;
-      });
-      const allAutoScale = this.allChannels.every(ch => ch.autoScale);
-      this.toolbar.setAutoScaleButtonState(allAutoScale);
-    });
+  //   this.toolbar.onAutoScale(() => {
+  //     this.allChannels.forEach(ch => {
+  //       ch.autoScale = true;
+  //     });
+  //     const allAutoScale = this.allChannels.every(ch => ch.autoScale);
+  //     this.toolbar.setAutoScaleButtonState(allAutoScale);
+  //   });
 
-       this.toolbar.onToggleAmplitudeMode(() => {
-                  if (this.settings.isAmplitudeMode) {
-                // === ВЫХОД ИЗ РЕЖИМА ===
-                this.settings.isAmplitudeMode = false;
-                this.settings.amplitudeMarkerTime = null;
-                this.bottomPanels.setReadout(ReadoutSlot.Reserved3, ''); // Очищаем третью ячейку
-                this.toolbar.setAmplitudeModeButtonState(false);
+  //      this.toolbar.onToggleAmplitudeMode(() => {
+  //                 if (this.settings.isAmplitudeMode) {
+  //               // === ВЫХОД ИЗ РЕЖИМА ===
+  //               this.settings.isAmplitudeMode = false;
+  //               this.settings.amplitudeMarkerTime = null;
+  //               this.bottomPanels.setReadout(ReadoutSlot.Reserved3, ''); // Очищаем третью ячейку
+  //               this.toolbar.setAmplitudeModeButtonState(false);
 
-        // Возвращаем опрос, если он был до входа в режим
-        if (this.settings.wasPollingBeforeMeasure) {
-          this.settings.isPolling = true;
-          this.serial.resumePolling();
-          this.settings.followLive();
-          this.toolbar.updatePollingButtonState();
+  //       // Возвращаем опрос, если он был до входа в режим
+  //       if (this.settings.wasPollingBeforeMeasure) {
+  //         this.settings.isPolling = true;
+  //         this.serial.resumePolling();
+  //         this.settings.followLive();
+  //         this.toolbar.updatePollingButtonState();
 
-          // КРИТИЧЕСКИ ВАЖНО: Сообщаем main.ts, чтобы он перезапустил readLoop
-          if (this.onPollingStateChangeCallback) {
-            this.onPollingStateChangeCallback(true);
-          }
-        }
-      } else {//////////////////////////////////////////////////////////////////////\
-        // === ВХОД В РЕЖИМ ===
-        this.settings.wasPollingBeforeMeasure = this.settings.isPolling;
+  //         // КРИТИЧЕСКИ ВАЖНО: Сообщаем main.ts, чтобы он перезапустил readLoop
+  //         if (this.onPollingStateChangeCallback) {
+  //           this.onPollingStateChangeCallback(true);
+  //         }
+  //       }
+  //     } else {//////////////////////////////////////////////////////////////////////\
+  //       // === ВХОД В РЕЖИМ ===
+  //       this.settings.wasPollingBeforeMeasure = this.settings.isPolling;
 
-        // ГАРАНТИРОВАННО останавливаем опрос и замораживаем время
-        this.settings.isPolling = false;
-        this.serial.pausePolling();
-                this.settings.freezeTime();
-                this.toolbar.updatePollingButtonState();
-                if (this.onPollingStateChangeCallback) {
-                    this.onPollingStateChangeCallback(false);
-                }
+  //       // ГАРАНТИРОВАННО останавливаем опрос и замораживаем время
+  //       this.settings.isPolling = false;
+  //       this.serial.pausePolling();
+  //               this.settings.freezeTime();
+  //               this.toolbar.updatePollingButtonState();
+  //               if (this.onPollingStateChangeCallback) {
+  //                   this.onPollingStateChangeCallback(false);
+  //               }
 
-                this.settings.isAmplitudeMode = true;
+  //               this.settings.isAmplitudeMode = true;
                 
-                // Вычисляем duration ТОЧНО так же, как в Renderer.ts, чтобы маркер был по центру
-                const firstView = this.pixiViews.values().next().value;
-                const width = firstView ? firstView.bounds.width : 800;
-                const spacing = 40 * this.settings.timeScale;
-                const duration = (width / spacing) * 1000;
+  //               // Вычисляем duration ТОЧНО так же, как в Renderer.ts, чтобы маркер был по центру
+  //               const firstView = this.pixiViews.values().next().value;
+  //               const width = firstView ? firstView.bounds.width : 800;
+  //               const spacing = 40 * this.settings.timeScale;
+  //               const duration = (width / spacing) * 1000;
                 
-                const now = this.settings.getCurrentViewTime();
-                this.settings.amplitudeMarkerTime = now - (duration / 2);
+  //               const now = this.settings.getCurrentViewTime();
+  //               this.settings.amplitudeMarkerTime = now - (duration / 2);
 
-                this.toolbar.setAmplitudeModeButtonState(true);
-                this.cursorsFooter.setAmplitudeTime(this.settings.amplitudeMarkerTime);
-            }
-        });
+  //               this.toolbar.setAmplitudeModeButtonState(true);
+  //               this.cursorsFooter.setAmplitudeTime(this.settings.amplitudeMarkerTime);
+  //           }
+  //       });
 
-        // Регистрируем callback для кнопки измерения временных интервалов
-    this.toolbar.onToggleIntervalMode(() => {
-      if (this.settings.isIntervalMode) {
-        // === ВЫХОД ИЗ РЕЖИМА ===
-        this.settings.isIntervalMode = false;
-        this.settings.intervalMarker1Time = null;
-        this.settings.intervalMarker2Time = null;
-        this.toolbar.setIntervalModeButtonState(false);
+  //       // Регистрируем callback для кнопки измерения временных интервалов
+  //   this.toolbar.onToggleIntervalMode(() => {
+  //     if (this.settings.isIntervalMode) {
+  //       // === ВЫХОД ИЗ РЕЖИМА ===
+  //       this.settings.isIntervalMode = false;
+  //       this.settings.intervalMarker1Time = null;
+  //       this.settings.intervalMarker2Time = null;
+  //       this.toolbar.setIntervalModeButtonState(false);
 
-        // Очищаем ячейку длительности интервала в подвале
-        this.bottomPanels.setReadout(ReadoutSlot.Reserved2, '');
+  //       // Очищаем ячейку длительности интервала в подвале
+  //       this.bottomPanels.setReadout(ReadoutSlot.Reserved2, '');
 
-        // Возвращаем опрос, если он был остановлен
-        if (this.settings.wasPollingBeforeInterval) {
-          this.settings.isPolling = true;
-          this.serial.resumePolling();
-          this.settings.followLive();
-          this.toolbar.updatePollingButtonState();
+  //       // Возвращаем опрос, если он был остановлен
+  //       if (this.settings.wasPollingBeforeInterval) {
+  //         this.settings.isPolling = true;
+  //         this.serial.resumePolling();
+  //         this.settings.followLive();
+  //         this.toolbar.updatePollingButtonState();
 
-          if (this.onPollingStateChangeCallback) {
-            this.onPollingStateChangeCallback(true);
-          }
-        }
+  //         if (this.onPollingStateChangeCallback) {
+  //           this.onPollingStateChangeCallback(true);
+  //         }
+  //       }
 
-        // Перерисовываем все графики для удаления маркеров
-        this.visibleChannels.forEach((ch) => {
-          const v = this.pixiViews.get(ch.id);
-          if (v) {
-            this.renderer.renderChannelGraph(ch, v);
-          }
-        });
-      } else {
-        // === ВХОД В РЕЖИМ ===
-        this.settings.wasPollingBeforeInterval = this.settings.isPolling;
-        this.settings.isIntervalMode = true;
-        this.settings.intervalMarker1Time = null;
-        this.settings.intervalMarker2Time = null;
-        this.toolbar.setIntervalModeButtonState(true);
+  //       // Перерисовываем все графики для удаления маркеров
+  //       this.visibleChannels.forEach((ch) => {
+  //         const v = this.pixiViews.get(ch.id);
+  //         if (v) {
+  //           this.renderer.renderChannelGraph(ch, v);
+  //         }
+  //       });
+  //     } else {
+  //       // === ВХОД В РЕЖИМ ===
+  //       this.settings.wasPollingBeforeInterval = this.settings.isPolling;
+  //       this.settings.isIntervalMode = true;
+  //       this.settings.intervalMarker1Time = null;
+  //       this.settings.intervalMarker2Time = null;
+  //       this.toolbar.setIntervalModeButtonState(true);
 
-        // НЕ останавливаем опрос - маркеры работают и при движущихся графиках
+  //       // НЕ останавливаем опрос - маркеры работают и при движущихся графиках
 
-        // Перерисовываем все графики
-        this.visibleChannels.forEach((ch) => {
-          const v = this.pixiViews.get(ch.id);
-          if (v) {
-            this.renderer.renderChannelGraph(ch, v);
-          }
-        });
-      }
-    });
-          this.bottomPanels.onCommandSubmit((text) => {
-      void handleCommandSubmit(this.getCommandContext(), text);
-    });
+  //       // Перерисовываем все графики
+  //       this.visibleChannels.forEach((ch) => {
+  //         const v = this.pixiViews.get(ch.id);
+  //         if (v) {
+  //           this.renderer.renderChannelGraph(ch, v);
+  //         }
+  //       });
+  //     }
+  //   });
+  //         this.bottomPanels.onCommandSubmit((text) => {
+  //     void handleCommandSubmit(this.getCommandContext(), text);
+  //   });
 
-    this.bottomPanels.onMultiplyCommand(() => {
-      const ctx = this.getCommandContext();
-      void handleMultiplyCommand(ctx, (t) => handleCommandSubmit(ctx, t));
-    });
-  }
+  //   this.bottomPanels.onMultiplyCommand(() => {
+  //     const ctx = this.getCommandContext();
+  //     void handleMultiplyCommand(ctx, (t) => handleCommandSubmit(ctx, t));
+  //   });
+  // }/////////////////////////////////////////////////////////////////////////////////////\\
 
-  private bindTimeZoomWheel(): void {
-    const rowsContainer = this.rowsContainer;
-    rowsContainer.addEventListener(
-      "wheel",
-      (e: WheelEvent) => {
-        if (!this.settings.timeZoomEnabled) return;
-        const target = e.target as HTMLElement;
-        if (!target.closest(".col-graph")) return;
-        e.preventDefault();
-        e.stopPropagation();
-        const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
-        this.settings.setTimeScale(this.settings.timeScale * factor);
-        this.updateTimeScaleReadout();
-      },
-      { passive: false },
-    );
-    this.updateTimeScaleReadout();
-  }
+  // private bindTimeZoomWheel(): void {
+  //   const rowsContainer = this.rowsContainer;
+  //   rowsContainer.addEventListener(
+  //     "wheel",
+  //     (e: WheelEvent) => {
+  //       if (!this.settings.timeZoomEnabled) return;
+  //       const target = e.target as HTMLElement;
+  //       if (!target.closest(".col-graph")) return;
+  //       e.preventDefault();
+  //       e.stopPropagation();
+  //       const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+  //       this.settings.setTimeScale(this.settings.timeScale * factor);
+  //       this.updateTimeScaleReadout();
+  //     },
+  //     { passive: false },
+  //   );
+  //   this.updateTimeScaleReadout();
+  // }
 
-  private updateTimeScaleReadout(): void {
-    this.bottomPanels.setReadout(
-      ReadoutSlot.TimeScale,
-      `${Math.round(this.settings.timeScale * 100)}%`,
-    );
-  }
+  // private updateTimeScaleReadout(): void {
+  //   this.bottomPanels.setReadout(
+  //     ReadoutSlot.TimeScale,
+  //     `${Math.round(this.settings.timeScale * 100)}%`,
+  //   );
+  // }
 
   public async loadIniContent(iniContent: string): Promise<void> {
     if (this.isDestroyed || typeof iniContent !== "string") return;
@@ -504,7 +509,7 @@ export class Oscilloscope {
     }
   }
 
-  public async applyChannelConfigs(configs: ChannelConfig[]): Promise<void> {
+    public async applyChannelConfigs(configs: ChannelConfig[]): Promise<void> {
     if (this.isDestroyed) return;
     const channels = (Array.isArray(configs) ? configs : [])
       .filter((c) => c && c.id)
@@ -528,58 +533,8 @@ export class Oscilloscope {
       console.error("[Oscilloscope] Failed to set serial channels:", err);
     }
 
-    await this.renderVisibleChannels();
+    await renderVisibleChannels(this.getRenderingContext());
     console.log(`[Oscilloscope] Switch complete.`);
-  }
-
-       /**
-   * Измеряет значение канала в указанный момент времени и отображает его в таблице.
-   * Этот метод будет использоваться для записи в файл части или полного буфера.
-   * @param channelId - ID канала для измерения
-   * @param timeMs - Абсолютное время в миллисекундах
-   */
-  private measureChannelAtTime(channelId: string, timeMs: number): void {
-    // 1. Находим канал
-    const channel = this.allChannels.find(c => c.id === channelId);
-    if (!channel) return;
-
-    // 2. Читаем значение из архива в момент маркера.
-    //    Для битовых — семантика sample-and-hold (последний сэмпл ДО или в момент T),
-    //    иначе клик во вторую половину "полки" давал бы следующее значение.
-    //    Для аналоговых — ближайший сэмпл (плавная линия графика).
-    let rawValue: number;
-    if (channel.isBit) {
-      const stepValue = this.archive.getStepValueAtTime(channelId, timeMs);
-      if (stepValue === null) return;
-      rawValue = stepValue > 0 ? 1 : 0;
-    } else {
-      const physicalValue = this.archive.getValueAtTime(channelId, timeMs);
-      if (physicalValue === null) return;
-
-      // 3. Восстанавливаем сырое значение регистра.
-      //    В архиве хранится scaledValue, а updateRawValue() ожидает raw.
-      //    Без этого преобразования scale применился бы второй раз и число исказилось бы.
-      rawValue = channel.scale !== 0
-        ? Math.round(physicalValue / channel.scale)
-        : Math.round(physicalValue);
-    }
-
-    // 4. Обновляем значения канала (hex, scaled, physical)
-    channel.updateRawValue(rawValue);
-
-    // 5. Подсвечиваем строку этого канала
-    const allRows = this.table.getAllRows();
-    allRows.forEach(row => row.getElement().classList.remove('selected'));
-
-    const targetRow = this.table.getRow(channelId);
-    if (targetRow) {
-      targetRow.getElement().classList.add('selected');
-      targetRow.updateValue(); // Обновляет Hex и Physical в ячейках
-    }
-
-    // 6. Обновляем this.selectedChannel для совместимости с остальным кодом
-    this.selectedChannel = channel;
-       this.bottomPanels.setCommandText(`${channel.name} = `);
   }
 
   /**
@@ -587,39 +542,6 @@ export class Oscilloscope {
    * @param timeMs - длительность в миллисекундах (всегда положительная)
    * @returns строка вида "00:01:23.456"
    */
-  private formatIntervalDuration(timeMs: number): string {
-    const absMs = Math.abs(timeMs);
-    const totalSeconds = Math.floor(absMs / 1000);
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-    const milliseconds = Math.floor(absMs % 1000);
-
-    const hStr = String(hours).padStart(2, '0');
-    const mStr = String(minutes).padStart(2, '0');
-    const sStr = String(seconds).padStart(2, '0');
-    const msStr = String(milliseconds).padStart(3, '0');
-
-    return `${hStr}:${mStr}:${sStr}.${msStr}`;
-  }
-
-  /**
-   * Обновляет отображение длительности интервала в подвале.
-   * Если оба маркера установлены — показывает длительность.
-   * Если установлен только первый маркер — показывает "—" (ожидание второго).
-   * Если маркеров нет — очищает ячейку.
-   */
-  private updateIntervalDisplay(): void {
-    if (this.settings.intervalMarker1Time !== null && this.settings.intervalMarker2Time !== null) {
-      const durationMs = this.settings.intervalMarker2Time - this.settings.intervalMarker1Time;
-      const formatted = this.formatIntervalDuration(durationMs);
-      this.bottomPanels.setReadout(ReadoutSlot.Reserved2, formatted);
-    } else if (this.settings.intervalMarker1Time !== null) {
-      this.bottomPanels.setReadout(ReadoutSlot.Reserved2, '—');
-    } else {
-      this.bottomPanels.setReadout(ReadoutSlot.Reserved2, '');
-    }
-  }
 
   public async updateVisibleChannels(
     newVisibleChannels: Channel[],
@@ -638,267 +560,69 @@ export class Oscilloscope {
     } else {
       this.visibleChannels = filtered;
     }
-    await this.renderVisibleChannels();
+    renderVisibleChannels(this.getRenderingContext());
   }
-
-  private async renderVisibleChannels(): Promise<void> {
-    if (this.isDestroyed || !this.table) return;
-    this.pixiViews.forEach((view) => {
-      try {
-        view.destroy();
-      } catch (err) {
-        console.warn("[Oscilloscope] Failed to destroy old PixiView:", err);
-      }
-    });
-           this.pixiViews.clear();
-        const tempPixiViews: Map<string, PixiView> = new Map();
-        
-                // Запоминаем позицию прокрутки перед очисткой таблицы
-        const savedScrollTop = this.rowsContainer.scrollTop;
-        
-        this.table.clear();
-        for (const channel of this.visibleChannels) {
-      if (this.isDestroyed) break;
-      const row = this.table.addChannel(channel);
-              row.onChannelUpdated = () => {
-          if (this.settings.enableCursors) this.updateCursorsFooter();
-          // Обновляем состояние кнопки автомасштабирования
-          const allAutoScale = this.allChannels.every(ch => ch.autoScale);
-          this.toolbar.setAutoScaleButtonState(allAutoScale);
-        };
-      row.onDelete = (deletedChannel) => {
-        this.updateVisibleChannels(
-          this.visibleChannels.filter((c) => c.id !== deletedChannel.id),
-        );
-      };
-      row.onSelect = (selectedChannel: Channel) => {
-        this.selectedChannel = selectedChannel;
-        this.bottomPanels.setCommandText(`${selectedChannel.name} = `);
-      };
-            row.onToggleBit = (toggledChannel: Channel) => {
-        this.selectedChannel = toggledChannel;
-        const currentVal = toggledChannel.scaledValue;
-        const newVal = currentVal === 0 ? 1 : 0;
-        console.log(
-          `[Oscilloscope] Double-click toggle bit: ${toggledChannel.name}, ${currentVal} -> ${newVal}`,
-        );
-        void handleCommandSubmit(this.getCommandContext(), `${toggledChannel.name} = ${newVal}`);
-      };
-              const container = row.getGraphContainer();
-        if (container) {
-          const pixiView = new PixiView(container);
-          try {
-            await pixiView.init();
-
-                        // Добавляем обработчик клика для режима измерения величины сигнала
-            pixiView.canvas.addEventListener('click', (e: MouseEvent) => {
-              // Обработчик работает только если активен режим измерения амплитуды ИЛИ интервалов
-              if (!this.settings.isAmplitudeMode && !this.settings.isIntervalMode) return;
-
-              // В режиме интервалов: если оба маркера уже установлены - игнорируем дальнейшие клики
-              if (this.settings.isIntervalMode &&
-                this.settings.intervalMarker1Time !== null &&
-                this.settings.intervalMarker2Time !== null) {
-                return;
-              }
-
-              const rect = pixiView.canvas.getBoundingClientRect();
-              const x = e.clientX - rect.left;
-              const width = rect.width;
-              
-              if (width <= 0) return;
-
-              // Вычисляем duration ТОЧНО так же, как в Renderer.ts
-              const spacing = 40 * this.settings.timeScale;
-              const duration = (width / spacing) * 1000;
-              
-              const currentTime = this.settings.getCurrentViewTime();
-              const startTime = currentTime - duration;
-
-              // Вычисляем абсолютное время по координате X клика
-              const markerTime = startTime + (x / width) * duration;
-
-              // === Режим измерения амплитуды ===
-              if (this.settings.isAmplitudeMode) {
-                this.settings.amplitudeMarkerTime = markerTime;
-                
-                // Форматируем дату и время клика: 15.08.26 11:25:38
-                const date = new Date(markerTime);
-                const day = String(date.getDate()).padStart(2, '0');
-                const month = String(date.getMonth() + 1).padStart(2, '0');
-                const year = String(date.getFullYear()).slice(-2);
-                const hours = String(date.getHours()).padStart(2, '0');
-                const minutes = String(date.getMinutes()).padStart(2, '0');
-                const seconds = String(date.getSeconds()).padStart(2, '0');
-                const formattedTime = `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`;
-
-                // Выводим в ТРЕТЬЮ ячейку реального подвала
-                this.bottomPanels.setReadout(ReadoutSlot.Reserved3, formattedTime);
-
-                // ИЗМЕРЕНИЕ: Берем значение канала в момент маркера и отображаем в таблице
-                this.measureChannelAtTime(channel.id, markerTime);
-              }
-
-              // === Режим измерения временных интервалов ===
-              if (this.settings.isIntervalMode) {
-                // Если первый маркер не установлен - ставим его
-                if (this.settings.intervalMarker1Time === null) {
-                  this.settings.intervalMarker1Time = markerTime;
-                } 
-                // Если первый установлен, а второй нет - ставим второй (игнорируем нулевой интервал)
-                else if (this.settings.intervalMarker2Time === null) {
-                  if (markerTime !== this.settings.intervalMarker1Time) {
-                    this.settings.intervalMarker2Time = markerTime;
-                  }
-                  // Если время совпадает - игнорируем клик, ждём другой
-                }
-
-                // Обновляем отображение длительности интервала в подвале
-                this.updateIntervalDisplay();
-              }
-             
-              // Принудительно вызываем перерисовку всех графиков для мгновенного отклика
-              this.visibleChannels.forEach((ch) => {
-                const v = this.pixiViews.get(ch.id);
-                if (v) {
-                  this.renderer.renderChannelGraph(ch, v);
-                }
-              });
-            });
-
-            // === ПЕРЕТАСКИВАНИЕ МАРКЕРОВ ВРЕМЕННЫХ ИНТЕРВАЛОВ ===
-            let draggingMarker: 1 | 2 | null = null;
-
-            // Функция для проверки, находится ли курсор рядом с маркером
-            const getMarkerUnderCursor = (clientX: number): 1 | 2 | null => {
-              if (!this.settings.isIntervalMode) return null;
-
-              const rect = pixiView.canvas.getBoundingClientRect();
-              const x = clientX - rect.left;
-              const width = rect.width;
-              if (width <= 0) return null;
-
-              const spacing = 40 * this.settings.timeScale;
-              const duration = (width / spacing) * 1000;
-              const currentTime = this.settings.getCurrentViewTime();
-              const startTime = currentTime - duration;
-
-              // Проверяем первый маркер
-              if (this.settings.intervalMarker1Time !== null) {
-                const marker1X = ((this.settings.intervalMarker1Time - startTime) / duration) * width;
-                if (Math.abs(x - marker1X) <= 5) {
-                  return 1;
-                }
-              }
-
-              // Проверяем второй маркер
-              if (this.settings.intervalMarker2Time !== null) {
-                const marker2X = ((this.settings.intervalMarker2Time - startTime) / duration) * width;
-                if (Math.abs(x - marker2X) <= 5) {
-                  return 2;
-                }
-              }
-
-              return null;
-            };
-
-            // Обработчик mousemove для изменения курсора при наведении на маркер
-            pixiView.canvas.addEventListener('mousemove', (e: MouseEvent) => {
-              if (draggingMarker !== null) return; // Уже перетаскиваем
-
-              const marker = getMarkerUnderCursor(e.clientX);
-              if (marker !== null) {
-                pixiView.canvas.style.cursor = 'ew-resize';
-              } else {
-                pixiView.canvas.style.cursor = '';
-              }
-            });
-
-            // Обработчик mousedown для начала перетаскивания
-            pixiView.canvas.addEventListener('mousedown', (e: MouseEvent) => {
-              if (!this.settings.isIntervalMode) return;
-              if (this.settings.intervalMarker1Time === null || this.settings.intervalMarker2Time === null) return;
-
-              const marker = getMarkerUnderCursor(e.clientX);
-              if (marker !== null) {
-                draggingMarker = marker;
-                e.preventDefault(); // Предотвращаем выделение текста
-              }
-            });
-
-            // Глобальный обработчик mousemove для перетаскивания
-            const globalMouseMove = (e: MouseEvent) => {
-              if (draggingMarker === null) return;
-
-              const rect = pixiView.canvas.getBoundingClientRect();
-              const x = e.clientX - rect.left;
-              const width = rect.width;
-              if (width <= 0) return;
-
-              const spacing = 40 * this.settings.timeScale;
-              const duration = (width / spacing) * 1000;
-              const currentTime = this.settings.getCurrentViewTime();
-              const startTime = currentTime - duration;
-
-              // Вычисляем новое время маркера
-              const markerTime = startTime + (x / width) * duration;
-
-              // Обновляем соответствующий маркер
-              if (draggingMarker === 1) {
-                this.settings.intervalMarker1Time = markerTime;
-              } else {
-                this.settings.intervalMarker2Time = markerTime;
-              }
-
-              // Обновляем отображение длительности
-              this.updateIntervalDisplay();
-
-              // Перерисовываем все графики
-              this.visibleChannels.forEach((ch) => {
-                const v = this.pixiViews.get(ch.id);
-                if (v) {
-                  this.renderer.renderChannelGraph(ch, v);
-                }
-              });
-            };
-
-            // Глобальный обработчик mouseup для завершения перетаскивания
-            const globalMouseUp = () => {
-              if (draggingMarker !== null) {
-                draggingMarker = null;
-                pixiView.canvas.style.cursor = '';
-              }
-            };
-
-            // Регистрируем глобальные обработчики
-            document.addEventListener('mousemove', globalMouseMove);
-            document.addEventListener('mouseup', globalMouseUp);
-
-            tempPixiViews.set(channel.id, pixiView);
-          } catch (err) {
-            console.warn(
-              `[Oscilloscope] PixiView init failed for channel ${channel.id}:`,
-              err,
-            );
-          }
-        }
-    }
-           if (!this.isDestroyed) {
-            this.pixiViews = tempPixiViews;
-            
-                       // Восстанавливаем позицию прокрутки после перерисовки
-            requestAnimationFrame(() => {
-                this.rowsContainer.scrollTop = savedScrollTop;
-            });
-        }
-    }
-
       private getCommandContext(): CommandContext {
     return {
       selectedChannel: this.selectedChannel,
       externalSerial: this.externalSerial,
       slaveAddress: this.slaveAddress,
       bottomPanels: this.bottomPanels,
+    };
+  }
+
+      private getBindingsContext(): BindingsContext {
+    return {
+      settings: this.settings,
+      getChannels: () => this.allChannels,
+      getVisibleChannels: () => this.visibleChannels,
+      pixiViews: this.pixiViews,
+      propertiesModal: this.propertiesModal,
+      splitContainer: this.splitContainer,
+      toolbar: this.toolbar,
+      serial: this.serial,
+      iniPanel: this.iniPanel,
+      recorder: this.recorder,
+      cursorsFooter: this.cursorsFooter,
+      bottomPanels: this.bottomPanels,
+      renderer: this.renderer,
+      isDestroyed: this.isDestroyed,
+      notifyPollingStateChange: (isPolling: boolean) => {
+        if (this.onPollingStateChangeCallback) {
+          this.onPollingStateChangeCallback(isPolling);
+        }
+      },
+      updateVisibleChannels: (newVisible) => this.updateVisibleChannels(newVisible),
+      loadIniContent: (content) => this.loadIniContent(content),
+      setConnectionStatus: (connected, msg) => this.setConnectionStatus(connected, msg),
+      getCommandContext: () => this.getCommandContext(),
+    };
+  }
+
+      private getRenderingContext(): RenderingContext {
+    return {
+      visibleChannels: this.visibleChannels,
+      allChannels: this.allChannels,
+      pixiViews: this.pixiViews,
+      table: this.table,
+      renderer: this.renderer,
+      archive: this.archive,
+      settings: this.settings,
+      rowsContainer: this.rowsContainer,
+      bottomPanels: this.bottomPanels,
+      toolbar: this.toolbar,
+      isDestroyed: this.isDestroyed,
+      selectedChannel: this.selectedChannel,
+      setSelectedChannel: (ch) => { this.selectedChannel = ch; },
+      onChannelDeleted: (ch) => {
+        this.updateVisibleChannels(
+          this.visibleChannels.filter((c) => c.id !== ch.id),
+        );
+      },
+      onToggleBit: (ch) => {
+        const newVal = ch.scaledValue === 0 ? 1 : 0;
+        void handleCommandSubmit(this.getCommandContext(), `${ch.name} = ${newVal}`);
+      },
     };
   }
 
@@ -931,20 +655,18 @@ export class Oscilloscope {
           }
         }
       });
-      if (this.settings.enableCursors) this.updateCursorsFooter();
+            if (this.settings.enableCursors) updateCursorsFooter(this.getBindingsContext());
     } catch (err) {
       console.error("Oscilloscope loop error:", err);
     }
     this.animFrameId = requestAnimationFrame((t) => this.loop(t));
   }
 
-  private updateCursorsFooter(): void {
-    this.cursorsFooter.update(
-      this.settings.cursorX1Percent,
-      this.settings.cursorX2Percent,
-      this.settings.timeWindowMs,
-    );
-  }
-
-  
+  // private updateCursorsFooter(): void {
+  //   this.cursorsFooter.update(
+  //     this.settings.cursorX1Percent,
+  //     this.settings.cursorX2Percent,
+  //     this.settings.timeWindowMs,
+  //   );
+  // }
 }
