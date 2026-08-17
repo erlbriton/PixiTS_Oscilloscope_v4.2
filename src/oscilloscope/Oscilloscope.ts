@@ -25,6 +25,7 @@ import { TimelineScrollbar } from "./ui/TimelineScrollbar";
 import type { WebSerialPort } from "../serial/web-serial-types.js";
 import { BrowserFileSaver } from "../core/platform/browser-fs.js";
 import { buildWriteMultipleRegistersRequest } from "../serial/modbus.js";
+import { handleCommandSubmit, handleMultiplyCommand, type CommandContext } from "./scope/OscilloscopeCommands";
 
 export class Oscilloscope {
   private settings: Settings;
@@ -445,12 +446,13 @@ export class Oscilloscope {
         });
       }
     });
-    this.bottomPanels.onCommandSubmit((text) => {
-      void this.handleCommandSubmit(text);
+          this.bottomPanels.onCommandSubmit((text) => {
+      void handleCommandSubmit(this.getCommandContext(), text);
     });
 
     this.bottomPanels.onMultiplyCommand(() => {
-      void this.handleMultiplyCommand();
+      const ctx = this.getCommandContext();
+      void handleMultiplyCommand(ctx, (t) => handleCommandSubmit(ctx, t));
     });
   }
 
@@ -673,14 +675,14 @@ export class Oscilloscope {
         this.selectedChannel = selectedChannel;
         this.bottomPanels.setCommandText(`${selectedChannel.name} = `);
       };
-      row.onToggleBit = (toggledChannel: Channel) => {
+            row.onToggleBit = (toggledChannel: Channel) => {
         this.selectedChannel = toggledChannel;
         const currentVal = toggledChannel.scaledValue;
         const newVal = currentVal === 0 ? 1 : 0;
         console.log(
           `[Oscilloscope] Double-click toggle bit: ${toggledChannel.name}, ${currentVal} -> ${newVal}`,
         );
-        void this.handleCommandSubmit(`${toggledChannel.name} = ${newVal}`);
+        void handleCommandSubmit(this.getCommandContext(), `${toggledChannel.name} = ${newVal}`);
       };
               const container = row.getGraphContainer();
         if (container) {
@@ -891,6 +893,15 @@ export class Oscilloscope {
         }
     }
 
+      private getCommandContext(): CommandContext {
+    return {
+      selectedChannel: this.selectedChannel,
+      externalSerial: this.externalSerial,
+      slaveAddress: this.slaveAddress,
+      bottomPanels: this.bottomPanels,
+    };
+  }
+
   private loop(now: number): void {
     this.animFrameId = null;
     if (this.isDestroyed || !this.isRunning || !this.table) return;
@@ -935,180 +946,5 @@ export class Oscilloscope {
     );
   }
 
-  private async handleMultiplyCommand(): Promise<void> {
-    if (!this.selectedChannel) {
-      console.warn("[Oscilloscope] x10: Нет выбранного канала.");
-      return;
-    }
-    if (!this.externalSerial) {
-      console.warn("[Oscilloscope] x10: Нет подключения к порту.");
-      return;
-    }
-    const parsedReg = parseModbusReg(this.selectedChannel.modbusReg);
-    if (!parsedReg || parsedReg.bit === null) {
-      console.warn(
-        "[Oscilloscope] x10: Выбранный параметр не является битовым.",
-      );
-      return;
-    }
-
-    const commandText = this.bottomPanels.getCommandText();
-    console.log(
-      `[Oscilloscope] x10: Запуск очереди из 10 записей (5 Гц) для "${commandText}"`,
-    );
-
-    for (let i = 0; i < 10; i++) {
-      console.log(`[Oscilloscope] x10: запись ${i + 1}/10`);
-      await this.handleCommandSubmit(commandText);
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-
-    console.log("[Oscilloscope] x10: Очередь записей завершена.");
-  }
-
-  private async handleCommandSubmit(text: string): Promise<void> {
-    const ch = this.selectedChannel;
-    if (!ch || !ch.modbusReg) {
-      console.warn("[Oscilloscope] No channel selected or missing modbusReg.");
-      return;
-    }
-
-    const parsedReg = parseModbusReg(ch.modbusReg);
-    if (!parsedReg) {
-      console.warn(`[Oscilloscope] Invalid modbusReg format: ${ch.modbusReg}`);
-      return;
-    }
-
-    if (!this.externalSerial) {
-      console.warn(
-        "[Oscilloscope] No external serial port attached for write.",
-      );
-      return;
-    }
-
-    const parts = text.split("=");
-    if (parts.length < 2) {
-      console.warn('[Oscilloscope] No "=" found in command.');
-      return;
-    }
-
-    const valueStr = parts.slice(1).join("=").trim();
-
-    let valueToWrite: number;
-    if (valueStr.toLowerCase().startsWith("x")) {
-      valueToWrite = parseInt(valueStr.substring(1), 16);
-    } else {
-      valueToWrite = parseInt(valueStr, 10);
-    }
-
-    if (isNaN(valueToWrite)) {
-      console.warn("[Oscilloscope] Invalid number format.");
-      return;
-    }
-
-    if (parsedReg.bit !== null) {
-      const serialWithRead = this.externalSerial as {
-        readRegister?(slaveId: number, address: number): Promise<number | null>;
-      };
-
-      if (!serialWithRead.readRegister) {
-        console.error(
-          "[Oscilloscope] externalSerial does not support readRegister.",
-        );
-        return;
-      }
-
-      const currentVal = await serialWithRead.readRegister(
-        this.slaveAddress,
-        parsedReg.address,
-      );
-      if (currentVal === null) {
-        console.error(
-          "[Oscilloscope] Failed to read register for RMW operation.",
-        );
-        return;
-      }
-
-      let newVal = currentVal;
-      if (valueToWrite !== 0) {
-        newVal |= 1 << parsedReg.bit;
-      } else {
-        newVal &= ~(1 << parsedReg.bit);
-      }
-
-      console.log(
-        `[Oscilloscope] Bit RMW: addr=${parsedReg.address}, bit=${parsedReg.bit}, old=${currentVal}, new=${newVal}`,
-      );
-
-      const packet = buildWriteMultipleRegistersRequest(
-        this.slaveAddress,
-        parsedReg.address,
-        [newVal],
-      );
-      const hexDump = Array.from(packet)
-        .map((b) => b.toString(16).toUpperCase().padStart(2, "0"))
-        .join(" ");
-      console.log(`[Oscilloscope] Bit RMW packet HEX: ${hexDump}`);
-
-      await this.externalSerial.write(packet);
-      console.log("[Oscilloscope] Bit RMW write sent successfully.");
-
-      this.bottomPanels.focusCommand();
-      return;
-    }
-
-    const typeUpper = (ch.dataType || "").toUpperCase();
-    const is32Bit =
-      typeUpper.includes("FLOAT") ||
-      typeUpper.includes("DWORD") ||
-      typeUpper.includes("LONG") ||
-      typeUpper.includes("INT32");
-
-    let values: number[];
-    if (is32Bit) {
-      const buf = new ArrayBuffer(4);
-      const view = new DataView(buf);
-
-      if (typeUpper.includes("FLOAT")) {
-        view.setFloat32(0, valueToWrite, false);
-      } else {
-        view.setUint32(0, valueToWrite, false);
-      }
-
-      const reg1 = view.getUint16(0, false);
-      const reg2 = view.getUint16(2, false);
-      values = [reg2, reg1];
-
-      console.log(
-        `[Oscilloscope] 32-bit write: addr=${parsedReg.address}, val=${valueToWrite}, regs=[${reg1}, ${reg2}]`,
-      );
-    } else {
-      const val16 = valueToWrite & 0xffff;
-      values = [val16];
-      console.log(
-        `[Oscilloscope] 16-bit write: addr=${parsedReg.address}, val=${val16}`,
-      );
-    }
-
-    try {
-      const packet = buildWriteMultipleRegistersRequest(
-        this.slaveAddress,
-        parsedReg.address,
-        values,
-      );
-      const hexDump = Array.from(packet)
-        .map((b) => b.toString(16).toUpperCase().padStart(2, "0"))
-        .join(" ");
-      console.log(
-        `[Oscilloscope] Write packet HEX (${packet.length} bytes): ${hexDump}`,
-      );
-      await this.externalSerial.write(packet);
-      console.log("[Oscilloscope] Write packet sent successfully.");
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      console.error("[Oscilloscope] Failed to send write packet:", errMsg);
-    }
-
-    this.bottomPanels.focusCommand();
-  }
+  
 }
