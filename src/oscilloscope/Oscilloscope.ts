@@ -688,7 +688,7 @@ export class Oscilloscope {
           try {
             await pixiView.init();
 
-            // Добавляем обработчик клика для режима измерения величины сигнала
+                        // Добавляем обработчик клика для режима измерения величины сигнала
             pixiView.canvas.addEventListener('click', (e: MouseEvent) => {
               // Обработчик работает только если активен режим измерения амплитуды ИЛИ интервалов
               if (!this.settings.isAmplitudeMode && !this.settings.isIntervalMode) return;
@@ -763,6 +763,114 @@ export class Oscilloscope {
                 }
               });
             });
+
+            // === ПЕРЕТАСКИВАНИЕ МАРКЕРОВ ВРЕМЕННЫХ ИНТЕРВАЛОВ ===
+            let draggingMarker: 1 | 2 | null = null;
+
+            // Функция для проверки, находится ли курсор рядом с маркером
+            const getMarkerUnderCursor = (clientX: number): 1 | 2 | null => {
+              if (!this.settings.isIntervalMode) return null;
+
+              const rect = pixiView.canvas.getBoundingClientRect();
+              const x = clientX - rect.left;
+              const width = rect.width;
+              if (width <= 0) return null;
+
+              const spacing = 40 * this.settings.timeScale;
+              const duration = (width / spacing) * 1000;
+              const currentTime = this.settings.getCurrentViewTime();
+              const startTime = currentTime - duration;
+
+              // Проверяем первый маркер
+              if (this.settings.intervalMarker1Time !== null) {
+                const marker1X = ((this.settings.intervalMarker1Time - startTime) / duration) * width;
+                if (Math.abs(x - marker1X) <= 5) {
+                  return 1;
+                }
+              }
+
+              // Проверяем второй маркер
+              if (this.settings.intervalMarker2Time !== null) {
+                const marker2X = ((this.settings.intervalMarker2Time - startTime) / duration) * width;
+                if (Math.abs(x - marker2X) <= 5) {
+                  return 2;
+                }
+              }
+
+              return null;
+            };
+
+            // Обработчик mousemove для изменения курсора при наведении на маркер
+            pixiView.canvas.addEventListener('mousemove', (e: MouseEvent) => {
+              if (draggingMarker !== null) return; // Уже перетаскиваем
+
+              const marker = getMarkerUnderCursor(e.clientX);
+              if (marker !== null) {
+                pixiView.canvas.style.cursor = 'ew-resize';
+              } else {
+                pixiView.canvas.style.cursor = '';
+              }
+            });
+
+            // Обработчик mousedown для начала перетаскивания
+            pixiView.canvas.addEventListener('mousedown', (e: MouseEvent) => {
+              if (!this.settings.isIntervalMode) return;
+              if (this.settings.intervalMarker1Time === null || this.settings.intervalMarker2Time === null) return;
+
+              const marker = getMarkerUnderCursor(e.clientX);
+              if (marker !== null) {
+                draggingMarker = marker;
+                e.preventDefault(); // Предотвращаем выделение текста
+              }
+            });
+
+            // Глобальный обработчик mousemove для перетаскивания
+            const globalMouseMove = (e: MouseEvent) => {
+              if (draggingMarker === null) return;
+
+              const rect = pixiView.canvas.getBoundingClientRect();
+              const x = e.clientX - rect.left;
+              const width = rect.width;
+              if (width <= 0) return;
+
+              const spacing = 40 * this.settings.timeScale;
+              const duration = (width / spacing) * 1000;
+              const currentTime = this.settings.getCurrentViewTime();
+              const startTime = currentTime - duration;
+
+              // Вычисляем новое время маркера
+              const markerTime = startTime + (x / width) * duration;
+
+              // Обновляем соответствующий маркер
+              if (draggingMarker === 1) {
+                this.settings.intervalMarker1Time = markerTime;
+              } else {
+                this.settings.intervalMarker2Time = markerTime;
+              }
+
+              // Обновляем отображение длительности
+              this.updateIntervalDisplay();
+
+              // Перерисовываем все графики
+              this.visibleChannels.forEach((ch) => {
+                const v = this.pixiViews.get(ch.id);
+                if (v) {
+                  this.renderer.renderChannelGraph(ch, v);
+                }
+              });
+            };
+
+            // Глобальный обработчик mouseup для завершения перетаскивания
+            const globalMouseUp = () => {
+              if (draggingMarker !== null) {
+                draggingMarker = null;
+                pixiView.canvas.style.cursor = '';
+              }
+            };
+
+            // Регистрируем глобальные обработчики
+            document.addEventListener('mousemove', globalMouseMove);
+            document.addEventListener('mouseup', globalMouseUp);
 
             tempPixiViews.set(channel.id, pixiView);
           } catch (err) {
