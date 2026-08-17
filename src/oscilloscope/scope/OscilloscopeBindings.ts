@@ -89,11 +89,7 @@ export function bindEvents(ctx: BindingsContext): void {
   });
 
   ctx.toolbar.onTogglePolling((isPolling) => {
-    console.log("[Bindings] onTogglePolling вызван с isPolling =", isPolling);
-    
-    // СПЕЦИАЛЬНАЯ ЛОГИКА: Если активен режим измерения и нажали ПУСК
     if (ctx.settings.isAmplitudeMode && isPolling) {
-      console.log("[Bindings] Аварийный выход из режима измерения через кнопку Пуск");
       ctx.settings.isAmplitudeMode = false;
       ctx.settings.amplitudeMarkerTime = null;
       ctx.cursorsFooter.setAmplitudeTime(null);
@@ -108,47 +104,32 @@ export function bindEvents(ctx: BindingsContext): void {
       return;
     }
 
-    // Если нажали СТОП во время измерения - игнорируем (опрос и так на паузе)
     if (ctx.settings.isAmplitudeMode && !isPolling) {
-      console.log("[Bindings] Игнорируем Стоп, так как активен режим измерения");
       return;
     }
 
-    // Стандартная логика переключения Пуск/Стоп
     if (isPolling) {
       ctx.serial.resumePolling();
       ctx.settings.followLive();
     } else {
-      console.log("[Bindings] Вызов pausePolling и freezeTime");
       ctx.serial.pausePolling();
       ctx.settings.freezeTime();
     }
     
-    console.log("[Bindings] Уведомление main.ts об изменении isPolling на:", isPolling);
     ctx.notifyPollingStateChange(isPolling);
   });
 
   ctx.toolbar.onAutoScale(() => {
-    console.log("[Bindings] Кнопка Автомасштаб нажата");
     const channels = ctx.getChannels();
-    console.log(`[Bindings] channels.length = ${channels.length}`);
-    
-    if (channels.length === 0) {
-      console.warn("[Bindings] ВНИМАНИЕ: channels пустой!");
-    }
-    
     channels.forEach((ch) => {
-      console.log(`[Bindings] Устанавливаем autoScale=true для канала ${ch.name}`);
       ch.autoScale = true;
     });
     const allAutoScale = channels.every((ch) => ch.autoScale);
-    console.log(`[Bindings] allAutoScale = ${allAutoScale}`);
     ctx.toolbar.setAutoScaleButtonState(allAutoScale);
   });
 
   ctx.toolbar.onToggleAmplitudeMode(() => {
     if (ctx.settings.isAmplitudeMode) {
-      // === ВЫХОД ИЗ РЕЖИМА ===
       ctx.settings.isAmplitudeMode = false;
       ctx.settings.amplitudeMarkerTime = null;
       ctx.bottomPanels.setReadout(2, "");
@@ -163,12 +144,9 @@ export function bindEvents(ctx: BindingsContext): void {
         ctx.notifyPollingStateChange(true);
       }
     } else {
-      // === ВХОД В РЕЖИМ ===
-      console.log("[Bindings] Вход в режим измерения. Остановка опроса.");
       ctx.settings.wasPollingBeforeMeasure = ctx.settings.isPolling;
       ctx.settings.isPolling = false;
       
-      console.log("[Bindings] Вызов ctx.serial.pausePolling()");
       ctx.serial.pausePolling();
       ctx.settings.freezeTime();
       
@@ -237,6 +215,11 @@ export function bindEvents(ctx: BindingsContext): void {
     const cmdCtx = ctx.getCommandContext();
     void handleMultiplyCommand(cmdCtx, (t) => handleCommandSubmit(cmdCtx, t));
   });
+
+  ctx.toolbar.onToggleRec(() => {
+    console.log("[Bindings] Кнопка REC нажата");
+    // Здесь будет подключена логика записи осциллограммы
+  });
 }
 
 export function bindTimeZoomWheel(ctx: BindingsContext, rowsContainer: HTMLElement): void {
@@ -259,12 +242,4 @@ export function bindTimeZoomWheel(ctx: BindingsContext, rowsContainer: HTMLEleme
 
 export function updateTimeScaleReadout(ctx: BindingsContext): void {
   ctx.bottomPanels.setReadout(3, `${Math.round(ctx.settings.timeScale * 100)}%`);
-}
-
-export function updateCursorsFooter(ctx: BindingsContext): void {
-  ctx.cursorsFooter.update(
-    ctx.settings.cursorX1Percent,
-    ctx.settings.cursorX2Percent,
-    ctx.settings.timeWindowMs
-  );
 }

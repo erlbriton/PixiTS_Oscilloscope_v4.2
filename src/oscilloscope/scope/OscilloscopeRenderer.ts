@@ -10,7 +10,6 @@ import type { Toolbar } from "../ui/Toolbar";
 import type { BottomPanels } from "../ui/BottomPanels";
 import type { Settings } from "../config/Settings";
 
-/** Контекст для рендеринга каналов */
 export interface RenderingContext {
   visibleChannels: Channel[];
   allChannels: Channel[];
@@ -26,12 +25,9 @@ export interface RenderingContext {
   selectedChannel: Channel | null;
   setSelectedChannel: (ch: Channel | null) => void;
   onChannelDeleted: (ch: Channel) => void;
-  onToggleBit: (ch: Channel) => void; // <-- Исправлено: добавлен проброс
+  onToggleBit: (ch: Channel) => void;
 }
 
-/**
- * Измеряет значение канала в указанный момент времени и отображает его в таблице.
- */
 export function measureChannelAtTime(
   ctx: RenderingContext,
   channelId: string,
@@ -69,9 +65,6 @@ export function measureChannelAtTime(
   ctx.bottomPanels.setCommandText(`${channel.name} = `);
 }
 
-/**
- * Форматирует длительность интервала в формат ЧЧ:ММ:СС.дсс
- */
 export function formatIntervalDuration(timeMs: number): string {
   const absMs = Math.abs(timeMs);
   const totalSeconds = Math.floor(absMs / 1000);
@@ -88,9 +81,6 @@ export function formatIntervalDuration(timeMs: number): string {
   return `${hStr}:${mStr}:${sStr}.${msStr}`;
 }
 
-/**
- * Обновляет отображение длительности интервала в подвале.
- */
 export function updateIntervalDisplay(ctx: RenderingContext): void {
   if (
     ctx.settings.intervalMarker1Time !== null &&
@@ -107,9 +97,6 @@ export function updateIntervalDisplay(ctx: RenderingContext): void {
   }
 }
 
-/**
- * Рендерит графики всех видимых каналов с обработчиками взаимодействия.
- */
 export async function renderVisibleChannels(
   ctx: RenderingContext,
 ): Promise<void> {
@@ -134,9 +121,6 @@ export async function renderVisibleChannels(
     const row = ctx.table.addChannel(channel);
 
     row.onChannelUpdated = () => {
-      if (ctx.settings.enableCursors) {
-        // updateCursorsFooter will be called from main loop
-      }
       const allAutoScale = ctx.allChannels.every((ch) => ch.autoScale);
       ctx.toolbar.setAutoScaleButtonState(allAutoScale);
     };
@@ -150,7 +134,6 @@ export async function renderVisibleChannels(
       ctx.bottomPanels.setCommandText(`${selectedChannel.name} = `);
     };
 
-    // <-- Исправлено: теперь корректно вызывает переданный извне обработчик
     row.onToggleBit = (toggledChannel: Channel) => {
       ctx.onToggleBit(toggledChannel);
     };
@@ -162,13 +145,6 @@ export async function renderVisibleChannels(
         await pixiView.init();
 
         pixiView.canvas.addEventListener("click", (e: MouseEvent) => {
-          console.log(
-            "[OscilloscopeRenderer] Canvas click. Amplitude:",
-            ctx.settings.isAmplitudeMode,
-            "Interval:",
-            ctx.settings.isIntervalMode
-          );
-
           if (!ctx.settings.isAmplitudeMode && !ctx.settings.isIntervalMode)
             return;
 
@@ -178,7 +154,7 @@ export async function renderVisibleChannels(
             ctx.settings.intervalMarker2Time !== null
           ) {
             return;
-7          }
+          }
 
           const rect = pixiView.canvas.getBoundingClientRect();
           const x = e.clientX - rect.left;
@@ -193,7 +169,6 @@ export async function renderVisibleChannels(
           const startTime = currentTime - duration;
 
           const markerTime = startTime + (x / width) * duration;
-          console.log("[OscilloscopeRenderer] Calculated markerTime:", markerTime);
 
           if (ctx.settings.isAmplitudeMode) {
             ctx.settings.amplitudeMarkerTime = markerTime;
@@ -224,7 +199,6 @@ export async function renderVisibleChannels(
             updateIntervalDisplay(ctx);
           }
 
-          // Принудительная перерисовка всех графиков
           ctx.visibleChannels.forEach((ch) => {
             const v = ctx.pixiViews.get(ch.id);
             if (v) {

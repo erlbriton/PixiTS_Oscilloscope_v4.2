@@ -35,18 +35,12 @@ export class Settings {
     public gridDivisionsY: number = 4;
     public autoScale: boolean = true;
 
-    // Cursors
-    public enableCursors: boolean = false;
-    public cursorX1Percent: number = 25; // % of graph width
-    public cursorX2Percent: number = 75; // % of graph width
-
     // Color theme
     public backgroundColor: string = '#050505';
     public gridColor: string = '#1f293d';
     public textColor: string = '#94a3b8';
 
     // Half window mode (default: true - occupy left half of browser)
-        // Half window mode (default: true - occupy left half of browser)
     public isHalfWindow: boolean = true;
 
     // Timebase options in ms (100ms, 200ms, 500ms, 1s, 2s, 5s, 10s, 20s)
@@ -54,7 +48,7 @@ export class Settings {
 
     // === УПРАВЛЕНИЕ ЗАПИСЬЮ И ПРОСМОТРОМ ИСТОРИИ ===
     
-        // Идёт ли опрос контроллера (false = стоп, true = пуск)
+    // Идёт ли опрос контроллера (false = стоп, true = пуск)
     public isPolling: boolean = true;
 
     // === РЕЖИМ ИЗМЕРЕНИЯ ВЕЛИЧИНЫ СИГНАЛА ===
@@ -65,7 +59,6 @@ export class Settings {
     // Момент времени вертикальной черты (timestamp в мс), null = черты нет
     public amplitudeMarkerTime: number | null = null;
 
-
     // Состояние режима измерения временных интервалов
     public isIntervalMode: boolean = false;
     // Время первого маркера (начало интервала) в мс, null если не установлен
@@ -74,17 +67,12 @@ export class Settings {
     public intervalMarker2Time: number | null = null;
 
     // Шли ли графики до входа в режим измерения (для восстановления при выходе)
-   public wasPollingBeforeMeasure: boolean = false;
+    public wasPollingBeforeMeasure: boolean = false;
     
     // Шли ли графики до входа в режим измерения интервалов (для восстановления при выходе)
     public wasPollingBeforeInterval: boolean = false;
     
     // Момент времени, относительно которого показываем данные (timestamp в мс)
-    // null = следим за реальным временем (живой режим)
-        // Смещение относительно текущего времени (в миллисекундах)
-    // 0 = живой режим, -10000 = показываем данные 10-секундной давности
-        // Смещение относительно текущего времени (в миллисекундах)
-    // 0 = живой режим, -10000 = показываем данные 10-секундной давности
     private timeOffset: number = 0;
     
     // Зафиксированное время (когда опрос остановлен)
@@ -95,11 +83,9 @@ export class Settings {
      * @param timestamp - момент времени для просмотра
      */
     public setViewTime(timestamp: number): void {
-        // Если опрос остановлен - фиксируем время
         if (!this.isPolling) {
             this.frozenTime = timestamp;
         } else {
-            // Если опрос идёт - вычисляем смещение
             this.timeOffset = timestamp - Date.now();
         }
     }
@@ -123,11 +109,9 @@ export class Settings {
      * Возвращает текущий момент времени для отрисовки
      */
     public getCurrentViewTime(): number {
-        // Если опрос остановлен - показываем зафиксированное время
         if (!this.isPolling && this.frozenTime !== null) {
             return this.frozenTime;
         }
-        // Если опрос идёт - используем смещение (графики движутся)
         return Date.now() + this.timeOffset;
     }
 

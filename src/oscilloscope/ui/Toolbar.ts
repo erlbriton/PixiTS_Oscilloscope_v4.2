@@ -14,7 +14,7 @@ export class Toolbar {
   private autoscaleBtn!: HTMLButtonElement;
   private amplitudeBtn!: HTMLButtonElement;
   private intervalBtn!: HTMLButtonElement;
-  private cursorBtn!: HTMLButtonElement;
+  private recBtn!: HTMLButtonElement;
   private sweepBtn!: HTMLButtonElement;
   private pollingBtn!: HTMLButtonElement;
   private propertiesBtn!: HTMLButtonElement;
@@ -25,6 +25,9 @@ export class Toolbar {
   private onToggleWindowSizeCallback?: (isHalf: boolean) => void;
   private onToggleTimeZoomCallback?: (enabled: boolean) => void;
   private onTogglePollingCallback?: (isPolling: boolean) => void;
+  private onToggleAmplitudeModeCallback?: () => void;
+  private onToggleIntervalModeCallback?: () => void;
+  private onToggleRecCallback?: () => void;
 
   constructor(
     container: HTMLElement,
@@ -50,6 +53,15 @@ export class Toolbar {
   public onTogglePolling(cb: (isPolling: boolean) => void): void {
     this.onTogglePollingCallback = cb;
   }
+  public onToggleAmplitudeMode(cb: () => void): void {
+    this.onToggleAmplitudeModeCallback = cb;
+  }
+  public onToggleIntervalMode(cb: () => void): void {
+    this.onToggleIntervalModeCallback = cb;
+  }
+  public onToggleRec(cb: () => void): void {
+    this.onToggleRecCallback = cb;
+  }
 
   private onAutoScaleCallback?: () => void;
 
@@ -57,20 +69,43 @@ export class Toolbar {
     this.onAutoScaleCallback = cb;
   }
 
-  /**
-   * Обновляет подсветку кнопки автомасштабирования
-   */
   public setAutoScaleButtonState(isActive: boolean): void {
     this.settings.autoScale = isActive;
     this.autoscaleBtn.classList.toggle("active", isActive);
   }
 
+  public setAmplitudeModeButtonState(isActive: boolean): void {
+    this.amplitudeBtn.classList.toggle("active", isActive);
+  }
+
+  public setIntervalModeButtonState(isActive: boolean): void {
+    this.intervalBtn.classList.toggle("active", isActive);
+  }
+
+  public setRecButtonState(isRecording: boolean): void {
+    this.recBtn.classList.toggle("active", isRecording);
+    this.recBtn.style.color = isRecording ? "#ef4444" : "";
+  }
+
+  public updatePollingButtonState(): void {
+    const playIcon = `
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M8 5v14l11-7z"/>
+      </svg>`;
+    const pauseIcon = `
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
+      </svg>`;
+    
+    this.pollingBtn.innerHTML = this.settings.isPolling ? pauseIcon : playIcon;
+    this.pollingBtn.classList.toggle("active", this.settings.isPolling);
+  }
+
   public initialize(): void {
     this.container.innerHTML = "";
 
-    // 1. Кнопка "Свойства" (габариты 64x32px)
     this.propertiesBtn = ToolbarComponents.createButton(
-      `⚙️`,
+      `⚙`,
       "icon-btn osc-btn-properties",
       () => {
         if (this.onOpenPropertiesCallback) this.onOpenPropertiesCallback();
@@ -80,7 +115,6 @@ export class Toolbar {
     this.propertiesBtn.style.width = "64px";
     this.propertiesBtn.style.height = "32px";
 
-    // 2. Индикатор статуса связи
     this.statusBadge = document.createElement("span");
     this.statusBadge.style.minWidth = "95px";
     this.statusBadge.style.height = "32px";
@@ -95,26 +129,25 @@ export class Toolbar {
     this.statusBadge.style.userSelect = "none";
     this.statusBadge.style.borderRadius = "4px";
 
-    // 3. Кнопка переключения размера окна (сразу после статуса, с иконкой)
     this.windowSizeBtn = ToolbarComponents.createButton(
       `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                <path d="M9 3v18"/>
-                <path d="M15 3v18"/>
-            </svg>`,
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+        <path d="M9 3v18"/>
+        <path d="M15 3v18"/>
+      </svg>`,
       "tool-btn-dark window-toggle-btn",
       () => {
         this.settings.isHalfWindow = !this.settings.isHalfWindow;
         this.windowSizeBtn.innerHTML = this.settings.isHalfWindow
           ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                        <path d="M9 3v18"/>
-                    </svg>`
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+              <path d="M9 3v18"/>
+            </svg>`
           : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                        <path d="M9 3v18"/>
-                        <path d="M15 3v18"/>
-                    </svg>`;
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+              <path d="M9 3v18"/>
+              <path d="M15 3v18"/>
+            </svg>`;
         if (this.onToggleWindowSizeCallback) {
           this.onToggleWindowSizeCallback(this.settings.isHalfWindow);
         }
@@ -126,89 +159,96 @@ export class Toolbar {
     this.windowSizeBtn.style.padding = "0";
     this.windowSizeBtn.style.marginLeft = "4px";
 
-    // 4. Кнопка Пуск-Стоп опроса (ВПЛОТНУЮ к кнопке 50%)
     const playIcon = `
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M8 5v14l11-7z"/>
-            </svg>`;
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M8 5v14l11-7z"/>
+      </svg>`;
     const pauseIcon = `
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
-            </svg>`;
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
+      </svg>`;
 
-          this.pollingBtn = ToolbarComponents.createButton(
-        pauseIcon,
-        "tool-btn-dark active",
-        () => {
-          this.settings.isPolling = !this.settings.isPolling;
-          this.pollingBtn.innerHTML = this.settings.isPolling
-            ? pauseIcon
-            : playIcon;
-          this.pollingBtn.classList.toggle("active", this.settings.isPolling);
-          if (this.onTogglePollingCallback) {
-            this.onTogglePollingCallback(this.settings.isPolling);
-          }
-        },
-        "Пуск/Стоп опроса контроллера°",
-      );
-      this.pollingBtn.style.width = "32px";
-      this.pollingBtn.style.height = "32px";
-      this.pollingBtn.style.padding = "0";
-      this.pollingBtn.style.marginLeft = "0"; 
+    this.pollingBtn = ToolbarComponents.createButton(
+      pauseIcon,
+      "tool-btn-dark active",
+      () => {
+        this.settings.isPolling = !this.settings.isPolling;
+        this.pollingBtn.innerHTML = this.settings.isPolling ? pauseIcon : playIcon;
+        this.pollingBtn.classList.toggle("active", this.settings.isPolling);
+        if (this.onTogglePollingCallback) {
+          this.onTogglePollingCallback(this.settings.isPolling);
+        }
+      },
+      "Пуск/Стоп опроса контроллера",
+    );
+    this.pollingBtn.style.width = "32px";
+    this.pollingBtn.style.height = "32px";
+    this.pollingBtn.style.padding = "0";
+    this.pollingBtn.style.marginLeft = "0"; 
 
-            // 5. Кнопка Автомасштабирование (вплотную к кнопке Пуск/Стоп)
-      this.autoscaleBtn = ToolbarComponents.createButton(
-        "📐",
-        "tool-btn-dark",
-        () => {
-          this.settings.autoScale = true;
-          this.autoscaleBtn.classList.add("active");
-          if (this.onAutoScaleCallback) {
-            this.onAutoScaleCallback();
-          }
-        },
-        "Автомасштабирование (Auto-Scale)",
-      );
-      this.autoscaleBtn.style.width = "32px";
-      this.autoscaleBtn.style.height = "32px";
-      this.autoscaleBtn.style.padding = "0";
-      this.autoscaleBtn.style.marginLeft = "0";
+    this.autoscaleBtn = ToolbarComponents.createButton(
+      "📐",
+      "tool-btn-dark",
+      () => {
+        this.settings.autoScale = true;
+        this.autoscaleBtn.classList.add("active");
+        if (this.onAutoScaleCallback) {
+          this.onAutoScaleCallback();
+        }
+      },
+      "Автомасштабирование (Auto-Scale)",
+    );
+    this.autoscaleBtn.style.width = "32px";
+    this.autoscaleBtn.style.height = "32px";
+    this.autoscaleBtn.style.padding = "0";
+    this.autoscaleBtn.style.marginLeft = "0";
 
-            // 6. Кнопка измерения величины сигнала (вплотную к кнопке Автомасштабирование)
-      this.amplitudeBtn = ToolbarComponents.createButton(
-        "📐",
-        "tool-btn-dark",
-        () => {
-          if (this.onToggleAmplitudeModeCallback) {
-              this.onToggleAmplitudeModeCallback();
-          }
-        },
-        "Измерение величины сигнала",
-      );
-      this.amplitudeBtn.style.width = "32px";
-      this.amplitudeBtn.style.height = "32px";
-      this.amplitudeBtn.style.padding = "0";
-      this.amplitudeBtn.style.marginLeft = "0";
+    this.amplitudeBtn = ToolbarComponents.createButton(
+      "📏",
+      "tool-btn-dark",
+      () => {
+        if (this.onToggleAmplitudeModeCallback) {
+          this.onToggleAmplitudeModeCallback();
+        }
+      },
+      "Измерение величины сигнала",
+    );
+    this.amplitudeBtn.style.width = "32px";
+    this.amplitudeBtn.style.height = "32px";
+    this.amplitudeBtn.style.padding = "0";
+    this.amplitudeBtn.style.marginLeft = "0";
 
-      // 7. Кнопка измерения временных интервалов (вплотную к кнопке Измерение)
-      this.intervalBtn = ToolbarComponents.createButton(
-        "T",
-        "tool-btn-dark",
-        () => {
-          if (this.onToggleIntervalModeCallback) {
-            this.onToggleIntervalModeCallback();
-          }
-        },
-        "Измерение временных интервалов",
-      );
-      this.intervalBtn.style.width = "32px";
-      this.intervalBtn.style.height = "32px";
-      this.intervalBtn.style.padding = "0";
-      this.intervalBtn.style.marginLeft = "0";
+    this.intervalBtn = ToolbarComponents.createButton(
+      "T",
+      "tool-btn-dark",
+      () => {
+        if (this.onToggleIntervalModeCallback) {
+          this.onToggleIntervalModeCallback();
+        }
+      },
+      "Измерение временных интервалов",
+    );
+    this.intervalBtn.style.width = "32px";
+    this.intervalBtn.style.height = "32px";
+    this.intervalBtn.style.padding = "0";
+    this.intervalBtn.style.marginLeft = "0";
 
-      //  Автомасштабирование 
+    // Кнопка записи (REC)
+    this.recBtn = ToolbarComponents.createButton(
+      "⏺",
+      "tool-btn-dark",
+      () => {
+        if (this.onToggleRecCallback) {
+          this.onToggleRecCallback();
+        }
+      },
+      "Запись осциллограммы (REC)",
+    );
+    this.recBtn.style.width = "32px";
+    this.recBtn.style.height = "32px";
+    this.recBtn.style.padding = "0";
+    this.recBtn.style.marginLeft = "0";
 
-    // Левая группа: Свойства → Статус → Кнопка размера → Пуск/Стоп → Заголовок
     const groupLeft = document.createElement("div");
     groupLeft.className = "toolbar-group";
 
@@ -216,56 +256,29 @@ export class Toolbar {
     title.className = "toolbar-title";
 
     groupLeft.append(
-        this.propertiesBtn,
-        this.statusBadge,
-        this.windowSizeBtn,
-        this.pollingBtn,
-        this.autoscaleBtn,
-        this.amplitudeBtn,
-        this.intervalBtn,
-        title,
-      );
+      this.propertiesBtn,
+      this.statusBadge,
+      this.windowSizeBtn,
+      this.pollingBtn,
+      this.autoscaleBtn,
+      this.amplitudeBtn,
+      this.intervalBtn,
+      this.recBtn,
+      title,
+    );
 
-    // По умолчанию при старте устанавливаем состояние "Нет связи"
     this.updateStatus(false);
 
-    // Group 2: Controls
     const groupCenter = document.createElement("div");
     groupCenter.className = "toolbar-group";
 
-    // this.autoscaleBtn = ToolbarComponents.createButton(
-    //   "📐",
-    //   "tool-btn-dark",
-    //   () => {
-    //     this.settings.autoScale = true;
-    //     this.autoscaleBtn.classList.add("active");
-    //     if (this.onAutoScaleCallback) {
-    //       this.onAutoScaleCallback();
-    //     }
-    //   },
-    //   "Автомасштабирование (Auto-Scale)",
-    // );
-
-    this.cursorBtn = ToolbarComponents.createButton(
-      "📏",
-      this.settings.enableCursors ? "active" : "",
-      () => {
-        this.settings.enableCursors = !this.settings.enableCursors;
-        this.cursorBtn.classList.toggle("active", this.settings.enableCursors);
-        const footer = document.getElementById("footer");
-        if (footer)
-          footer.style.display = this.settings.enableCursors ? "flex" : "none";
-      },
-      "Курсоры измерения (Cursors)",
-    );
-
     const sweepIcon = `
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M3 5h18"/>
-                <path d="m6 2-3 3 3 3"/>
-                <path d="m18 2 3 3-3 3"/>
-                <path d="M3 17h2l2-5 3 10 3-8 2 3h6"/>
-            </svg>`;
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 5h18"/>
+        <path d="m6 2-3 3 3 3"/>
+        <path d="m18 2 3 3-3 3"/>
+        <path d="M3 17h2l2-5 3 10 3-8 2 3h6"/>
+      </svg>`;
     this.sweepBtn = ToolbarComponents.createButton(
       sweepIcon,
       "",
@@ -280,9 +293,8 @@ export class Toolbar {
     );
     this.sweepBtn.style.width = "64px";
 
-    groupCenter.append(this.cursorBtn, this.sweepBtn);
+    groupCenter.append(this.sweepBtn);
 
-    // Правая группа: Экспорт
     const groupRight = document.createElement("div");
     groupRight.className = "toolbar-group";
 
@@ -299,7 +311,6 @@ export class Toolbar {
 
     this.container.append(groupLeft, groupCenter, groupRight);
 
-    // Подписка на изменение состояния от модуля Serial
     this.serial.onStateChange((state: unknown) => {
       const isConnected = state === "connected" || state === true;
       this.updateStatus(isConnected);
@@ -308,7 +319,6 @@ export class Toolbar {
 
   public updateStatus(isConnected: boolean): void {
     this.statusBadge.removeAttribute("title");
-
     if (isConnected) {
       this.statusBadge.className = "status-badge connected";
       this.statusBadge.textContent = "Подключено";
@@ -320,38 +330,5 @@ export class Toolbar {
 
   public updateRecordTimer(): void {
     // Оставлен для сохранения интерфейса
-  }
-
-  private onToggleAmplitudeModeCallback?: () => void;
-  private onToggleIntervalModeCallback?: () => void;
-
-  public onToggleAmplitudeMode(cb: () => void): void {
-    this.onToggleAmplitudeModeCallback = cb;
-  }
-
-  public onToggleIntervalMode(cb: () => void): void {
-    this.onToggleIntervalModeCallback = cb;
-  }
-
-  public setAmplitudeModeButtonState(isActive: boolean): void {
-    this.amplitudeBtn.classList.toggle("active", isActive);
-  }
-
-  public setIntervalModeButtonState(isActive: boolean): void {
-    this.intervalBtn.classList.toggle("active", isActive);
-  }
-
-  public updatePollingButtonState(): void {
-    const playIcon = `
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M8 5v14l11-7z"/>
-      </svg>`;
-    const pauseIcon = `
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
-      </svg>`;
-    
-    this.pollingBtn.innerHTML = this.settings.isPolling ? pauseIcon : playIcon;
-    this.pollingBtn.classList.toggle("active", this.settings.isPolling);
   }
 }

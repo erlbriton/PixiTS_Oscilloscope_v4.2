@@ -30,7 +30,7 @@ import {
   renderVisibleChannels, updateIntervalDisplay, 
   measureChannelAtTime, formatIntervalDuration, 
   type RenderingContext } from "./scope/OscilloscopeRenderer";
-  import { bindEvents, bindTimeZoomWheel, updateTimeScaleReadout, updateCursorsFooter, type BindingsContext } from "./scope/OscilloscopeBindings";
+import { bindEvents, bindTimeZoomWheel, updateTimeScaleReadout, type BindingsContext } from "./scope/OscilloscopeBindings";
 
 export class Oscilloscope {
   private settings: Settings;
@@ -63,8 +63,7 @@ export class Oscilloscope {
   private lastLoadedIniContent: string | null = null;
   private selectedChannel: Channel | null = null;
   private slaveAddress: number = 1;
-  private externalSerial: { write(data: Uint8Array): Promise<void> } | null =
-    null;
+  private externalSerial: { write(data: Uint8Array): Promise<void> } | null = null;
   private onPollingStateChangeCallback?: (isPolling: boolean) => void;
 
   constructor() {
@@ -108,26 +107,22 @@ export class Oscilloscope {
     const layoutElements = Layout.createSkeleton(rootElement);
     this.splitContainer = layoutElements.splitContainer;
 
-            this.timelineScrollbar = new TimelineScrollbar(layoutElements.timelineContainer);
-        this.timelineScrollbar.onChange((timestamp) => {
-            console.log('[Oscilloscope] Скроллбар onChange. timestamp:', timestamp, ', isPolling:', this.settings.isPolling, ', isAtLive:', this.timelineScrollbar.isAtLivePosition());
-            if (this.timelineScrollbar.isAtLivePosition() && this.settings.isPolling) {
-                // Возвращаемся в живой режим ТОЛЬКО если опрос уже идёт
-                this.settings.followLive();
-            } else {
-                // Иначе просто показываем историю на этом времени
-                this.settings.setViewTime(timestamp);
-            }
-        });
+    this.timelineScrollbar = new TimelineScrollbar(layoutElements.timelineContainer);
+    this.timelineScrollbar.onChange((timestamp) => {
+      if (this.timelineScrollbar.isAtLivePosition() && this.settings.isPolling) {
+        this.settings.followLive();
+      } else {
+        this.settings.setViewTime(timestamp);
+      }
+    });
     this.table = new Table(layoutElements.rowsContainer);
-          this.toolbar = new Toolbar(
-        layoutElements.toolbarContainer,
-        this.settings,
-            this.recorder,
-            this.serial,
-          );
+    this.toolbar = new Toolbar(
+      layoutElements.toolbarContainer,
+      this.settings,
+      this.recorder,
+      this.serial,
+    );
     this.toolbar.initialize();
-    // При загрузке все каналы в режиме автомасштаба — активируем кнопку
     this.toolbar.setAutoScaleButtonState(true);
     this.resizer = new Resizer(this.settings, layoutElements.headerContainer);
     this.resizer.initialize();
@@ -206,7 +201,6 @@ export class Oscilloscope {
       if (this.animFrameId === null) {
         this.animFrameId = requestAnimationFrame((t) => this.loop(t));
       }
-      // Если опрос должен идти, явно возобновляем его после переподключения
       if (this.settings.isPolling) {
         this.serial.resumePolling();
       }
@@ -261,7 +255,7 @@ export class Oscilloscope {
     }
   }
 
-    public async applyChannelConfigs(configs: ChannelConfig[]): Promise<void> {
+  public async applyChannelConfigs(configs: ChannelConfig[]): Promise<void> {
     if (this.isDestroyed) return;
     const channels = (Array.isArray(configs) ? configs : [])
       .filter((c) => c && c.id)
@@ -289,12 +283,6 @@ export class Oscilloscope {
     console.log(`[Oscilloscope] Switch complete.`);
   }
 
-  /**
-   * Форматирует длительность интервала в формат ЧЧ:ММ:СС.дсс
-   * @param timeMs - длительность в миллисекундах (всегда положительная)
-   * @returns строка вида "00:01:23.456"
-   */
-
   public async updateVisibleChannels(
     newVisibleChannels: Channel[],
   ): Promise<void> {
@@ -314,7 +302,8 @@ export class Oscilloscope {
     }
     renderVisibleChannels(this.getRenderingContext());
   }
-      private getCommandContext(): CommandContext {
+
+  private getCommandContext(): CommandContext {
     return {
       selectedChannel: this.selectedChannel,
       externalSerial: this.externalSerial,
@@ -323,7 +312,7 @@ export class Oscilloscope {
     };
   }
 
-      private getBindingsContext(): BindingsContext {
+  private getBindingsContext(): BindingsContext {
     return {
       settings: this.settings,
       getChannels: () => this.allChannels,
@@ -351,7 +340,7 @@ export class Oscilloscope {
     };
   }
 
-      private getRenderingContext(): RenderingContext {
+  private getRenderingContext(): RenderingContext {
     return {
       visibleChannels: this.visibleChannels,
       allChannels: this.allChannels,
@@ -383,15 +372,13 @@ export class Oscilloscope {
     if (this.isDestroyed || !this.isRunning || !this.table) return;
     this.lastFrameTime = now;
 
-    // Всегда обновляем диапазон (нужно, чтобы ползунок знал границы)
     const range = this.archive.getTimeRange();
     this.timelineScrollbar.setRange(range.min, range.max);
 
-    // Обновляем позицию ползунка ТОЛЬКО если опрос идёт И мы в живом режиме
     if (this.settings.isPolling && this.settings.isLive()) {
       this.timelineScrollbar.setPosition(range.max);
     }
-    // Иначе не трогаем ползунок — пользователь сам им управляет
+    
     try {
       this.table.updateValues();
       this.toolbar.updateRecordTimer();
@@ -407,7 +394,6 @@ export class Oscilloscope {
           }
         }
       });
-            if (this.settings.enableCursors) updateCursorsFooter(this.getBindingsContext());
     } catch (err) {
       console.error("Oscilloscope loop error:", err);
     }
