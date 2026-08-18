@@ -1,6 +1,5 @@
 // src/oscilloscope/ui/RecViewer.ts
-//
-// Модальное окно для просмотра и сохранения файлов .rec
+// Полноценный просмотрщик .rec файлов, повторяющий структуру основного осциллографа
 
 import { Archive } from '../core/Archive';
 import { Channel, ChannelConfig } from '../core/Channel';
@@ -17,6 +16,7 @@ export class RecViewer {
   private toolbar: HTMLElement;
   private graphContainer: HTMLElement;
   private timelineContainer: HTMLElement;
+  private readoutPanel: HTMLElement;
   
   private settings: Settings;
   private archive: Archive;
@@ -28,6 +28,9 @@ export class RecViewer {
   private fileSaver: IFileSaver;
   private originalFilename: string;
   private recData: RecFileData;
+  
+  private isTimeZoomEnabled: boolean = false;
+  private isAmplitudeMode: boolean = false;
 
   constructor(data: RecFileData, filename: string, fileSaver: IFileSaver) {
     this.recData = data;
@@ -37,33 +40,38 @@ export class RecViewer {
     this.archive = new Archive();
     this.renderer = new Renderer(this.settings, this.archive);
 
-    // 1. Создаём DOM-структуру
+    // 1. DOM-структура
     this.overlay = document.createElement('div');
     this.overlay.style.cssText = `
       position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
       background: #050505; z-index: 9999; display: flex; flex-direction: column;
+      font-family: sans-serif; color: #fff;
     `;
 
-    // Toolbar
     this.toolbar = document.createElement('div');
     this.toolbar.style.cssText = `
       display: flex; align-items: center; padding: 8px 16px; 
       background: #111827; border-bottom: 1px solid #374151; gap: 8px;
     `;
 
-    // Графики
     this.graphContainer = document.createElement('div');
     this.graphContainer.style.cssText = `
       flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 4px;
+      position: relative;
     `;
 
-    // Скроллбар
+    this.readoutPanel = document.createElement('div');
+    this.readoutPanel.style.cssText = `
+      height: 24px; background: #1f2937; border-top: 1px solid #374151; 
+      display: flex; align-items: center; padding: 0 16px; font-size: 12px; color: #9ca3af;
+    `;
+
     this.timelineContainer = document.createElement('div');
     this.timelineContainer.style.cssText = `
       height: 30px; background: #111827; border-top: 1px solid #374151;
     `;
 
-    this.overlay.append(this.toolbar, this.graphContainer, this.timelineContainer);
+    this.overlay.append(this.toolbar, this.graphContainer, this.readoutPanel, this.timelineContainer);
     this.scrollbar = new TimelineScrollbar(this.timelineContainer);
   }
 
@@ -71,12 +79,10 @@ export class RecViewer {
     document.body.appendChild(this.overlay);
     this.initData();
     this.initUI();
-    this.render();
+    this.render(); // Отрисовываем один раз при открытии
   }
 
-    private initData(): void {
-    // ВАЖНО: Создаём каналы ТОЛЬКО из распарсенных данных .rec файла
-    // Не берём все каналы из INI!
+  private initData(): void {
     this.channels = this.recData.params.map((p: any) => {
       const config: ChannelConfig = {
         id: p.id,
@@ -91,14 +97,13 @@ export class RecViewer {
         hexValue: '0x0000',
         min: p.recType === 'TBit' ? 0 : -50,
         max: p.recType === 'TBit' ? 1 : 500,
-        autoScale: true, // Включаем автомасштаб по умолчанию
-        rowHeight: 100, // Увеличиваем высоту строки для нормального отображения
+        autoScale: true,
+        rowHeight: 100,
         recRawParts: p.rawParts,
       };
       return new Channel(config);
     });
 
-    // Заполняем архив только для каналов из .rec
     const N = this.recData.timestamps.length;
     for (let i = 0; i < N; i++) {
       const time = this.recData.timestamps[i];
@@ -109,83 +114,209 @@ export class RecViewer {
       }
     }
 
-    // Настраиваем скроллбар на диапазон данных
     const range = this.archive.getTimeRange();
     this.scrollbar.setRange(range.min, range.max);
+    
+    // ВАЖНО: Устанавливаем viewTime на конец диапазона, чтобы график был виден сразу
+    this.settings.setViewTime(range.max);
     this.scrollbar.setPosition(range.max);
+    
+    const duration = range.max - range.min;
+    const estimatedWidth = 1000;
+    const pixelsPerDivision = 40;
+    const divisions = estimatedWidth / pixelsPerDivision;
+    this.settings.timeScale = duration > 0 ? duration / (divisions * 1000) : 1;
+    
+    this.performAutoScale();
+  }
+
+  private performAutoScale(): void {
+    this.channels.forEach(ch => {
+      const samples = this.archive.getAllSamples(ch.id);
+      if (samples.length === 0) return;
+      
+      let min = Infinity;
+      let max = -Infinity;
+      for (const sample of samples) {
+        if (sample.value < min) min = sample.value;
+        if (sample.value > max) max = sample.value;
+      }
+      
+      const range = max - min;
+      const padding = range > 0 ? range * 0.1 : 1;
+      
+      ch.min = min - padding;
+      ch.max = max + padding;
+      ch.autoScale = true;
+    });
   }
 
   private initUI(): void {
-    // Кнопка Закрыть
-    const closeBtn = document.createElement('button');
-    closeBtn.textContent = '✕ Закрыть';
-    closeBtn.style.cssText = 'background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; margin-right: auto;';
-    closeBtn.onclick = () => this.close();
+    // 1. Кнопка Закрыть
+    const closeBtn = this.createToolBtn('✕ Закрыть', '#ef4444', () => this.close());
+    
+    // 2. Кнопка Развертка (Зум колесом)
+    const zoomBtn = this.createToolBtn('🔍 Развертка', '#374151', () => {
+      this.isTimeZoomEnabled = !this.isTimeZoomEnabled;
+      zoomBtn.style.backgroundColor = this.isTimeZoomEnabled ? '#2563eb' : '#374151';
+    });
 
-    // Кнопка Авто-масштаб
-    const autoBtn = document.createElement('button');
-    autoBtn.textContent = '📐 Авто';
-    autoBtn.style.cssText = 'background: #374151; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer;';
-    autoBtn.onclick = () => {
-      this.channels.forEach(ch => { ch.autoScale = true; });
+    // 3. Кнопка Авто-масштаб
+    const autoBtn = this.createToolBtn('📐 Авто', '#374151', () => {
+      this.performAutoScale();
       this.render();
-    };
+    });
 
-    // Кнопка Сохранить
-    const saveBtn = document.createElement('button');
-    saveBtn.textContent = '💾 Сохранить .rec';
-    saveBtn.style.cssText = 'background: #2563eb; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer;';
-    saveBtn.onclick = () => this.save();
+    // 4. Кнопка Измерение величины сигнала
+    const ampBtn = this.createToolBtn('📏 Измерение величины сигнала', '#374151', () => {
+      this.isAmplitudeMode = !this.isAmplitudeMode;
+      ampBtn.style.backgroundColor = this.isAmplitudeMode ? '#2563eb' : '#374151';
+      if (!this.isAmplitudeMode) {
+        this.readoutPanel.textContent = '';
+      }
+    });
 
-    this.toolbar.append(closeBtn, autoBtn, saveBtn);
-  }
+    // 5. Кнопка Сохранить
+    const saveBtn = this.createToolBtn('💾 Сохранить', '#2563eb', () => this.save());
 
-   private render(): void {
-    this.graphContainer.innerHTML = '';
-    this.pixiViews.clear();
+    this.toolbar.append(closeBtn, zoomBtn, autoBtn, ampBtn, saveBtn);
 
-    this.channels.forEach(ch => {
-      const row = document.createElement('div');
-      // Увеличиваем высоту строки до 100px для нормального отображения
-      row.style.cssText = `
-        display: flex; 
-        align-items: center; 
-        height: ${ch.rowHeight || 100}px; 
-        background: #0f172a; 
-        border-radius: 4px; 
-        overflow: hidden;
-        margin-bottom: 4px;
-      `;
+    // Обработчик колеса мыши (работает ТОЛЬКО если включена Развертка)
+    this.graphContainer.addEventListener('wheel', (e) => {
+      if (!this.isTimeZoomEnabled) return;
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+      this.settings.timeScale *= factor;
+      this.render();
+    }, { passive: false });
+
+    // Обработчик клика для маркера амплитуды
+    this.graphContainer.addEventListener('click', (e) => {
+      if (!this.isAmplitudeMode) return;
+      const target = e.target as HTMLElement;
+      const graphDiv = target.closest('[data-channel-id]');
+      if (!graphDiv) return;
       
-      // Метка канала
-      const label = document.createElement('div');
-      label.style.cssText = `
-        width: 150px; 
-        padding: 0 12px; 
-        font-size: 13px; 
-        color: ${ch.color}; 
-        font-weight: bold; 
-        white-space: nowrap; 
-        overflow: hidden; 
-        text-overflow: ellipsis;
-        flex-shrink: 0;
-      `;
-      label.textContent = `${ch.name} (${ch.unit})`;
-      
-      // Контейнер графика
-      const graphDiv = document.createElement('div');
-      graphDiv.style.cssText = 'flex: 1; height: 100%; position: relative; min-width: 0;';
-      
-      row.append(label, graphDiv);
-      this.graphContainer.appendChild(row);
+      const chId = graphDiv.getAttribute('data-channel-id');
+      if (!chId) return;
+      const channel = this.channels.find(c => c.id === chId);
+      if (!channel) return;
 
-      const pixiView = new PixiView(graphDiv);
-      pixiView.init().then(() => {
-        this.pixiViews.set(ch.id, pixiView);
-        this.renderer.renderChannelGraph(ch, pixiView);
-      });
+      const rect = graphDiv.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const width = rect.width;
+      
+      const viewTime = this.settings.getCurrentViewTime();
+      const spacing = 40 * this.settings.timeScale;
+      const duration = (width / spacing) * 1000;
+      const startTime = viewTime - duration;
+      const clickTime = startTime + (x / width) * duration;
+
+      const val = this.archive.getValueAtTime(chId, clickTime);
+      if (val !== null) {
+        this.readoutPanel.textContent = `${channel.name}: ${val.toFixed(4)} ${channel.unit} @ ${new Date(clickTime).toLocaleTimeString()}`;
+      }
+    });
+
+    // Обработчик скроллбара (перерисовываем только при скролле)
+    this.scrollbar.onChange((position: number) => {
+      this.settings.setViewTime(position);
+      this.render();
     });
   }
+
+  private createToolBtn(text: string, color: string, onClick: () => void): HTMLButtonElement {
+    const btn = document.createElement('button');
+    btn.textContent = text;
+    btn.style.cssText = `background: ${color}; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; white-space: nowrap;`;
+    btn.onclick = onClick;
+    return btn;
+  }
+
+  private render(): void {
+    // Если каналы еще не созданы в DOM, создаем их с полной структурой колонок
+    if (this.pixiViews.size !== this.channels.length) {
+      this.graphContainer.innerHTML = '';
+      this.pixiViews.clear();
+
+      this.channels.forEach(ch => {
+        const row = document.createElement('div');
+        // Сетка колонок: Имя(150px), Min(80px), Max(80px), Scale(80px), Ед(60px), График(1fr), Значение(100px)
+        row.style.cssText = `
+          display: grid; 
+          grid-template-columns: 150px 80px 80px 80px 60px 1fr 100px; 
+          align-items: center; 
+          height: ${ch.rowHeight || 100}px; 
+          background: #0f172a; 
+          border-radius: 4px; 
+          overflow: hidden; 
+          margin-bottom: 4px;
+          border: 1px solid #1e293b;
+        `;
+        
+        // 1. Имя и описание
+        const nameCol = document.createElement('div');
+        nameCol.style.cssText = `padding: 0 8px; font-size: 12px; color: ${ch.color}; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-right: 1px solid #1e293b;`;
+        nameCol.innerHTML = `<div>${ch.name}</div><div style="font-size:10px; color:#94a3b8; font-weight:normal;">${ch.description}</div>`;
+        
+        // 2. Min
+        const minCol = document.createElement('div');
+        minCol.style.cssText = `text-align: center; font-size: 11px; color: #cbd5e1; border-right: 1px solid #1e293b;`;
+        minCol.textContent = ch.min.toFixed(2);
+        
+        // 3. Max
+        const maxCol = document.createElement('div');
+        maxCol.style.cssText = `text-align: center; font-size: 11px; color: #cbd5e1; border-right: 1px solid #1e293b;`;
+        maxCol.textContent = ch.max.toFixed(2);
+        
+        // 4. Scale
+        const scaleCol = document.createElement('div');
+        scaleCol.style.cssText = `text-align: center; font-size: 11px; color: #cbd5e1; border-right: 1px solid #1e293b;`;
+        scaleCol.textContent = ch.scale.toString();
+        
+        // 5. Ед. изм.
+        const unitCol = document.createElement('div');
+        unitCol.style.cssText = `text-align: center; font-size: 11px; color: #cbd5e1; border-right: 1px solid #1e293b;`;
+        unitCol.textContent = ch.unit || '--';
+        
+        // 6. График
+        const graphDiv = document.createElement('div');
+        graphDiv.style.cssText = 'height: 100%; position: relative; min-width: 0;';
+        graphDiv.setAttribute('data-channel-id', ch.id);
+        
+        // 7. Значение (Readout)
+        const readoutCol = document.createElement('div');
+        readoutCol.id = `readout-${ch.id}`;
+        readoutCol.style.cssText = `text-align: right; padding-right: 12px; font-size: 14px; font-weight: bold; color: ${ch.color}; border-left: 1px solid #1e293b;`;
+        readoutCol.textContent = '---';
+        
+        row.append(nameCol, minCol, maxCol, scaleCol, unitCol, graphDiv, readoutCol);
+        this.graphContainer.appendChild(row);
+
+        const pixiView = new PixiView(graphDiv);
+        pixiView.init().then(() => {
+          this.pixiViews.set(ch.id, pixiView);
+          this.renderer.renderChannelGraph(ch, pixiView);
+        });
+      });
+    } else {
+      // Обновляем существующие графики и значения
+      this.channels.forEach(ch => {
+        const view = this.pixiViews.get(ch.id);
+        if (view) {
+          try {
+            this.renderer.renderChannelGraph(ch, view);
+            const val = this.archive.getValueAtTime(ch.id, this.settings.getCurrentViewTime());
+            const readoutEl = document.getElementById(`readout-${ch.id}`);
+            if (readoutEl && val !== null) {
+              readoutEl.textContent = val.toFixed(4);
+            }
+          } catch (e) { /* ignore */ }
+        }
+      });
+    }
+  }
+
   private async save(): Promise<void> {
     try {
       const params: RecParam[] = this.channels.map(ch => {
