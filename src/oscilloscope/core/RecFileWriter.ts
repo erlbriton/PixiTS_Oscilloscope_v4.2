@@ -240,8 +240,7 @@ function formatParalistLine(p: RecParam): string {
 }
 
 function formatViewOptionLine(p: RecParam): string {
-  const viewScale = p.recType === 'TBit' ? 16 : 50;
-  return `${p.id}=${formatDecimal(p.scale)}/${viewScale}/`;
+  return `${p.id}=${formatDecimal(p.scale)}/25/`;
 }
 
 function buildTextSection(data: RecExportData, now: Date): Uint8Array {

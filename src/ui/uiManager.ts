@@ -167,19 +167,17 @@ export function initUI(deps: UiManagerDeps): void {
   if (refreshBtn) {
     refreshBtn.addEventListener("click", async () => {
       if (!serial?.isConnected) { showIdModal("Устройство не подключено!"); return; }
-      if (appState.isRefreshing) return;
+            if (appState.isRefreshing) return;
       appState.isRefreshing = true;
       refreshBtn.disabled = true;
       try {
+        // Выполняем только единичное обновление таблицы, без запуска непрерывного опроса
         await updateDeviceRegisters(serial, appState.slaveAddress, appState);
-        appState.isPolling = true;
       } catch (err) {
         console.error("Ошибка при обновлении:", err);
       } finally {
         appState.isRefreshing = false;
         refreshBtn.disabled = false;
-        console.log("DEBUG: Запускаю readLoop после обновления");
-        readLoop(serial, parser, view, buffers, appState);
       }
     });
   }
