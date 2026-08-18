@@ -218,7 +218,7 @@ export function bindEvents(ctx: BindingsContext): void {
     void handleMultiplyCommand(cmdCtx, (t) => handleCommandSubmit(cmdCtx, t));
   });
 
-  ctx.toolbar.onToggleRec(() => {
+    ctx.toolbar.onToggleRec(() => {
     console.log("[Bindings] Кнопка REC нажата");
 
     // Определяем интервал записи
@@ -234,7 +234,7 @@ export function bindEvents(ctx: BindingsContext): void {
       console.log("[Bindings] Запись всего буфера");
     }
 
-       const iniConfig = ctx.getCurrentIniConfig();
+    const iniConfig = ctx.getCurrentIniConfig();
     const deviceInfo = iniConfig ? iniConfig.device : null;
 
     void ctx.recorder
@@ -242,11 +242,53 @@ export function bindEvents(ctx: BindingsContext): void {
       .then(() => {
         console.log("[Bindings] Запись .rec завершена успешно");
       })
-         .catch((err: unknown) => {
+      .catch((err: unknown) => {
         const message = err instanceof Error ? err.message : String(err);
         console.error("[Bindings] Ошибка при записи .rec:", err);
         alert(`Ошибка при записи файла: ${message}`);
       });
+  });
+
+    ctx.toolbar.onViewRec(() => {
+    console.log("[Bindings] Кнопка 'Просмотр осциллограммы' нажата");
+
+    // Создаём скрытый input для выбора файла
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.rec'; // Фильтр только для .rec файлов
+
+    input.addEventListener('change', async () => {
+      if (!input.files || input.files.length === 0) {
+        console.log("[Bindings] Выбор файла отменён");
+        return;
+      }
+
+      const file = input.files[0];
+      console.log(`[Bindings] Выбран файл: ${file.name} (${file.size} байт)`);
+
+      // Читаем файл как ArrayBuffer (бинарный контент)
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const uint8Array = new Uint8Array(arrayBuffer);
+
+        console.log(`[Bindings] Файл загружен: ${uint8Array.length} байт`);
+        console.log(`[Bindings] Первые 16 байт (hex):`,
+          Array.from(uint8Array.slice(0, 16))
+            .map(b => b.toString(16).toUpperCase().padStart(2, '0'))
+            .join(' ')
+        );
+
+        // TODO: Здесь будет парсинг .rec файла
+        // Пока просто выводим информацию
+        alert(`Файл "${file.name}" загружен (${uint8Array.length} байт).\nПарсинг будет реализован на следующем шаге.`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("[Bindings] Ошибка при чтении файла:", err);
+        alert(`Ошибка при чтении файла: ${message}`);
+      }
+    });
+
+    input.click();
   });
 }
 

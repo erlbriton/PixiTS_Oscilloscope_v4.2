@@ -15,19 +15,23 @@ export class Toolbar {
   private amplitudeBtn!: HTMLButtonElement;
   private intervalBtn!: HTMLButtonElement;
   private recBtn!: HTMLButtonElement;
+  private viewRecBtn!: HTMLButtonElement;
   private sweepBtn!: HTMLButtonElement;
   private pollingBtn!: HTMLButtonElement;
   private propertiesBtn!: HTMLButtonElement;
   private exportBtn!: HTMLButtonElement;
   private windowSizeBtn!: HTMLButtonElement;
   private statusBadge!: HTMLSpanElement;
+  
   private onOpenPropertiesCallback?: () => void;
   private onToggleWindowSizeCallback?: (isHalf: boolean) => void;
   private onToggleTimeZoomCallback?: (enabled: boolean) => void;
   private onTogglePollingCallback?: (isPolling: boolean) => void;
+  private onAutoScaleCallback?: () => void;
   private onToggleAmplitudeModeCallback?: () => void;
   private onToggleIntervalModeCallback?: () => void;
   private onToggleRecCallback?: () => void;
+  private onViewRecCallback?: () => void;
 
   constructor(
     container: HTMLElement,
@@ -53,6 +57,9 @@ export class Toolbar {
   public onTogglePolling(cb: (isPolling: boolean) => void): void {
     this.onTogglePollingCallback = cb;
   }
+  public onAutoScale(cb: () => void): void {
+    this.onAutoScaleCallback = cb;
+  }
   public onToggleAmplitudeMode(cb: () => void): void {
     this.onToggleAmplitudeModeCallback = cb;
   }
@@ -62,11 +69,8 @@ export class Toolbar {
   public onToggleRec(cb: () => void): void {
     this.onToggleRecCallback = cb;
   }
-
-  private onAutoScaleCallback?: () => void;
-
-  public onAutoScale(cb: () => void): void {
-    this.onAutoScaleCallback = cb;
+  public onViewRec(cb: () => void): void {
+    this.onViewRecCallback = cb;
   }
 
   public setAutoScaleButtonState(isActive: boolean): void {
@@ -158,6 +162,9 @@ export class Toolbar {
     this.windowSizeBtn.style.height = "32px";
     this.windowSizeBtn.style.padding = "0";
     this.windowSizeBtn.style.marginLeft = "4px";
+    this.windowSizeBtn.style.backgroundColor = "#ffdc18";
+
+
 
     const playIcon = `
       <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -202,6 +209,7 @@ export class Toolbar {
     this.autoscaleBtn.style.height = "32px";
     this.autoscaleBtn.style.padding = "0";
     this.autoscaleBtn.style.marginLeft = "0";
+    this.autoscaleBtn.style.backgroundColor = "#773910";
 
     this.amplitudeBtn = ToolbarComponents.createButton(
       "📏",
@@ -217,7 +225,8 @@ export class Toolbar {
     this.amplitudeBtn.style.height = "32px";
     this.amplitudeBtn.style.padding = "0";
     this.amplitudeBtn.style.marginLeft = "0";
-
+    this.amplitudeBtn.style.backgroundColor = "#12aaaf";
+    
     this.intervalBtn = ToolbarComponents.createButton(
       "T",
       "tool-btn-dark",
@@ -232,8 +241,8 @@ export class Toolbar {
     this.intervalBtn.style.height = "32px";
     this.intervalBtn.style.padding = "0";
     this.intervalBtn.style.marginLeft = "0";
+    this.intervalBtn.style.backgroundColor = "#3244e7";
 
-    // Кнопка записи (REC)
     this.recBtn = ToolbarComponents.createButton(
       "⏺",
       "tool-btn-dark",
@@ -248,6 +257,24 @@ export class Toolbar {
     this.recBtn.style.height = "32px";
     this.recBtn.style.padding = "0";
     this.recBtn.style.marginLeft = "0";
+    this.recBtn.style.backgroundColor = "#e7e432";
+
+    this.viewRecBtn = ToolbarComponents.createButton(
+      "👁️",
+      "tool-btn-dark",
+      () => {
+        if (this.onViewRecCallback) {
+          this.onViewRecCallback();
+        }
+      },
+      "Просмотр осциллограммы (.rec)",
+    );
+    this.viewRecBtn.style.width = "32px";
+    this.viewRecBtn.style.height = "32px";
+    this.viewRecBtn.style.padding = "0";
+    this.viewRecBtn.style.marginLeft = "0";
+    this.viewRecBtn.style.color = "#ca1432";
+    this.viewRecBtn.style.backgroundColor = "#16ac3c";
 
     const groupLeft = document.createElement("div");
     groupLeft.className = "toolbar-group";
@@ -264,6 +291,7 @@ export class Toolbar {
       this.amplitudeBtn,
       this.intervalBtn,
       this.recBtn,
+      this.viewRecBtn,
       title,
     );
 
