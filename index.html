@@ -15,7 +15,15 @@
           <button class="tool-btn">🔧 ▾</button>
           <button class="tool-btn">🔍</button>
           <button class="tool-btn">📋</button>
-          <button id="toggleOscBtn" class="tool-btn">📈 ▾</button>
+          <div class="split-btn-group">
+            <button id="toggleOscMainBtn" class="split-btn-main" title="Осциллограф">📈</button>
+            <div class="split-btn-divider"></div>
+            <button id="toggleOscArrowBtn" class="split-btn-arrow" title="Меню осциллографа">▾</button>
+            <div id="toggleOscDropdown" class="split-dropdown-menu">
+              <div class="split-dropdown-item" id="menuToggleOsc">Осциллограф</div>
+              <div class="split-dropdown-item" id="menuViewRec">Просмотр осциллограммы</div>
+            </div>
+          </div>
           <button class="tool-btn">💾</button>
           <button class="tool-btn">📦 ▾</button>
 

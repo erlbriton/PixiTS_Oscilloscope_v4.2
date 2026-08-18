@@ -155,6 +155,8 @@
     cursor: pointer;
     text-align: left;
     user-select: none;
+    white-space: nowrap;
+    background-color: #e9f584;
 }
 
 .split-dropdown-item:hover {

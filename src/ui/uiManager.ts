@@ -5,6 +5,9 @@ import type { AppState } from '../core/app-state.js';
 import type { IOscilloscopeApi } from '../core/osc-api.js';
 import type { ModbusParser } from '../serial/modbus.js';
 import { IniParser as CoreIniParser, IniConfig } from '../core/ini/index.js';
+import { RecFileReader } from '../oscilloscope/core/RecFileReader.js';
+import { RecViewer } from '../oscilloscope/ui/RecViewer.js';
+import { BrowserFileSaver } from '../core/platform/browser-fs.js';
 
 /** Буфер данных канала (типизирован явно, без any) */
 export interface ChannelBuffer {
@@ -57,7 +60,11 @@ export function initUI(deps: UiManagerDeps): void {
   const idBtn = document.getElementById("idBtn") as HTMLButtonElement | null;
   const connectBtn = document.getElementById("connectBtn") as HTMLButtonElement | null;
   const comSelect = document.getElementById("comSelect") as HTMLSelectElement | null;
-  const toggleOscBtn = document.getElementById('toggleOscBtn') as HTMLButtonElement | null;
+  const toggleOscMainBtn = document.getElementById('toggleOscMainBtn') as HTMLButtonElement | null;
+  const toggleOscArrowBtn = document.getElementById('toggleOscArrowBtn') as HTMLButtonElement | null;
+  const toggleOscDropdown = document.getElementById('toggleOscDropdown') as HTMLElement | null;
+  const menuToggleOsc = document.getElementById('menuToggleOsc') as HTMLElement | null;
+  const menuViewRec = document.getElementById('menuViewRec') as HTMLElement | null;
   const refreshBtn = document.getElementById("refresh-btn") as HTMLButtonElement | null;
   const folderActionBtn = document.getElementById('folderActionBtn') as HTMLButtonElement | null;
   const folderArrowBtn = document.getElementById('folderArrowBtn') as HTMLButtonElement | null;
@@ -182,37 +189,97 @@ export function initUI(deps: UiManagerDeps): void {
     });
   }
 
-  if (toggleOscBtn) {
-    toggleOscBtn.addEventListener('click', async () => {
-      const oscContainerEl = document.getElementById('osc-container');
-      if (!oscContainerEl) return;
-      const isHidden = oscContainerEl.classList.contains('hidden') || oscContainerEl.style.display === 'none';
+      // Функция переключения видимости осциллографа
+  const toggleOscilloscope = async () => {
+    const oscContainerEl = document.getElementById('osc-container');
+    if (!oscContainerEl) return;
+    const isHidden = oscContainerEl.classList.contains('hidden') || oscContainerEl.style.display === 'none';
 
-      if (isHidden) {
-        oscContainerEl.classList.remove('hidden');
-        oscContainerEl.style.display = 'block';
-        appState.isPolling = true;
-        // БЫЛО: const osc = (window as any).osc;
-        // СТАЛО:
-        const osc = window.osc;
-        if (osc) {
-          await osc.initialize(oscContainerEl ?? undefined);
-          if (appState.currentIniContent) {
-    await osc.loadIniContent(appState.currentIniContent);
-}
-          if (typeof osc.setConnectionStatus === 'function') {
-            osc.setConnectionStatus(
-              serial.isConnected,
-              serial.isConnected ? undefined : 'Нет связи с устройством.'
-            );
-          }
-          readLoop(serial, parser, osc, buffers, appState);
+    if (isHidden) {
+      oscContainerEl.classList.remove('hidden');
+      oscContainerEl.style.display = 'block';
+      appState.isPolling = true;
+      const osc = window.osc;
+      if (osc) {
+        await osc.initialize(oscContainerEl ?? undefined);
+        if (appState.currentIniContent) {
+          await osc.loadIniContent(appState.currentIniContent);
         }
-      } else {
-        oscContainerEl.classList.add('hidden');
-        oscContainerEl.style.display = 'none';
-        appState.isPolling = false;
+        if (typeof osc.setConnectionStatus === 'function') {
+          osc.setConnectionStatus(
+            serial.isConnected,
+            serial.isConnected ? undefined : 'Нет связи с устройством.'
+          );
+        }
+        readLoop(serial, parser, osc, buffers, appState);
       }
+    } else {
+      oscContainerEl.classList.add('hidden');
+      oscContainerEl.style.display = 'none';
+      appState.isPolling = false;
+    }
+  };
+
+  // 1. Клик по основной части кнопки (📈)
+  if (toggleOscMainBtn) {
+    toggleOscMainBtn.addEventListener('click', async () => {
+      await toggleOscilloscope();
+    });
+  }
+
+  // 2. Клик по стрелочке (открыть меню)
+  if (toggleOscArrowBtn) {
+    toggleOscArrowBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleOscDropdown?.classList.toggle('show');
+    });
+  }
+
+  // 3. Пункт меню "Осциллограф"
+  if (menuToggleOsc) {
+    menuToggleOsc.addEventListener('click', async () => {
+      await toggleOscilloscope();
+      toggleOscDropdown?.classList.remove('show');
+    });
+  }
+
+  // 4. Пункт меню "Просмотр осциллограммы" (чистый статический импорт)
+  if (menuViewRec) {
+    menuViewRec.addEventListener('click', () => {
+      toggleOscDropdown?.classList.remove('show');
+      
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.rec';
+
+      input.addEventListener('change', async () => {
+        if (!input.files || input.files.length === 0) return;
+
+        const file = input.files[0];
+        console.log(`[UI] Выбран файл: ${file.name} (${file.size} байт)`);
+
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const uint8Array = new Uint8Array(arrayBuffer);
+
+          // Используем статически импортированные классы (типобезопасно)
+          const reader = new RecFileReader();
+          const recData = reader.parse(uint8Array);
+
+          console.log(`[UI] Успешно распарсено: ${recData.params.length} параметров, ${recData.timestamps.length} сэмплов`);
+
+          const fileSaver = new BrowserFileSaver();
+          const viewer = new RecViewer(recData, file.name, fileSaver);
+          viewer.open();
+
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error('[UI] Ошибка при чтении .rec файла:', err);
+          alert(`Не удалось открыть файл .rec:\n${message}`);
+        }
+      });
+
+      input.click();
     });
   }
 
@@ -220,7 +287,10 @@ export function initUI(deps: UiManagerDeps): void {
   if (menuOpenFile) menuOpenFile.addEventListener('click', () => { filePicker?.click(); folderDropdown?.classList.remove('show'); });
   if (menuOpenFolder) menuOpenFolder.addEventListener('click', () => { folderPicker?.click(); folderDropdown?.classList.remove('show'); });
   if (folderArrowBtn) folderArrowBtn.addEventListener('click', (e) => { e.stopPropagation(); folderDropdown?.classList.toggle('show'); });
-  document.addEventListener('click', () => folderDropdown?.classList.remove('show'));
+    document.addEventListener('click', () => {
+    folderDropdown?.classList.remove('show');
+    toggleOscDropdown?.classList.remove('show');
+  });
 
   initTableEditor('grid-data-rows', appState);
   console.log("UI Manager: Интерфейс и обработчики инициализированы.");

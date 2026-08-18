@@ -248,50 +248,6 @@ export function bindEvents(ctx: BindingsContext): void {
         alert(`Ошибка при записи файла: ${message}`);
       });
   });
-
-      ctx.toolbar.onViewRec(async () => {
-    console.log("[Bindings] Кнопка 'Просмотр осциллограммы' нажата");
-
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.rec';
-
-    input.addEventListener('change', async () => {
-      if (!input.files || input.files.length === 0) {
-        console.log("[Bindings] Выбор файла отменён");
-        return;
-      }
-
-      const file = input.files[0];
-      console.log(`[Bindings] Выбран файл: ${file.name} (${file.size} байт)`);
-
-      try {
-        const arrayBuffer = await file.arrayBuffer();
-        const uint8Array = new Uint8Array(arrayBuffer);
-
-        // 1. Парсим файл .rec
-        const { RecFileReader } = await import('../core/RecFileReader.js');
-        const reader = new RecFileReader();
-        const recData = reader.parse(uint8Array);
-
-        console.log(`[Bindings] Успешно распарсено: ${recData.params.length} параметров, ${recData.timestamps.length} сэмплов`);
-
-        // 2. Открываем в модальном окне просмотра
-        const { RecViewer } = await import('../ui/RecViewer.js');
-        const { BrowserFileSaver } = await import('../../core/platform/browser-fs.js');
-        
-        const viewer = new RecViewer(recData, file.name, new BrowserFileSaver());
-        viewer.open();
-
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        console.error("[Bindings] Ошибка при чтении .rec файла:", err);
-        alert(`Не удалось открыть файл .rec:\n${message}`);
-      }
-    });
-
-    input.click();
-  });
 }
 
 export function bindTimeZoomWheel(ctx: BindingsContext, rowsContainer: HTMLElement): void {

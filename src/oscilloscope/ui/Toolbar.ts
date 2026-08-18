@@ -15,7 +15,6 @@ export class Toolbar {
   private amplitudeBtn!: HTMLButtonElement;
   private intervalBtn!: HTMLButtonElement;
   private recBtn!: HTMLButtonElement;
-  private viewRecBtn!: HTMLButtonElement;
   private sweepBtn!: HTMLButtonElement;
   private pollingBtn!: HTMLButtonElement;
   private propertiesBtn!: HTMLButtonElement;
@@ -31,7 +30,7 @@ export class Toolbar {
   private onToggleAmplitudeModeCallback?: () => void;
   private onToggleIntervalModeCallback?: () => void;
   private onToggleRecCallback?: () => void;
-  private onViewRecCallback?: () => void;
+  
 
   constructor(
     container: HTMLElement,
@@ -63,14 +62,11 @@ export class Toolbar {
   public onToggleAmplitudeMode(cb: () => void): void {
     this.onToggleAmplitudeModeCallback = cb;
   }
-  public onToggleIntervalMode(cb: () => void): void {
-    this.onToggleIntervalModeCallback = cb;
-  }
-  public onToggleRec(cb: () => void): void {
+    public onToggleRec(cb: () => void): void {
     this.onToggleRecCallback = cb;
   }
-  public onViewRec(cb: () => void): void {
-    this.onViewRecCallback = cb;
+  public onToggleIntervalMode(cb: () => void): void {
+    this.onToggleIntervalModeCallback = cb;
   }
 
   public setAutoScaleButtonState(isActive: boolean): void {
@@ -259,23 +255,6 @@ export class Toolbar {
     this.recBtn.style.marginLeft = "0";
     this.recBtn.style.backgroundColor = "#e7e432";
 
-    this.viewRecBtn = ToolbarComponents.createButton(
-      "👁️",
-      "tool-btn-dark",
-      () => {
-        if (this.onViewRecCallback) {
-          this.onViewRecCallback();
-        }
-      },
-      "Просмотр осциллограммы (.rec)",
-    );
-    this.viewRecBtn.style.width = "32px";
-    this.viewRecBtn.style.height = "32px";
-    this.viewRecBtn.style.padding = "0";
-    this.viewRecBtn.style.marginLeft = "0";
-    this.viewRecBtn.style.color = "#ca1432";
-    this.viewRecBtn.style.backgroundColor = "#16ac3c";
-
     const groupLeft = document.createElement("div");
     groupLeft.className = "toolbar-group";
 
@@ -291,7 +270,6 @@ export class Toolbar {
       this.amplitudeBtn,
       this.intervalBtn,
       this.recBtn,
-      this.viewRecBtn,
       title,
     );
 
