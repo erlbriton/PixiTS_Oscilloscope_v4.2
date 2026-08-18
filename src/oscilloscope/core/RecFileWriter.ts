@@ -52,7 +52,8 @@ export interface RecParam {
   unit: string;
   scale: number;
   byteCount: number;
-  rawParts: string[];
+  /** Оригинальные части строки из INI. Если не передано, строка сгенерируется автоматически. */
+  rawParts?: string[];
 }
 
 /** Метаданные устройства для секции [DEVICE] */
@@ -110,10 +111,36 @@ function encodeCP1251(str: string): Uint8Array {
     const cp = str.charCodeAt(i);
     if (cp < 0x80) {
       out[i] = cp;
-    } else if (CP1251_MAP[cp] !== undefined) {
-      out[i] = CP1251_MAP[cp];
     } else {
-      out[i] = 0x3F; // '?'
+      // Полная таблица CP1251 для кириллицы и основных символов
+      let mapped = 0x3F; // По умолчанию '?'
+      if (cp >= 0x0410 && cp <= 0x044F) {
+        // А-Я (0x0410-0x042F) -> 0xC0-0xDF
+        if (cp <= 0x042F) mapped = cp - 0x0410 + 0xC0;
+        // а-я (0x0430-0x044F) -> 0xE0-0xFF
+        else mapped = cp - 0x0430 + 0xE0;
+      } else if (cp === 0x0401) mapped = 0xA8; // Ё
+      else if (cp === 0x0451) mapped = 0xB8; // ё
+      else if (cp === 0x2013) mapped = 0x96; // –
+      else if (cp === 0x2014) mapped = 0x97; // —
+      else if (cp === 0x2018) mapped = 0x91; // ‘
+      else if (cp === 0x2019) mapped = 0x92; // ’
+      else if (cp === 0x201C) mapped = 0x93; // “
+      else if (cp === 0x201D) mapped = 0x94; // ”
+      else if (cp === 0x2022) mapped = 0x95; // •
+      else if (cp === 0x2026) mapped = 0x85; // …
+      else if (cp === 0x00A0) mapped = 0xA0; // неразрывный пробел
+      else if (cp === 0x00A9) mapped = 0xA9; // ©
+      else if (cp === 0x00AE) mapped = 0xAE; // ®
+      else if (cp === 0x00B0) mapped = 0xB0; // °
+      else if (cp === 0x00B1) mapped = 0xB1; // ±
+      else if (cp === 0x00B2) mapped = 0xB2; // ²
+      else if (cp === 0x00B3) mapped = 0xB3; // ³
+      else if (cp === 0x00B5) mapped = 0xB5; // µ
+      else if (cp === 0x00B7) mapped = 0xB7; // ·
+      else if (cp === 0x2116) mapped = 0xB9; // №
+      
+      out[i] = mapped;
     }
   }
   return out;

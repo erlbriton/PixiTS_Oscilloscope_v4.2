@@ -249,13 +249,12 @@ export function bindEvents(ctx: BindingsContext): void {
       });
   });
 
-    ctx.toolbar.onViewRec(() => {
+      ctx.toolbar.onViewRec(async () => {
     console.log("[Bindings] Кнопка 'Просмотр осциллограммы' нажата");
 
-    // Создаём скрытый input для выбора файла
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.rec'; // Фильтр только для .rec файлов
+    input.accept = '.rec';
 
     input.addEventListener('change', async () => {
       if (!input.files || input.files.length === 0) {
@@ -266,25 +265,28 @@ export function bindEvents(ctx: BindingsContext): void {
       const file = input.files[0];
       console.log(`[Bindings] Выбран файл: ${file.name} (${file.size} байт)`);
 
-      // Читаем файл как ArrayBuffer (бинарный контент)
       try {
         const arrayBuffer = await file.arrayBuffer();
         const uint8Array = new Uint8Array(arrayBuffer);
 
-        console.log(`[Bindings] Файл загружен: ${uint8Array.length} байт`);
-        console.log(`[Bindings] Первые 16 байт (hex):`,
-          Array.from(uint8Array.slice(0, 16))
-            .map(b => b.toString(16).toUpperCase().padStart(2, '0'))
-            .join(' ')
-        );
+        // 1. Парсим файл .rec
+        const { RecFileReader } = await import('../core/RecFileReader.js');
+        const reader = new RecFileReader();
+        const recData = reader.parse(uint8Array);
 
-        // TODO: Здесь будет парсинг .rec файла
-        // Пока просто выводим информацию
-        alert(`Файл "${file.name}" загружен (${uint8Array.length} байт).\nПарсинг будет реализован на следующем шаге.`);
+        console.log(`[Bindings] Успешно распарсено: ${recData.params.length} параметров, ${recData.timestamps.length} сэмплов`);
+
+        // 2. Открываем в модальном окне просмотра
+        const { RecViewer } = await import('../ui/RecViewer.js');
+        const { BrowserFileSaver } = await import('../../core/platform/browser-fs.js');
+        
+        const viewer = new RecViewer(recData, file.name, new BrowserFileSaver());
+        viewer.open();
+
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.error("[Bindings] Ошибка при чтении файла:", err);
-        alert(`Ошибка при чтении файла: ${message}`);
+        console.error("[Bindings] Ошибка при чтении .rec файла:", err);
+        alert(`Не удалось открыть файл .rec:\n${message}`);
       }
     });
 
