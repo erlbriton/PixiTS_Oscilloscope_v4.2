@@ -1,9 +1,5 @@
 // src/core/platform/browser-fs.ts
 // Браузерные реализации платформенных контрактов.
-// В нативном проекте (Tauri) будут свои реализации:
-//   TauriFileSaver    → tauri-plugin-fs + диалог сохранения
-//   TauriFileSystem   → tauri-plugin-fs (readTextFile, readDir)
-//   TauriSerialAdapter → IPC → Rust crate `serialport`
 
 import type { IFileSaver, IFileSystem, SelectedFile, FileFilter } from './fs.js';
 import { decodeTextBuffer } from '../../ini-manager/textFileReader.js';
@@ -11,7 +7,8 @@ import { decodeTextBuffer } from '../../ini-manager/textFileReader.js';
 /**
  * Браузерная реализация сохранения файлов.
  * Использует Blob + URL.createObjectURL + <a download>.
- * В Tauri будет заменена на tauri-plugin-dialog + tauri-plugin-fs.
+ * Для бинарных файлов предпочитает showSaveFilePicker
+ * (системный диалог "Сохранить как" с выбором имени и папки).
  */
 export class BrowserFileSaver implements IFileSaver {
   public async saveTextFile(
@@ -29,12 +26,67 @@ export class BrowserFileSaver implements IFileSaver {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   }
+
+  public async saveBinaryFile(
+    filename: string,
+    data: Uint8Array,
+    mimeType: string = 'application/octet-stream'
+  ): Promise<void> {
+    // Копируем данные в НОВЫЙ ArrayBuffer, чтобы тип стал
+    // Uint8Array<ArrayBuffer> — этого требует Blob в TypeScript 5.7+
+    const safe = new Uint8Array(data);
+
+    // Пытаемся открыть системный диалог "Сохранить как"
+    const w = window as unknown as {
+      showSaveFilePicker?: (options: unknown) => Promise<{
+        createWritable(): Promise<{
+          write(d: Uint8Array): Promise<void>;
+          close(): Promise<void>;
+        }>;
+      }>;
+    };
+
+    if (typeof w.showSaveFilePicker === 'function') {
+      try {
+        const handle = await w.showSaveFilePicker({
+          suggestedName: filename,
+          types: [
+            {
+              description: 'Файл записи осциллографа',
+              accept: { 'application/octet-stream': ['.rec'] },
+            },
+          ],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(safe);
+        await writable.close();
+        return;
+      } catch (err) {
+        // Пользователь отменил диалог — тихо выходим
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          return;
+        }
+        // Иначе падаем в fallback ниже
+      }
+    }
+
+    // Fallback: обычное скачивание
+    const blob = new Blob([safe], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
 }
 
 /**
  * Браузерная реализация файловой системы.
  * Использует File API (input type="file") и FileReader.
- * В Tauri будет заменена на tauri-plugin-fs (readTextFile, readDir, writeTextFile).
+ * В Tauri будет заменена на tauri-plugin-dialog + tauri-plugin-fs.
  */
 export class BrowserFileSystem implements IFileSystem {
   public async selectFiles(options?: {

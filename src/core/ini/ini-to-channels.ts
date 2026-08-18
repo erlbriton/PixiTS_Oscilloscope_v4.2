@@ -20,6 +20,7 @@ export interface ChannelConfigFromIni {
   min: number;
   max: number;
   color?: string;
+  recRawParts: string[];
 }
 
 /** Палитра для аналоговых каналов */
@@ -63,6 +64,9 @@ export function iniParamsToChannelConfigs(params: IniParameter[]): ChannelConfig
         min: p.isBit ? 0 : -50,
         max: p.isBit ? 1 : 500,
         color,
+        // Сохраняем оригинальные части строки для точного
+        // воспроизведения в [paralist] при записи .rec
+        recRawParts: [p.id, ...p.rawParts],
       };
     });
 }

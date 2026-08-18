@@ -65,6 +65,7 @@ export class Oscilloscope {
   private slaveAddress: number = 1;
   private externalSerial: { write(data: Uint8Array): Promise<void> } | null = null;
   private onPollingStateChangeCallback?: (isPolling: boolean) => void;
+  private currentIniConfig: IniConfig | null = null;
 
   constructor() {
     this.settings = new Settings();
@@ -147,7 +148,8 @@ export class Oscilloscope {
         const val = data[ch.id];
         if (typeof val === "number" && Number.isFinite(val)) {
           ch.updateRawValue(val);
-          this.archive.addSample(ch.id, now, ch.scaledValue);
+          // ВАЖНО: теперь передаём И scaledValue, И rawValue
+          this.archive.addSample(ch.id, now, ch.scaledValue, ch.rawDecValue);
         }
       }
     });
@@ -249,6 +251,7 @@ export class Oscilloscope {
       const ramParams = iniConfig.getSection("RAM");
       const channelConfigs = iniParamsToChannelConfigs(ramParams);
       await this.applyChannelConfigs(channelConfigs);
+      this.currentIniConfig = iniConfig;
       this.lastLoadedIniContent = iniContent;
     } catch (err) {
       console.error("[Oscilloscope] Failed to parse INI content:", err);
@@ -337,6 +340,7 @@ export class Oscilloscope {
       loadIniContent: (content) => this.loadIniContent(content),
       setConnectionStatus: (connected, msg) => this.setConnectionStatus(connected, msg),
       getCommandContext: () => this.getCommandContext(),
+      getCurrentIniConfig: () => this.currentIniConfig,
     };
   }
 

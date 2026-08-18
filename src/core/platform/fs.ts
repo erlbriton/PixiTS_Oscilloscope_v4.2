@@ -1,48 +1,32 @@
 // src/core/platform/fs.ts
 // Платформенно-независимый контракт файловой системы.
-// Браузер:  File API (input type="file"), File.arrayBuffer()
-// Tauri:    @tauri-apps/plugin-fs → readTextFile / readDir
-// Нативный: std::fs через IPC (Rust/C++)
-//
-// Правило: бизнес-логика зависит ТОЛЬКО от этих интерфейсов.
 
 export interface SelectedFile {
   readonly name: string;
-  readonly path: string;          // полный путь (в браузере — имя)
+  readonly path: string;
   readonly size: number;
   readonly lastModified: number;
-  readonly content: string;       // уже декодированный текст
+  readonly content: string;
 }
 
 export interface FileFilter {
   readonly name: string;
-  readonly extensions: string[];  // ['ini', 'txt']
+  readonly extensions: string[];
 }
 
 export interface IFileSystem {
-  /** Открыть диалог выбора файлов */
   selectFiles(options?: {
     multiple?: boolean;
     filters?: FileFilter[];
   }): Promise<SelectedFile[]>;
 
-  /** Открыть диалог выбора папки */
   selectDirectory(): Promise<SelectedFile[] | null>;
 
-  /** Прочитать файл по пути (нативный режим) */
   readTextFile(path: string): Promise<string>;
 
-  /** Сохранить текст в файл (нативный режим) */
   writeTextFile(path: string, content: string): Promise<void>;
 }
 
-/**
- * Платформенно-независимый контракт последовательного порта.
- * Дублирует ISerialPort для наглядности в контексте платформы.
- * Реализации:
- *   браузер → SerialConnection (Web Serial API)
- *   Tauri   → TauriSerialAdapter (IPC → Rust crate `serialport`)
- */
 export interface ISerialPortPlatform {
   readonly isConnected: boolean;
   connect(baudRate?: number): Promise<void>;
@@ -54,10 +38,12 @@ export interface ISerialPortPlatform {
 }
 
 /**
- * Контракт сохранения файлов (CSV, INI).
+ * Контракт сохранения файлов (CSV, INI, REC).
  * Браузер:  Blob + URL.createObjectURL + <a download>
+ *           или showSaveFilePicker (диалог "Сохранить как")
  * Нативный: диалог сохранения через FS-плагин
  */
 export interface IFileSaver {
   saveTextFile(filename: string, content: string, mimeType?: string): Promise<void>;
+  saveBinaryFile(filename: string, data: Uint8Array, mimeType?: string): Promise<void>;
 }

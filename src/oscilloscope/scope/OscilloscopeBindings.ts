@@ -13,6 +13,7 @@ import type { Renderer } from "../graphics/Renderer";
 import type { PixiView } from "../graphics/PixiView";
 import type { PropertiesModal } from "../ui/PropertiesModal";
 import type { CommandContext } from "./OscilloscopeCommands";
+import type { IniConfig } from "../../core/ini/IniConfig.js";
 import { handleCommandSubmit, handleMultiplyCommand } from "./OscilloscopeCommands";
 
 export interface BindingsContext {
@@ -35,6 +36,7 @@ export interface BindingsContext {
   loadIniContent: (content: string) => Promise<void>;
   setConnectionStatus: (connected: boolean, message?: string) => void;
   getCommandContext: () => CommandContext;
+  getCurrentIniConfig: () => IniConfig | null;
 }
 
 export function bindEvents(ctx: BindingsContext): void {
@@ -218,7 +220,33 @@ export function bindEvents(ctx: BindingsContext): void {
 
   ctx.toolbar.onToggleRec(() => {
     console.log("[Bindings] Кнопка REC нажата");
-    // Здесь будет подключена логика записи осциллограммы
+
+    // Определяем интервал записи
+    const { intervalMarker1Time, intervalMarker2Time } = ctx.settings;
+    const startTime = intervalMarker1Time !== null ? intervalMarker1Time : null;
+    const endTime = intervalMarker2Time !== null ? intervalMarker2Time : null;
+
+    if (startTime !== null && endTime !== null) {
+      console.log(
+        `[Bindings] Запись между маркерами: ${new Date(startTime).toISOString()} - ${new Date(endTime).toISOString()}`
+      );
+    } else {
+      console.log("[Bindings] Запись всего буфера");
+    }
+
+       const iniConfig = ctx.getCurrentIniConfig();
+    const deviceInfo = iniConfig ? iniConfig.device : null;
+
+    void ctx.recorder
+      .exportREC(ctx.getVisibleChannels(), startTime, endTime, deviceInfo)
+      .then(() => {
+        console.log("[Bindings] Запись .rec завершена успешно");
+      })
+         .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("[Bindings] Ошибка при записи .rec:", err);
+        alert(`Ошибка при записи файла: ${message}`);
+      });
   });
 }
 

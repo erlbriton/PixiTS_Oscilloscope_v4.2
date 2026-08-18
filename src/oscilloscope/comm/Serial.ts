@@ -347,10 +347,10 @@ export class Serial {
                     matches.forEach((strVal, idx) => {
                         const val = parseFloat(strVal);
 
-                        if (!isNaN(val) && idx < this.channels.length) {
+                       if (!isNaN(val) && idx < this.channels.length) {
                             const ch = this.channels[idx];
                             ch.updateRawValue(val);
-                            this.archive.addSample(ch.id, now, ch.scaledValue);
+                            this.archive.addSample(ch.id, now, ch.scaledValue, ch.rawDecValue);
                         }
                     });
                 }
@@ -446,7 +446,7 @@ export class Serial {
 
                         if (val !== null) {
                             ch.updateRawValue(val);
-                            this.archive.addSample(ch.id, now, ch.scaledValue);
+                            this.archive.addSample(ch.id, now, ch.scaledValue, ch.rawDecValue);
                         }
                     });
                 }

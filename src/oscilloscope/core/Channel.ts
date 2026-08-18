@@ -1,4 +1,4 @@
-// src/core/Channel.ts
+// src/oscilloscope/core/Channel.ts
 
 export interface ChannelConfig {
     id: string;          // p00600
@@ -19,6 +19,8 @@ export interface ChannelConfig {
     rawDecValue?: number;
     isBit?: boolean;
     modbusReg?: string;
+    /** Оригинальные части строки [paralist] из INI (для записи .rec) */
+    recRawParts?: string[];
 }
 
 const PALETTE = [
@@ -51,6 +53,8 @@ export class Channel {
     public modbusReg: string;
     public currentDisplayMin?: number;
     public currentDisplayMax?: number;
+    /** Оригинальные части строки [paralist] из INI (для записи .rec) */
+    public recRawParts: string[];
 
     constructor(config: ChannelConfig) {
         this.id = config.id;
@@ -62,6 +66,7 @@ export class Channel {
         this.type = this.isBit ? 'digital' : 'analog';
         this.dataType = config.dataType || (this.isBit ? 'TBit' : 'TWORD');
         this.modbusReg = config.modbusReg || '';
+        this.recRawParts = config.recRawParts || [];
         this.rowHeight = Math.max(25, config.rowHeight || 25);
         this.autoScale = config.autoScale !== undefined ? config.autoScale : true;
 
@@ -95,28 +100,26 @@ export class Channel {
 
 export interface ParsedModbusReg {
     address: number;
-    bit: number | null; // null, если это не битовый параметр
+    bit: number | null;
 }
 
 /**
  * Парсит строку modbusReg (например, "r0001.6" или "100")
- * @returns { address: number, bit: number | null } или null, если строка невалидна
  */
 export function parseModbusReg(regStr: string): ParsedModbusReg | null {
     if (!regStr) return null;
-    
-    // Убираем ведущую 'r' или 'R', если она есть
+
     const cleanStr = regStr.replace(/^[rR]/, '');
     const parts = cleanStr.split('.');
-    
+
     const address = parseInt(parts[0], 16);
     if (isNaN(address)) return null;
-    
-   let bit: number | null = null;
-      if (parts.length > 1) {
-          bit = parseInt(parts[1], 16); // <-- Изменили 10 на 16 для поддержки hex (например, 'B' = 11)
-          if (isNaN(bit) || bit < 0 || bit > 15) return null; // Бит должен быть от 0 до 15
-      }
-    
+
+    let bit: number | null = null;
+    if (parts.length > 1) {
+        bit = parseInt(parts[1], 16);
+        if (isNaN(bit) || bit < 0 || bit > 15) return null;
+    }
+
     return { address, bit };
 }
