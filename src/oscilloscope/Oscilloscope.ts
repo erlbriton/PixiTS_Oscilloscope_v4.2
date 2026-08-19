@@ -35,8 +35,9 @@ import { bindEvents, bindTimeZoomWheel, updateTimeScaleReadout, type BindingsCon
 export class Oscilloscope {
   private settings: Settings;
   private archive: Archive;
-  private recorder: Recorder;
-  private serial: Serial;
+    private serial: Serial | null;
+  private recorder: Recorder | null;
+  private viewerMode: boolean = false;
   private table!: Table;
   private toolbar!: Toolbar;
   private resizer!: Resizer;
@@ -67,11 +68,23 @@ export class Oscilloscope {
   private onPollingStateChangeCallback?: (isPolling: boolean) => void;
   private currentIniConfig: IniConfig | null = null;
 
-  constructor() {
+    constructor(options?: { skipSerial?: boolean; skipRecorder?: boolean; viewerMode?: boolean }) {
     this.settings = new Settings();
     this.archive = new Archive();
-    this.serial = new Serial(this.archive);
-    this.recorder = new Recorder(this.archive, new BrowserFileSaver());
+    this.viewerMode = options?.viewerMode ?? false;
+    
+    if (options?.skipSerial) {
+      this.serial = null;
+    } else {
+      this.serial = new Serial(this.archive);
+    }
+    
+    if (options?.skipRecorder) {
+      this.recorder = null;
+    } else {
+      this.recorder = new Recorder(this.archive, new BrowserFileSaver());
+    }
+    
     this.renderer = new Renderer(this.settings, this.archive);
   }
 
@@ -107,6 +120,10 @@ export class Oscilloscope {
     this.settings.applyCSSTemplateVariables();
     const layoutElements = Layout.createSkeleton(rootElement);
     this.splitContainer = layoutElements.splitContainer;
+    if (this.viewerMode) {
+      // В просмотрщике осциллограф всегда на всю ширину
+      this.splitContainer.classList.remove("half-window-left");
+    }
 
     this.timelineScrollbar = new TimelineScrollbar(layoutElements.timelineContainer);
     this.timelineScrollbar.onChange((timestamp) => {
@@ -125,6 +142,16 @@ export class Oscilloscope {
     );
     this.toolbar.initialize();
     this.toolbar.setAutoScaleButtonState(true);
+    if (this.viewerMode) {
+      this.toolbar.applyViewerMode();
+      // Принудительно растягиваем осциллограф на всю ширину в просмотрщике
+      this.splitContainer.classList.remove("half-window-left");
+      this.splitContainer.style.width = "100%";
+      const oscRoot = rootElement.firstElementChild as HTMLElement | null;
+      if (oscRoot) oscRoot.style.width = "100%";
+      // Просмотрщик: отключаем "живой" режим, иначе маркеры плывут
+      this.settings.isPolling = false;
+    }
     this.resizer = new Resizer(this.settings, layoutElements.headerContainer);
     this.resizer.initialize();
     this.iniPanel = new IniPanel(layoutElements.iniPanelContainer);
@@ -204,7 +231,9 @@ export class Oscilloscope {
         this.animFrameId = requestAnimationFrame((t) => this.loop(t));
       }
       if (this.settings.isPolling) {
-        this.serial.resumePolling();
+        if (this.serial) {
+          this.serial.resumePolling();
+        }
       }
     } else {
       if (this.connectionLost) return;
@@ -276,14 +305,36 @@ export class Oscilloscope {
     } catch (err) {
       console.error("[Oscilloscope] Failed to clear archive:", err);
     }
-    try {
-      this.serial.setChannels(this.allChannels);
-    } catch (err) {
-      console.error("[Oscilloscope] Failed to set serial channels:", err);
+        if (this.serial) {
+      try {
+        this.serial.setChannels(this.allChannels);
+      } catch (err) {
+        console.error("[Oscilloscope] Failed to set serial channels:", err);
+      }
     }
 
     await renderVisibleChannels(this.getRenderingContext());
     console.log(`[Oscilloscope] Switch complete.`);
+  }
+
+  /** Публичный доступ к внутреннему архиву (для просмотрщика .rec) */
+  public getArchive(): Archive {
+    return this.archive;
+  }
+
+  /** Добавляет свою кнопку в тулбар (режим просмотрщика) */
+  public addViewerButton(label: string, title: string, onClick: () => void): void {
+    this.toolbar.appendCustomButton(label, title, onClick);
+  }
+
+  /** Финальная настройка тулбара для просмотрщика */
+  public finalizeViewerToolbar(): void {
+    this.toolbar.finalizeViewerLayout();
+  }
+
+  /** Фиксирует время просмотра (выключает "живой" режим, маркеры застывают) */
+  public setViewTime(t: number): void {
+    this.settings.setViewTime(t);
   }
 
   public async updateVisibleChannels(

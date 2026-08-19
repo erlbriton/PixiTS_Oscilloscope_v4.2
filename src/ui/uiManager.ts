@@ -6,8 +6,6 @@ import type { IOscilloscopeApi } from '../core/osc-api.js';
 import type { ModbusParser } from '../serial/modbus.js';
 import { IniParser as CoreIniParser, IniConfig } from '../core/ini/index.js';
 import { RecFileReader } from '../oscilloscope/core/RecFileReader.js';
-import { RecViewer } from '../oscilloscope/ui/RecViewer.js';
-import { BrowserFileSaver } from '../core/platform/browser-fs.js';
 
 /** Буфер данных канала (типизирован явно, без any) */
 export interface ChannelBuffer {
@@ -243,43 +241,11 @@ export function initUI(deps: UiManagerDeps): void {
     });
   }
 
-  // 4. Пункт меню "Просмотр осциллограммы" (чистый статический импорт)
+      // 4. Пункт меню "Просмотр осциллограммы" — открывает новую вкладку
   if (menuViewRec) {
     menuViewRec.addEventListener('click', () => {
       toggleOscDropdown?.classList.remove('show');
-      
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = '.rec';
-
-      input.addEventListener('change', async () => {
-        if (!input.files || input.files.length === 0) return;
-
-        const file = input.files[0];
-        console.log(`[UI] Выбран файл: ${file.name} (${file.size} байт)`);
-
-        try {
-          const arrayBuffer = await file.arrayBuffer();
-          const uint8Array = new Uint8Array(arrayBuffer);
-
-          // Используем статически импортированные классы (типобезопасно)
-          const reader = new RecFileReader();
-          const recData = reader.parse(uint8Array);
-
-          console.log(`[UI] Успешно распарсено: ${recData.params.length} параметров, ${recData.timestamps.length} сэмплов`);
-
-          const fileSaver = new BrowserFileSaver();
-          const viewer = new RecViewer(recData, file.name, fileSaver);
-          viewer.open();
-
-        } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : String(err);
-          console.error('[UI] Ошибка при чтении .rec файла:', err);
-          alert(`Не удалось открыть файл .rec:\n${message}`);
-        }
-      });
-
-      input.click();
+      window.open('/rec-viewer.html', '_blank');
     });
   }
 

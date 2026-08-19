@@ -8,8 +8,8 @@ import { ToolbarComponents } from "./ToolbarComponents";
 export class Toolbar {
   private container: HTMLElement;
   private settings: Settings;
-  private recorder: Recorder;
-  private serial: Serial;
+  private recorder: Recorder | null;
+  private serial: Serial | null;
 
   private autoscaleBtn!: HTMLButtonElement;
   private amplitudeBtn!: HTMLButtonElement;
@@ -32,11 +32,11 @@ export class Toolbar {
   private onToggleRecCallback?: () => void;
   
 
-  constructor(
+    constructor(
     container: HTMLElement,
     settings: Settings,
-    recorder: Recorder,
-    serial: Serial,
+    recorder: Recorder | null,
+    serial: Serial | null,
   ) {
     this.container = container;
     this.settings = settings;
@@ -67,6 +67,62 @@ export class Toolbar {
   }
   public onToggleIntervalMode(cb: () => void): void {
     this.onToggleIntervalModeCallback = cb;
+  }
+
+  /** Скрывает кнопки, не нужные в режиме просмотра .rec */
+    /** Скрывает кнопки, не нужные в режиме просмотра .rec */
+  public applyViewerMode(): void {
+    this.recBtn.style.display = 'none';
+    this.pollingBtn.style.display = 'none';
+    this.intervalBtn.style.display = 'none';
+    this.statusBadge.style.display = 'none';
+    this.windowSizeBtn.style.display = 'none';
+  }
+
+  /** Финальная настройка тулбара для просмотрщика (вызывать ПОСЛЕ добавления всех кнопок) */
+  public finalizeViewerLayout(): void {
+    // Все кнопки — слева друг за другом
+    this.container.style.display = 'flex';
+    this.container.style.justifyContent = 'flex-start';
+    Array.from(this.container.children).forEach((child) => {
+      (child as HTMLElement).style.marginLeft = '0';
+    });
+    this.container
+      .querySelectorAll('button')
+      .forEach((b) => this.styleViewerButton(b as HTMLElement));
+
+    // Перемещаем в конец по частичному совпадению текста или title
+    this.moveButtonToEnd('Экспорт');
+    this.moveButtonToEnd('Закрыть');
+  }
+
+  /** Перемещает кнопку, если её текст или title содержит указанную строку */
+  private moveButtonToEnd(match: string): void {
+    const buttons = this.container.querySelectorAll('button');
+    buttons.forEach((btn) => {
+      const text = btn.textContent?.trim() || '';
+      const title = btn.getAttribute('title') || '';
+      if (text.includes(match) || title.includes(match)) {
+        this.container.appendChild(btn); // appendChild перемещает существующий элемент в конец
+      }
+    });
+  }
+
+  /** Кнопка: ширина = 2 * высоты, без прижима вправо */
+  private styleViewerButton(btn: HTMLElement): void {
+    const H = 28;
+    btn.style.height = `${H}px`;
+    btn.style.width = `${H * 2}px`;
+    btn.style.marginLeft = '0';
+    btn.style.flex = '0 0 auto';
+  }
+
+  /** Добавляет свою кнопку в тулбар (для файловых операций в просмотрщике) */
+  public appendCustomButton(label: string, title: string, onClick: () => void): HTMLElement {
+    const btn = ToolbarComponents.createButton(label, 'tool-btn', onClick, title);
+    this.container.appendChild(btn);
+    this.styleViewerButton(btn);
+    return btn;
   }
 
   public setAutoScaleButtonState(isActive: boolean): void {
@@ -317,7 +373,7 @@ export class Toolbar {
 
     this.container.append(groupLeft, groupCenter, groupRight);
 
-    this.serial.onStateChange((state: unknown) => {
+    this.serial?.onStateChange((state: unknown) => {
       const isConnected = state === "connected" || state === true;
       this.updateStatus(isConnected);
     });

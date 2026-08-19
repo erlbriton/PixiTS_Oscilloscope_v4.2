@@ -24,9 +24,9 @@ export interface BindingsContext {
   propertiesModal: PropertiesModal;
   splitContainer: HTMLElement | null;
   toolbar: Toolbar;
-  serial: Serial;
+  serial: Serial | null;
   iniPanel: IniPanel;
-  recorder: Recorder;
+  recorder: Recorder | null;
   cursorsFooter: CursorsFooter;
   bottomPanels: BottomPanels;
   renderer: Renderer;
@@ -69,7 +69,7 @@ export function bindEvents(ctx: BindingsContext): void {
     ctx.toolbar.setAutoScaleButtonState(allAutoScale);
   });
 
-  ctx.serial.onStateChange((state, msg) => {
+  ctx.serial?.onStateChange((state, msg) => {
     if (state === "error") {
       ctx.setConnectionStatus(false, msg || "Связь с устройством потеряна.");
     } else if (state === "connected") {
@@ -83,7 +83,7 @@ export function bindEvents(ctx: BindingsContext): void {
   });
 
   window.addEventListener("oscilloscope-export-csv", () => {
-    ctx.recorder.downloadCSV(ctx.getVisibleChannels());
+    ctx.recorder?.downloadCSV(ctx.getVisibleChannels());
   });
 
   ctx.toolbar.onToggleTimeZoom((enabled) => {
@@ -98,7 +98,7 @@ export function bindEvents(ctx: BindingsContext): void {
       ctx.toolbar.setAmplitudeModeButtonState(false);
 
       ctx.settings.isPolling = true;
-      ctx.serial.resumePolling();
+      ctx.serial?.resumePolling();
       ctx.settings.followLive();
       ctx.toolbar.updatePollingButtonState();
 
@@ -111,10 +111,10 @@ export function bindEvents(ctx: BindingsContext): void {
     }
 
     if (isPolling) {
-      ctx.serial.resumePolling();
+      ctx.serial?.pausePolling();
       ctx.settings.followLive();
     } else {
-      ctx.serial.pausePolling();
+      ctx.serial?.pausePolling();
       ctx.settings.freezeTime();
     }
     
@@ -139,7 +139,7 @@ export function bindEvents(ctx: BindingsContext): void {
 
       if (ctx.settings.wasPollingBeforeMeasure) {
         ctx.settings.isPolling = true;
-        ctx.serial.resumePolling();
+        ctx.serial?.resumePolling();
         ctx.settings.followLive();
         ctx.toolbar.updatePollingButtonState();
 
@@ -149,7 +149,7 @@ export function bindEvents(ctx: BindingsContext): void {
       ctx.settings.wasPollingBeforeMeasure = ctx.settings.isPolling;
       ctx.settings.isPolling = false;
       
-      ctx.serial.pausePolling();
+      ctx.serial?.pausePolling();
       ctx.settings.freezeTime();
       
       ctx.toolbar.updatePollingButtonState();
@@ -180,7 +180,7 @@ export function bindEvents(ctx: BindingsContext): void {
 
       if (ctx.settings.wasPollingBeforeInterval) {
         ctx.settings.isPolling = true;
-        ctx.serial.resumePolling();
+        ctx.serial?.resumePolling();
         ctx.settings.followLive();
         ctx.toolbar.updatePollingButtonState();
 
@@ -238,7 +238,7 @@ export function bindEvents(ctx: BindingsContext): void {
     const deviceInfo = iniConfig ? iniConfig.device : null;
 
     void ctx.recorder
-      .exportREC(ctx.getVisibleChannels(), startTime, endTime, deviceInfo)
+      ?.exportREC(ctx.getVisibleChannels(), startTime, endTime, deviceInfo)
       .then(() => {
         console.log("[Bindings] Запись .rec завершена успешно");
       })
