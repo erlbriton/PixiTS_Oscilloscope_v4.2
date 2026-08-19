@@ -28,7 +28,7 @@ export class WaveformRenderer {
             const range = archive.getMinMax(channel.id, duration, currentTime);
             if (range.min !== range.max) {
                 const margin = (range.max - range.min) * 0.1 || 1;
-                const targetMin = range.min - margin;
+                const targetMin = 0; // Жестко фиксируем минимум на 0
                 const targetMax = range.max + margin;
 
                 // Плавное приближение отображаемого диапазона к целевому.

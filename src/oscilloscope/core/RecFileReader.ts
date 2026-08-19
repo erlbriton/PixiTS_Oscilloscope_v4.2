@@ -226,8 +226,14 @@ function parseTextSection(bytes: Uint8Array): { data: ParsedTextSection; binaryS
         const scaleStr = parts[6];
         const byteCountStr = parts[7];
 
-        const recType = mapToRecDataType(dataTypeStr);
-        if (!recType) break;
+        let recType = mapToRecDataType(dataTypeStr);
+        if (!recType) {
+          // Неизвестный тип из старого файла (например, TIPAddr).
+          // НЕ пропускаем параметр, а подбираем тип того же размера,
+          // иначе бинарная часть съедет и графики сместятся.
+          const bc = parseInt(byteCountStr, 10);
+          recType = bc <= 1 ? 'TBit' : bc === 2 ? 'TWORD' : 'TFloat';
+        }
 
         const scale = parseFloat(scaleStr.replace(',', '.'));
         const byteCount = parseInt(byteCountStr, 10);
