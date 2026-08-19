@@ -307,6 +307,17 @@ function decodeBinarySection(
           value = decodeFloat32LE(bytes, offset);
           offset += 4;
           break;
+        case 'TIPAddr': {
+          // 4 байта в обратном порядке октетов (big-endian): c0 a8 00 00 = 192.168.0.0
+          const b0 = bytes[offset + 3];
+          const b1 = bytes[offset + 2];
+          const b2 = bytes[offset + 1];
+          const b3 = bytes[offset];
+          // Сохраняем как числовое значение: (b0 << 24) | (b1 << 16) | (b2 << 8) | b3
+          value = (b0 * 0x1000000) + (b1 * 0x10000) + (b2 * 0x100) + b3;
+          offset += 4;
+          break;
+        }
       }
       values[pIdx].push(value);
     }

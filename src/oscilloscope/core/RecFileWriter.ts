@@ -13,7 +13,7 @@
 // Все многобайтовые числа — little-endian.
 
 /** Типы данных, поддерживаемые форматом .rec */
-export type RecDataType = 'TWORD' | 'TFloat' | 'TBit' | 'TInteger';
+export type RecDataType = 'TWORD' | 'TFloat' | 'TBit' | 'TInteger' | 'TIPAddr';
 
 /** Размер типа в байтах */
 export function recTypeByteCount(t: RecDataType): number {
@@ -37,6 +37,7 @@ export function mapToRecDataType(dataType: string): RecDataType | null {
     case 'TINTEGER':
     case 'TSHORT':
     case 'TINT16': return 'TInteger';
+    case 'TIPADDR': return 'TIPAddr';
     default: return null;
   }
 }
