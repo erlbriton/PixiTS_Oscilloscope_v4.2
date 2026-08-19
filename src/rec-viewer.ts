@@ -77,22 +77,43 @@ async function setupViewer(): Promise<void> {
 async function loadRecData(recData: any): Promise<void> {
   if (!oscilloscope) return;
 
+  const PALETTE = [
+    '#00d2ff', '#ff0055', '#00ff88', '#ffaa00', '#aa00ff', 
+    '#00ffcc', '#ff5500', '#55ff00', '#0055ff', '#ff00aa'
+  ];
+  let bitIndex = 0;
+  let paletteIdx = 0;
+
   const channels: Channel[] = recData.params.map((p: any) => {
+    const isBit = p.recType === 'TBit';
+    
+    // Алгоритм цветов точно как в ini-to-channels.ts
+    let color: string;
+    if (isBit) {
+      color = (bitIndex % 2 === 0) ? '#00d2ff' : '#d2a679';
+      bitIndex++;
+    } else {
+      color = PALETTE[paletteIdx % PALETTE.length];
+      paletteIdx++;
+    }
+
     const config: ChannelConfig = {
       id: p.id,
       name: p.name,
       description: p.description,
       dataType: p.recType,
-      unit: p.unit,
+      // Жёстко убираем UNIT для бинарных параметров
+      unit: isBit ? '' : (p.unit || ''),
       scale: p.scale,
-      isBit: p.recType === 'TBit',
+      isBit: isBit,
       modbusReg: p.modbusReg,
       rawDecValue: 0,
       hexValue: '0x0000',
-      min: p.recType === 'TBit' ? 0 : -50,
-      max: p.recType === 'TBit' ? 1 : 500,
+      min: isBit ? 0 : -50,
+      max: isBit ? 1 : 500,
       autoScale: true,
       rowHeight: 25,
+      color: color, // Применяем правильный цвет
       recRawParts: p.rawParts,
     };
     return new Channel(config);
