@@ -172,12 +172,23 @@ export function initUI(deps: UiManagerDeps): void {
   if (refreshBtn) {
     refreshBtn.addEventListener("click", async () => {
       if (!serial?.isConnected) { showIdModal("Устройство не подключено!"); return; }
-            if (appState.isRefreshing) return;
+      if (appState.isRefreshing) return;
       appState.isRefreshing = true;
       refreshBtn.disabled = true;
+      
+      const wasPolling = appState.isPolling;
+      
       try {
-        // Выполняем только единичное обновление таблицы, без запуска непрерывного опроса
-        await updateDeviceRegisters(serial, appState.slaveAddress, appState);
+        // Выполняем обновление таблицы
+        const result = await updateDeviceRegisters(serial, appState.slaveAddress, appState);
+        
+        // Восстанавливаем опрос, если он был активен до обновления
+        if (wasPolling) {
+          console.log('[UI] Восстанавливаем опрос после обновления');
+          appState.isLoopRunning = false;
+          appState.isPolling = true;
+          readLoop(serial, parser, view, buffers, appState);
+        }
       } catch (err) {
         console.error("Ошибка при обновлении:", err);
       } finally {

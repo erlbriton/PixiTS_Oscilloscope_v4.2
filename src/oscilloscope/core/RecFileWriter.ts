@@ -20,6 +20,7 @@ export function recTypeByteCount(t: RecDataType): number {
   switch (t) {
     case 'TBit': return 1;
     case 'TFloat': return 4;
+    case 'TIPAddr': return 4;
     default: return 2;
   }
 }
@@ -369,6 +370,13 @@ function buildBinarySection(data: RecExportData): Uint8Array {
         case 'TFloat':
           parts.push(encodeFloat32LE(v));
           break;
+        case 'TIPAddr': {
+          // 4 байта little-endian — совместимо с чтением в RecFileReader
+          const u = Math.round(v) >>> 0;
+          parts.push(encodeUint16LE(u & 0xFFFF));
+          parts.push(encodeUint16LE((u >>> 16) & 0xFFFF));
+          break;
+        }
       }
     }
   }
