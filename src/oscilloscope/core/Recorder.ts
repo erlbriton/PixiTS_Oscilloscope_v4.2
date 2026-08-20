@@ -120,6 +120,20 @@ export class Recorder {
         });
       }
 
+           // 1. Определяем актуальный максимум (пользовательский или стандартный)
+      const currentMax = ch.customMax !== undefined ? ch.customMax : ch.max;
+      
+      // 2. Вычисляем первое число по формуле: (Высота / Максимум) * Шкала
+      // Защита от деления на ноль
+            // 2. Вычисляем первое число по формуле: (Высота / Максимум) * Шкала
+      let rawViewScale = 0;
+      if (currentMax > 0) {
+        rawViewScale = (ch.rowHeight / currentMax) * ch.scale;
+      }
+      
+      // Округляем до 5 знаков после запятой, чтобы убрать артефакты плавающей точки
+      const viewScale = Math.round(rawViewScale * 100000) / 100000;
+
       params.push({
         id: ch.id,
         name: ch.name,
@@ -128,8 +142,9 @@ export class Recorder {
         hexAddress: '',
         modbusReg: ch.modbusReg,
         unit: ch.unit || '--',
-        scale: ch.scale,
+        scale: viewScale,       // Записываем ВЫЧИСЛЕННОЕ значение
         byteCount: recTypeByteCount(recType),
+        rowHeight: ch.rowHeight, // Записываем ТЕКУЩУЮ высоту строки
         rawParts: ch.recRawParts,
       });
       values.push(chValues);

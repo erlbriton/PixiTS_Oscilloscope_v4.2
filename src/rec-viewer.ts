@@ -13,6 +13,66 @@ let currentFilename: string = '';
 const container = document.getElementById('rec-viewer-container') as HTMLElement;
 const filePicker = document.getElementById('filePicker') as HTMLInputElement;
 
+// === Парсинг секции [viewoption] ===
+/**
+ * Парсит секцию [viewoption] из текстового содержимого .rec файла.
+ * Возвращает Map: ID параметра -> { viewScale: number, rowHeight: number }
+ */
+function parseViewOptionsFromText(fileBytes: Uint8Array): Map<string, { viewScale: number; rowHeight: number }> {
+  const options = new Map<string, { viewScale: number; rowHeight: number }>();
+  
+  try {
+    // Декодируем весь файл в строку (используем windows-1251, как при записи)
+    const decoder = new TextDecoder('windows-1251');
+    const fullText = decoder.decode(fileBytes);
+    
+    const startMarker = '[viewoption]';
+    const endMarker = '[paralist]'; // Секция viewoption идет перед paralist
+    
+    const startIdx = fullText.indexOf(startMarker);
+    if (startIdx === -1) return options; // Секции нет
+    
+    const endIdx = fullText.indexOf(endMarker, startIdx);
+    const sectionText = endIdx !== -1 
+      ? fullText.substring(startIdx + startMarker.length, endIdx)
+      : fullText.substring(startIdx + startMarker.length);
+    
+    const lines = sectionText.split(/\r?\n/);
+    
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith(';')) continue;
+      
+      // Формат строки: p03300=0,005/25/
+      const eqPos = trimmed.indexOf('=');
+      if (eqPos === -1) continue;
+      
+      const paramId = trimmed.substring(0, eqPos);
+      const valuesStr = trimmed.substring(eqPos + 1);
+      
+      // Разбиваем по слэшу: ["0,005", "25", ""]
+      const parts = valuesStr.split('/').filter(p => p.length > 0);
+      
+      if (parts.length >= 2) {
+        // Заменяем запятую на точку для корректного парсинга JS
+        const scaleStr = parts[0].replace(',', '.');
+        const heightStr = parts[1];
+        
+        const viewScale = parseFloat(scaleStr);
+        const rowHeight = parseInt(heightStr, 10);
+        
+        if (!isNaN(viewScale) && !isNaN(rowHeight)) {
+          options.set(paramId, { viewScale, rowHeight });
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[RecViewer] Ошибка при парсинге [viewoption]:', err);
+  }
+  
+  return options;
+}
+
 // === Сохранение .rec ===
 async function saveRec(): Promise<void> {
   if (!currentRecData) {
@@ -49,7 +109,8 @@ filePicker.addEventListener('change', async () => {
     currentRecData = recData;
     currentFilename = file.name;
 
-    await loadRecData(recData);
+    // Передаем сырые байты для парсинга настроек вида
+    await loadRecData(recData, uint8Array);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[RecViewer] Ошибка:', err);
@@ -74,7 +135,7 @@ async function setupViewer(): Promise<void> {
 }
 
 // === Загрузка данных .rec в уже созданный осциллограф ===
-async function loadRecData(recData: any): Promise<void> {
+async function loadRecData(recData: any, fileBytes: Uint8Array): Promise<void> {
   if (!oscilloscope) return;
 
   const PALETTE = [
@@ -83,6 +144,9 @@ async function loadRecData(recData: any): Promise<void> {
   ];
   let bitIndex = 0;
   let paletteIdx = 0;
+
+  // 1. Парсим настройки вида из файла
+  const viewOptions = parseViewOptionsFromText(fileBytes);
 
   const channels: Channel[] = recData.params.map((p: any) => {
     const isBit = p.recType === 'TBit';
@@ -97,6 +161,30 @@ async function loadRecData(recData: any): Promise<void> {
       paletteIdx++;
     }
 
+    // Базовые значения (дефолтные, если в файле нет настроек)
+    let rowHeight = 25;
+    let max = isBit ? 1 : 500;
+    let scale = 1.0;
+    let customMax: number | undefined = undefined;
+
+    // 2. Применяем настройки из [viewoption], если они есть для этого ID
+    const opts = viewOptions.get(p.id);
+    if (opts) {
+      rowHeight = opts.rowHeight;
+      
+      // Восстанавливаем параметры по формуле: viewScale = (rowHeight / max) * scale
+      // Стратегия: фиксируем scale = 1.0 и вычисляем max, чтобы график соответствовал высоте.
+      // max = (rowHeight * scale) / viewScale
+      if (opts.viewScale > 0) {
+        const calculatedMax = (rowHeight * 1.0) / opts.viewScale;
+        // Округляем до разумного значения
+        max = Math.round(calculatedMax);
+        if (max === 0) max = 1; // Защита от деления на ноль
+        customMax = max; // Помечаем как пользовательский максимум
+        scale = 1.0;
+      }
+    }
+
     const config: ChannelConfig = {
       id: p.id,
       name: p.name,
@@ -104,16 +192,17 @@ async function loadRecData(recData: any): Promise<void> {
       dataType: p.recType,
       // Жёстко убираем UNIT для бинарных параметров
       unit: isBit ? '' : (p.unit || ''),
-      scale: p.scale,
+      scale: scale,           // Используем восстановленное или дефолтное
       isBit: isBit,
       modbusReg: p.modbusReg,
       rawDecValue: 0,
       hexValue: 'x0000',
       min: isBit ? 0 : -50,
-      max: isBit ? 1 : 500,
-      autoScale: true,
-      rowHeight: 25,
-      color: color, // Применяем правильный цвет
+      max: max,               // Используем восстановленное или дефолтное
+      customMax: customMax,   // Передаем пользовательский максимум
+      autoScale: false,       // Отключаем автомасштаб, так как мы задали свой
+      rowHeight: rowHeight,   // Используем восстановленную высоту
+      color: color,
       recRawParts: p.rawParts,
     };
     return new Channel(config);
@@ -121,7 +210,7 @@ async function loadRecData(recData: any): Promise<void> {
 
   await oscilloscope.setChannels(channels);
 
-    const archive = oscilloscope.getArchive();
+  const archive = oscilloscope.getArchive();
   const N = recData.timestamps.length;
   
   // Сортируем все данные по времени (старый аджастер делает то же самое)

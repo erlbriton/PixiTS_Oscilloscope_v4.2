@@ -52,9 +52,9 @@ export interface RecParam {
   hexAddress: string;
   modbusReg: string;
   unit: string;
-  scale: number;
+  scale: number; // Сюда запишем ВЫЧИСЛЕННОЕ значение (Height / Max * Scale)
   byteCount: number;
-  /** Оригинальные части строки из INI. Если не передано, строка сгенерируется автоматически. */
+  rowHeight?: number; // Сюда запишем ТЕКУЩУЮ высоту строки
   rawParts?: string[];
 }
 
@@ -269,7 +269,9 @@ function formatParalistLine(p: RecParam): string {
 }
 
 function formatViewOptionLine(p: RecParam): string {
-  return `${p.id}=${formatDecimal(p.scale)}/25/`;
+  const height = p.rowHeight ?? 25; // Если высоты нет, берем дефолт 25
+  // p.scale уже содержит вычисленное значение
+  return `${p.id}=${formatDecimal(p.scale)}/${height}/`;
 }
 
 function buildTextSection(data: RecExportData, now: Date): Uint8Array {
