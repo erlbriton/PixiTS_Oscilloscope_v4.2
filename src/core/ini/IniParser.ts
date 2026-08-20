@@ -17,6 +17,7 @@ const TYPES_32BIT: ReadonlySet<IniDataType> = new Set([
   IniDataType.TDWORD,
   IniDataType.TLONG,
   IniDataType.TINT32,
+  IniDataType.TIPADDR,
 ]);
 
 /** Секции, содержащие параметры с parts[] */
@@ -38,6 +39,7 @@ const DATA_TYPE_MAP: Record<string, IniDataType> = {
   'INT':      IniDataType.TINTEGER,
   'TBYTE':    IniDataType.TBYTE,
   'TPRMLIST': IniDataType.TPRMLIST,
+  'TIPADDR':  IniDataType.TIPADDR,
 };
 
 export class IniParser {

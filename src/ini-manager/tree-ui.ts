@@ -85,7 +85,7 @@ export function updateRowValues(
             rHex = rowParts[rowHexIndex];
         }
         if (rHex && rHex.startsWith('x')) {
-            bHex = '0x' + rHex.slice(1).toUpperCase();
+            bHex = 'x' + rHex.slice(1).toUpperCase();
 
             if (dataTypeUpper === 'TPRMLIST') {
                 const decValue = parseInt(rHex.slice(1), 16);
@@ -140,7 +140,7 @@ export function updateRowValues(
             if (displayEl) {
                 displayEl.textContent = selectedText;
             }
-            rCellHex.textContent = '0x' + selectedHex.slice(1).toUpperCase();
+            rCellHex.textContent = 'x' + selectedHex.slice(1).toUpperCase();
             if (rowHexIndex !== -1) {
                 rowParts[rowHexIndex] = selectedHex;
             }

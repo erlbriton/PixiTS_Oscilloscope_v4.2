@@ -71,7 +71,11 @@ export class Channel {
         this.autoScale = config.autoScale !== undefined ? config.autoScale : true;
 
         this.rawDecValue = config.rawDecValue !== undefined ? config.rawDecValue : 0;
-        this.hexValue = config.hexValue || ('0x' + (this.rawDecValue & 0xFFFF).toString(16).toUpperCase().padStart(4, '0'));
+        // Для TIPAddr (4 байта) используем 32-битную маску, для остальных — 16-битную
+        const isIpAddr = this.dataType.toUpperCase() === 'TIPADDR';
+        const mask = isIpAddr ? 0xFFFFFFFF : 0xFFFF;
+        const padLen = isIpAddr ? 8 : 4;
+        this.hexValue = config.hexValue || ('x' + (this.rawDecValue & mask).toString(16).toUpperCase().padStart(padLen, '0'));
         this.scaledValue = this.isBit ? this.rawDecValue : (this.rawDecValue * this.scale);
         this.value = this.scaledValue;
 
@@ -83,7 +87,11 @@ export class Channel {
 
     public updateRawValue(val: number): void {
         this.rawDecValue = val;
-        this.hexValue = '0x' + (val & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
+        // Для TIPAddr (4 байта) используем 32-битную маску, для остальных — 16-битную
+                const isIpAddr = this.dataType.toUpperCase() === 'TIPADDR';
+        const mask = isIpAddr ? 0xFFFFFFFF : 0xFFFF;
+        const padLen = isIpAddr ? 8 : 4;
+        this.hexValue = 'x' + (val & mask).toString(16).toUpperCase().padStart(padLen, '0');
         this.scaledValue = this.applyScale(val);
         this.value = this.scaledValue;
     }

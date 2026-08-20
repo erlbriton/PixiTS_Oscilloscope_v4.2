@@ -185,6 +185,17 @@ export class ChannelRow {
     public updateValue(): void {
         if (!this.isVisible) return;
 
+        // Специальный случай для IP-адресов (TIPAddr)
+        if (this.channel.dataType.toUpperCase() === 'TIPADDR') {
+            const num = Math.floor(this.channel.rawDecValue) >>> 0;
+            // HEX: x00000000 (8 символов, как 4-байтный uint32)
+            this.hexElement.textContent = 'x' + num.toString(16).toUpperCase().padStart(8, '0');
+            // Физическое значение: 192.168.x.x
+            const ip = `${(num >>> 24) & 0xFF}.${(num >>> 16) & 0xFF}.${(num >>> 8) & 0xFF}.${num & 0xFF}`;
+            this.valueElement.textContent = ip;
+            return;
+        }
+
         const isDiscrete = this.channel.isBit || this.channel.type === 'digital';
 
         if (isDiscrete) {

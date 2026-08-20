@@ -108,7 +108,7 @@ async function loadRecData(recData: any): Promise<void> {
       isBit: isBit,
       modbusReg: p.modbusReg,
       rawDecValue: 0,
-      hexValue: '0x0000',
+      hexValue: 'x0000',
       min: isBit ? 0 : -50,
       max: isBit ? 1 : 500,
       autoScale: true,

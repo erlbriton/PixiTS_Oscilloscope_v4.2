@@ -15,6 +15,7 @@ export enum IniDataType {
   TINTEGER  = 'TINTEGER',
   TBYTE     = 'TBYTE',
   TPRMLIST  = 'TPRMLIST',
+  TIPADDR   = 'TIPADDR',
   UNKNOWN   = 'UNKNOWN',
 }
 

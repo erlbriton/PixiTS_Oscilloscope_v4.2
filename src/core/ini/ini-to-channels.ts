@@ -60,7 +60,7 @@ export function iniParamsToChannelConfigs(params: IniParameter[]): ChannelConfig
         isBit: p.isBit,
         modbusReg: p.modbusReg,
         rawDecValue: 0,
-        hexValue: '0x0000',
+        hexValue: 'x0000',
         min: p.isBit ? 0 : -50,
         max: p.isBit ? 1 : 500,
         color,

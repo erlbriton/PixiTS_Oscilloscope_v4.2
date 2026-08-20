@@ -8,8 +8,8 @@ export interface Sample {
 
 export class ChannelRingBuffer {
     public timestamps: Float64Array;
-    public values: Float32Array;
-    public rawValues: Float32Array;
+    public values: Float64Array;      // Float64 — чтобы 32-битные IP-адреса не теряли младшие биты
+    public rawValues: Float64Array;   // Float64 — по той же причине
     public capacity: number;
     public head: number = 0;
     public size: number = 0;
@@ -17,8 +17,8 @@ export class ChannelRingBuffer {
     constructor(capacity: number = 100000) {
         this.capacity = capacity;
         this.timestamps = new Float64Array(capacity);
-        this.values = new Float32Array(capacity);
-        this.rawValues = new Float32Array(capacity);
+        this.values = new Float64Array(capacity);
+        this.rawValues = new Float64Array(capacity);
     }
 
     public push(time: number, value: number, raw: number): void {
