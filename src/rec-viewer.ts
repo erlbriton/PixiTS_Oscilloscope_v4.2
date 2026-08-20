@@ -128,8 +128,6 @@ async function loadRecData(recData: any): Promise<void> {
   const indices = Array.from({ length: N }, (_, i) => i);
   indices.sort((a, b) => recData.timestamps[a] - recData.timestamps[b]);
   
-  console.log(`[RecViewer] N=${N}, first_time=${recData.timestamps[indices[0]].toFixed(0)}, last_time=${recData.timestamps[indices[N-1]].toFixed(0)}, duration=${(recData.timestamps[indices[N-1]] - recData.timestamps[indices[0]]).toFixed(0)}ms`);
-  
   // Добавляем в архив в отсортированном порядке
   for (let idx = 0; idx < N; idx++) {
     const i = indices[idx];

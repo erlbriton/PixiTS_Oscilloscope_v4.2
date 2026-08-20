@@ -79,27 +79,13 @@ export class Recorder {
     return Date.now() - this.startTime - this.totalPausedDuration;
   }
 
-  public async exportREC(
+    public async exportREC(
     channels: Channel[],
     startTime: number | null,
     endTime: number | null,
     device: IniDeviceInfo | null,
   ): Promise<void> {
-    // Диагностика архива
-    console.log(`[Recorder.exportREC] Каналов: ${channels.length}, startTime=${startTime}, endTime=${endTime}`);
-    
     const supported = channels.filter((ch) => mapToRecDataType(ch.dataType) !== null);
-    console.log(`[Recorder.exportREC] Поддерживаемых каналов: ${supported.length}`);
-    
-    if (supported.length > 0) {
-      const base = supported[0];
-      const allBase = this.archive.getAllSamples(base.id);
-      console.log(`[Recorder.exportREC] Базовый канал: ${base.name}, всего сэмплов: ${allBase.length}`);
-      if (allBase.length > 0) {
-        console.log(`[Recorder.exportREC] Первый сэмпл: time=${allBase[0].time}, value=${allBase[0].value}`);
-        console.log(`[Recorder.exportREC] Последний сэмпл: time=${allBase[allBase.length - 1].time}, value=${allBase[allBase.length - 1].value}`);
-      }
-    }
     if (supported.length === 0) {
       throw new Error('Нет параметров с типами TWORD/TFloat/TBit/TInteger для записи .rec');
     }

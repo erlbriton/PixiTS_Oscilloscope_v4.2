@@ -58,8 +58,6 @@ export class Oscilloscope {
   private propertiesModal!: PropertiesModal;
   private availableIniFiles: IniFileItem[] = [];
   private currentIniId: string | null = null;
-  private _lastDiagSecond: number = -1;
-  private _diagLoggedThisSecond: boolean = false;
   private animFrameId: number | null = null;
   private targetRoot: HTMLElement | null = null;
   private isDestroyed: boolean = false;
@@ -439,44 +437,18 @@ export class Oscilloscope {
     try {
       this.table.updateValues();
       this.toolbar.updateRecordTimer();
-      
-      // Диагностика раз в секунду (чтобы не спамить)
-      if (Math.floor(performance.now() / 1000) !== (this as any)._lastDiagSecond) {
-        (this as any)._lastDiagSecond = Math.floor(performance.now() / 1000);
-        console.log(`[Loop] visibleChannels=${this.visibleChannels.length}, pixiViews=${this.pixiViews.size}`);
-      }
-      
-      let renderedCount = 0;
-      let skippedNotVisible = 0;
-      let skippedNoView = 0;
-      
       this.visibleChannels.forEach((channel) => {
         const row = this.table.getRow(channel.id);
-        if (row && !row.getIsVisible()) {
-          skippedNotVisible++;
-          return;
-        }
+        if (row && !row.getIsVisible()) return;
         const view = this.pixiViews.get(channel.id);
         if (view) {
           try {
             this.renderer.renderChannelGraph(channel, view);
-            renderedCount++;
           } catch (renderErr) {
             console.error(`Error rendering channel ${channel.id}:`, renderErr);
           }
-        } else {
-          skippedNoView++;
         }
       });
-      
-      // Диагностика раз в секунду
-      if (Math.floor(performance.now() / 1000) === (this as any)._lastDiagSecond) {
-        if (!this._diagLoggedThisSecond) {
-          console.log(`[Loop] rendered=${renderedCount}, skippedNotVisible=${skippedNotVisible}, skippedNoView=${skippedNoView}`);
-          this._diagLoggedThisSecond = true;
-          setTimeout(() => { this._diagLoggedThisSecond = false; }, 100);
-        }
-      }
     } catch (err) {
       console.error("Oscilloscope loop error:", err);
     }
