@@ -70,7 +70,6 @@ export class Toolbar {
   }
 
   /** Скрывает кнопки, не нужные в режиме просмотра .rec */
-    /** Скрывает кнопки, не нужные в режиме просмотра .rec */
   public applyViewerMode(): void {
     this.recBtn.style.display = 'none';
     this.pollingBtn.style.display = 'none';
@@ -246,7 +245,7 @@ export class Toolbar {
     this.pollingBtn.style.marginLeft = "0"; 
 
     this.autoscaleBtn = ToolbarComponents.createButton(
-      "📐",
+      "",
       "tool-btn-dark",
       () => {
         this.settings.autoScale = true;
@@ -311,29 +310,7 @@ export class Toolbar {
     this.recBtn.style.marginLeft = "0";
     this.recBtn.style.backgroundColor = "#e7e432";
 
-    const groupLeft = document.createElement("div");
-    groupLeft.className = "toolbar-group";
-
-    const title = document.createElement("div");
-    title.className = "toolbar-title";
-
-    groupLeft.append(
-      this.propertiesBtn,
-      this.statusBadge,
-      this.windowSizeBtn,
-      this.pollingBtn,
-      this.autoscaleBtn,
-      this.amplitudeBtn,
-      this.intervalBtn,
-      this.recBtn,
-      title,
-    );
-
-    this.updateStatus(false);
-
-    const groupCenter = document.createElement("div");
-    groupCenter.className = "toolbar-group";
-
+    // === Кнопка "Развертка" (добавляем прямо в groupLeft) ===
     const sweepIcon = `
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M3 5h18"/>
@@ -341,6 +318,7 @@ export class Toolbar {
         <path d="m18 2 3 3-3 3"/>
         <path d="M3 17h2l2-5 3 10 3-8 2 3h6"/>
       </svg>`;
+    
     this.sweepBtn = ToolbarComponents.createButton(
       sweepIcon,
       "",
@@ -351,15 +329,11 @@ export class Toolbar {
           this.onToggleTimeZoomCallback(enabled);
         }
       },
-      "Развертка: колесо мыши над графиками растягивает / сжимает их по времени",
+      "Развертка",
     );
     this.sweepBtn.style.width = "64px";
 
-    groupCenter.append(this.sweepBtn);
-
-    const groupRight = document.createElement("div");
-    groupRight.className = "toolbar-group";
-
+    // === Кнопка "Экспорт CSV" (тоже добавляем в groupLeft) ===
     this.exportBtn = ToolbarComponents.createButton(
       "💾",
       "",
@@ -369,9 +343,31 @@ export class Toolbar {
       "Экспорт CSV",
     );
 
-    groupRight.append(this.exportBtn);
+    const groupLeft = document.createElement("div");
+    groupLeft.className = "toolbar-group";
 
-    this.container.append(groupLeft, groupCenter, groupRight);
+    const title = document.createElement("div");
+    title.className = "toolbar-title";
+
+    // Добавляем ВСЕ кнопки в одну группу: groupLeft
+    groupLeft.append(
+      this.propertiesBtn,
+      this.statusBadge,
+      this.windowSizeBtn,
+      this.pollingBtn,
+      this.autoscaleBtn,
+      this.amplitudeBtn,
+      this.intervalBtn,
+      this.recBtn,
+      this.sweepBtn,       // Теперь здесь
+      this.exportBtn,      // И здесь
+      title,
+    );
+
+    this.updateStatus(false);
+
+    // Добавляем только одну группу в контейнер
+    this.container.append(groupLeft);
 
     this.serial?.onStateChange((state: unknown) => {
       const isConnected = state === "connected" || state === true;
