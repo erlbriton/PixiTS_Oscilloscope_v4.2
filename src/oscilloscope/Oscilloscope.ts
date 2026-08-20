@@ -321,7 +321,10 @@ export class Oscilloscope {
   public getArchive(): Archive {
     return this.archive;
   }
-
+  /** Возвращает массив всех каналов (для просмотрщика и внешних модулей) */
+  public getAllChannels(): Channel[] {
+    return this.allChannels;
+  }
   /** Добавляет свою кнопку в тулбар (режим просмотрщика) */
   public addViewerButton(label: string, title: string, onClick: () => void): void {
     this.toolbar.appendCustomButton(label, title, onClick);

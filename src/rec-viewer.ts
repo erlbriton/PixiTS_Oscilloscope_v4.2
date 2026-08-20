@@ -73,25 +73,76 @@ function parseViewOptionsFromText(fileBytes: Uint8Array): Map<string, { viewScal
   return options;
 }
 
-// === Сохранение .rec ===
+// === Сохранение .rec (с обновлением настроек вида из текущего состояния) ===
 async function saveRec(): Promise<void> {
-  if (!currentRecData) {
+  if (!currentRecData || !oscilloscope) {
     alert('Нет данных для сохранения');
     return;
   }
+
   try {
+    // 1. Получаем текущие каналы из осциллографа (они содержат измененные пользователем настройки)
+    const currentChannels = oscilloscope.getAllChannels();
+    
+    if (currentChannels.length === 0) {
+      alert('Нет активных каналов для сохранения');
+      return;
+    }
+
+    // 2. Создаем глубокую копию параметров, чтобы не мутировать исходные данные в просмотрщике
+    // Мы обновим только поля scale и добавим rowHeight в объекты параметров
+    const updatedParams = currentRecData.params.map((p: any) => {
+      // Ищем соответствующий живой канал по ID
+      const channel = currentChannels.find((ch) => ch.id === p.id);
+      
+      if (channel) {
+        // Берем актуальный максимум: если пользователь задавал customMax, используем его, иначе стандартный max
+        const effectiveMax = channel.customMax !== undefined ? channel.customMax : channel.max;
+        const effectiveRowHeight = channel.rowHeight || 25;
+        const effectiveScale = channel.scale || 1.0;
+        
+        // Пересчитываем viewScale по формуле: (Высота / Максимум) * Шкала
+        let newViewScale = 0;
+        if (effectiveMax > 0) {
+          newViewScale = (effectiveRowHeight / effectiveMax) * effectiveScale;
+          // Округляем до 5 знаков после запятой для чистоты файла (как при экспорте)
+          newViewScale = Math.round(newViewScale * 100000) / 100000;
+        }
+
+        // Возвращаем обновленный объект параметра
+        return {
+          ...p,
+          scale: newViewScale,       // Записываем вычисленный визуальный масштаб
+          rowHeight: effectiveRowHeight // Записываем текущую высоту строки
+        };
+      }
+      
+      // Если канал не найден (теоретически невозможно), возвращаем как есть
+      return p;
+    });
+
+    // 3. Формируем финальный объект данных для записи
+    const dataToSave = {
+      ...currentRecData,
+      params: updatedParams
+    };
+
+    // 4. Записываем файл
     const writer = new RecFileWriter();
-    const bytes = writer.write(currentRecData);
+    const bytes = writer.write(dataToSave);
+    
     const blob = new Blob([new Uint8Array(bytes)], { type: 'application/octet-stream' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = currentFilename;
+    a.download = currentFilename; // Сохраняем под тем же именем
     a.click();
     URL.revokeObjectURL(url);
-    alert('Файл сохранён!');
+    
+    console.log('[RecViewer] Файл сохранен с актуальными настройками вида.');
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    console.error('[RecViewer] Ошибка сохранения:', err);
     alert(`Ошибка сохранения: ${msg}`);
   }
 }
