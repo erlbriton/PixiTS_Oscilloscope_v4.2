@@ -4,7 +4,7 @@ import { Archive, Sample } from '../core/Archive';
 import { Settings } from '../config/Settings';
 import { PixiView } from './PixiView';
 
-export class WaveformRenderer {
+export class WaveformRenderer {  
     public static renderAnalogWaveform(
         channel: Channel,
         samples: Sample[],
@@ -18,22 +18,17 @@ export class WaveformRenderer {
     ): void {
         const g = view.waveGraphics;
         g.clear();
-
         if (samples.length < 1) return;
-
-                let min = channel.min;
+        let min = channel.min;
         let max = channel.autoScale ? channel.max : channel.customMax;
 
         if (channel.autoScale) {
             const range = archive.getMinMax(channel.id, duration, currentTime);
             if (range.min !== range.max) {
                 const margin = (range.max - range.min) * 0.1 || 1;
-                const targetMin = 0; // Жестко фиксируем минимум на 0
+                const targetMin = 0;
                 const targetMax = range.max + margin;
 
-                // Плавное приближение отображаемого диапазона к целевому.
-                // Читаем в локальные переменные: так TypeScript корректно
-                // сужает тип (number | undefined), и ошибки ts(18048)/ts(2322) исчезают.
                 const prevMin = channel.currentDisplayMin;
                 const prevMax = channel.currentDisplayMax;
 
@@ -45,7 +40,6 @@ export class WaveformRenderer {
                     channel.currentDisplayMax = prevMax + (targetMax - prevMax) * 0.1;
                 }
 
-                // Гарантируем number: если по какой-то причине undefined — берём целевое значение.
                 min = channel.currentDisplayMin ?? targetMin;
                 max = channel.currentDisplayMax ?? targetMax;
             }
@@ -67,22 +61,10 @@ export class WaveformRenderer {
         const startY = getY(samples[0].value);
         g.moveTo(Math.max(0, Math.min(width, startX)), startY);
 
-        if (startX > 0) {
-            g.moveTo(0, startY);
-            g.lineTo(startX, startY);
-        }
-
         for (let i = 1; i < samples.length; i++) {
             const x = getX(samples[i].time);
             const y = getY(samples[i].value);
             g.lineTo(x, y);
-        }
-
-        const lastSample = samples[samples.length - 1];
-        const lastX = getX(lastSample.time);
-        if (lastX < width) {
-            const lastY = getY(lastSample.value);
-            g.lineTo(width, lastY);
         }
 
         g.stroke({ width: 2, color: waveColor, alpha: 0.95 });
@@ -153,14 +135,9 @@ export class WaveformRenderer {
             }
         }
 
-                g.stroke({ width: 2, color: waveColor, alpha: 0.9 });
+        g.stroke({ width: 2, color: waveColor, alpha: 0.9 });
     }
 
-    /**
-     * Рисует вертикальную черту измерения на отдельном слое markerGraphics.
-     * Вызывается для каждого канала (или один раз для любого канала — не важно,
-     * так как markerGraphics — отдельный слой каждого PixiView).
-     */
     public static renderVerticalMarker(
         view: PixiView,
         markerTime: number | null,
@@ -172,19 +149,15 @@ export class WaveformRenderer {
         const mg = view.markerGraphics;
         mg.clear();
 
-        // Если время черты не задано — ничего не рисуем
         if (markerTime === null) return;
 
         const startTime = currentTime - duration;
         const endTime = currentTime;
 
-        // Если черта вне видимого окна — не рисуем
         if (markerTime < startTime || markerTime > endTime) return;
 
-        // Вычисляем X-координату черты
         const x = ((markerTime - startTime) / duration) * width;
 
-        // Рисуем вертикальную линию
         mg.moveTo(x, 0);
         mg.lineTo(x, height);
         mg.stroke({ width: 1, color: '#ffffff', alpha: 0.9 });

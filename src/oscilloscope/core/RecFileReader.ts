@@ -273,21 +273,29 @@ function decodeBinarySection(
   const N = counter;
   const timestamps: number[] = [];
   const values: number[][] = params.map(() => []);
+  const flags: number[] = [];
 
   let offset = binaryStart;
 
   // Блок А: временные метки (N × 9 байт)
   for (let i = 0; i < N; i++) {
     const flag = bytes[offset];
+    flags.push(flag);
     offset++;
     const tDateTime = decodeFloat64LE(bytes, offset);
     offset += 8;
-    timestamps.push(delphiDateTimeToUnixMs(tDateTime));
+    
+    // Пропускаем недостоверные записи (флаг != 0)
+    if (flag === 0) {
+      timestamps.push(delphiDateTimeToUnixMs(tDateTime));
+    }
   }
 
   // Блок Б: значения параметров
   for (let pIdx = 0; pIdx < params.length; pIdx++) {
     const param = params[pIdx];
+    const paramValues: number[] = [];
+    
     for (let i = 0; i < N; i++) {
       let value = 0;
       switch (param.recType) {
@@ -308,19 +316,27 @@ function decodeBinarySection(
           offset += 4;
           break;
         case 'TIPAddr': {
-          // 4 байта в обратном порядке октетов (big-endian): c0 a8 00 00 = 192.168.0.0
           const b0 = bytes[offset + 3];
           const b1 = bytes[offset + 2];
           const b2 = bytes[offset + 1];
           const b3 = bytes[offset];
-          // Сохраняем как числовое значение: (b0 << 24) | (b1 << 16) | (b2 << 8) | b3
           value = (b0 * 0x1000000) + (b1 * 0x10000) + (b2 * 0x100) + b3;
           offset += 4;
           break;
         }
+        default:
+          // Для неизвестных типов - пропускаем байты
+          offset += param.byteCount || 0;
+          break;
       }
-      values[pIdx].push(value);
+      
+      // Добавляем значение только если запись достоверна (флаг === 0)
+      if (flags[i] === 0) {
+        paramValues.push(value);
+      }
     }
+    
+    values[pIdx] = paramValues;
   }
 
   return { timestamps, values };

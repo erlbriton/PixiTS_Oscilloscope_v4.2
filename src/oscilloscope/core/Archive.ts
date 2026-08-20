@@ -278,7 +278,6 @@ export class Archive {
                 if (lastTime > max) max = lastTime;
             }
         });
-
         if (!hasData) {
             const now = Date.now();
             return { min: now, max: now };

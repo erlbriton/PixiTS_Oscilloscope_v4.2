@@ -121,9 +121,18 @@ async function loadRecData(recData: any): Promise<void> {
 
   await oscilloscope.setChannels(channels);
 
-  const archive = oscilloscope.getArchive();
+    const archive = oscilloscope.getArchive();
   const N = recData.timestamps.length;
-  for (let i = 0; i < N; i++) {
+  
+  // Сортируем все данные по времени (старый аджастер делает то же самое)
+  const indices = Array.from({ length: N }, (_, i) => i);
+  indices.sort((a, b) => recData.timestamps[a] - recData.timestamps[b]);
+  
+  console.log(`[RecViewer] N=${N}, first_time=${recData.timestamps[indices[0]].toFixed(0)}, last_time=${recData.timestamps[indices[N-1]].toFixed(0)}, duration=${(recData.timestamps[indices[N-1]] - recData.timestamps[indices[0]]).toFixed(0)}ms`);
+  
+  // Добавляем в архив в отсортированном порядке
+  for (let idx = 0; idx < N; idx++) {
+    const i = indices[idx];
     const time = recData.timestamps[i];
     for (let pIdx = 0; pIdx < recData.params.length; pIdx++) {
       const val = recData.values[pIdx][i];
@@ -131,9 +140,11 @@ async function loadRecData(recData: any): Promise<void> {
     }
   }
 
-  // Фиксируем время на конце записанных данных — маркеры застывают
   const range = oscilloscope.getArchive().getTimeRange();
+  console.log(`[RecViewer] range.min=${range.min.toFixed(0)}, range.max=${range.max.toFixed(0)}`);
+  console.log(`[RecViewer] range: min=${range.min.toFixed(0)}, max=${range.max.toFixed(0)}, duration=${(range.max - range.min).toFixed(0)}ms`);
   oscilloscope.setViewTime(range.max);
+  console.log(`[RecViewer] frozenTime after setViewTime: ${oscilloscope.getArchive().getTimeRange().max.toFixed(0)}`);
 
   console.log(`[RecViewer] Загружено сэмплов: ${N}`);
 }

@@ -21,7 +21,8 @@ function pickSampleValue(value: number, raw: number, recType: RecDataType): numb
       return Math.round(value);
     case 'TWORD':
       return Math.round(raw) & 0xFFFF;
-    case 'TInteger':
+    default:
+      // TInteger, TIPAddr и все остальные — целое сырое значение
       return Math.round(raw);
   }
 }
