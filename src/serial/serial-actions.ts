@@ -356,7 +356,7 @@ export async function readLoop(serial: ISerialPort, _parser: unknown, view: IOsc
                     });
                 }
             }
-            await new Promise((res) => setTimeout(res, 50));
+            await new Promise((res) => setTimeout(res, stateObj.pollDelayMs ?? 20));
         }
     } finally {
         stateObj.isLoopRunning = false;

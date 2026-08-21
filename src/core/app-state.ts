@@ -23,4 +23,6 @@ export interface AppState {
   currentIniContent: string | null;
   /** Типизированный конфиг из единого INI-слоя */
   currentIniConfig: IniConfig | null;
+  /** Пауза между циклами опроса в миллисекундах (по умолчанию 20) */
+  pollDelayMs: number;
 }

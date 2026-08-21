@@ -30,6 +30,7 @@ const appState: AppState = {
     slaveAddress: 0x01,
     currentIniContent: null,
     currentIniConfig: null,
+    pollDelayMs: 20,
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -37,6 +38,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const oscContainer = document.getElementById('osc-container');
 
                         const osc = new Oscilloscope();
+        osc.setAppState(appState);
         window.osc = osc;
         await osc.initialize(oscContainer ?? undefined);
 

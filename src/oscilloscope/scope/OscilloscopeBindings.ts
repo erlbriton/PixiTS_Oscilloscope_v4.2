@@ -14,6 +14,7 @@ import type { PixiView } from "../graphics/PixiView";
 import type { PropertiesModal } from "../ui/PropertiesModal";
 import type { CommandContext } from "./OscilloscopeCommands";
 import type { IniConfig } from "../../core/ini/IniConfig.js";
+import type { AppState } from "../../core/app-state.js";
 import { handleCommandSubmit, handleMultiplyCommand } from "./OscilloscopeCommands";
 
 export interface BindingsContext {
@@ -37,11 +38,13 @@ export interface BindingsContext {
   setConnectionStatus: (connected: boolean, message?: string) => void;
   getCommandContext: () => CommandContext;
   getCurrentIniConfig: () => IniConfig | null;
+  getAppState: () => AppState;
 }
 
 export function bindEvents(ctx: BindingsContext): void {
   ctx.toolbar.onOpenProperties(() => {
     ctx.propertiesModal.open(ctx.getChannels(), ctx.getVisibleChannels());
+    ctx.propertiesModal.setPollDelay(ctx.getAppState().pollDelayMs);
   });
 
   ctx.toolbar.onToggleWindowSize((isHalf) => {
@@ -68,6 +71,11 @@ export function bindEvents(ctx: BindingsContext): void {
     const allAutoScale = ctx.getChannels().every((ch) => ch.autoScale);
     ctx.toolbar.setAutoScaleButtonState(allAutoScale);
   });
+
+  ctx.propertiesModal.onSettingsApply((settings) => {
+    ctx.getAppState().pollDelayMs = settings.pollDelayMs;
+    console.log(`[Bindings] Poll delay updated: ${settings.pollDelayMs} ms`);
+  });;
 
   ctx.serial?.onStateChange((state, msg) => {
     if (state === "error") {
@@ -219,20 +227,24 @@ export function bindEvents(ctx: BindingsContext): void {
   });
 
     ctx.toolbar.onToggleRec(() => {
-    console.log("[Bindings] Кнопка REC нажата");
+    console.log("[Bindings] Кнопка 'Записать выделенный буфер' нажата");
 
     // Определяем интервал записи
     const { intervalMarker1Time, intervalMarker2Time } = ctx.settings;
-    const startTime = intervalMarker1Time !== null ? intervalMarker1Time : null;
-    const endTime = intervalMarker2Time !== null ? intervalMarker2Time : null;
 
-    if (startTime !== null && endTime !== null) {
-      console.log(
-        `[Bindings] Запись между маркерами: ${new Date(startTime).toISOString()} - ${new Date(endTime).toISOString()}`
-      );
-    } else {
-      console.log("[Bindings] Запись всего буфера");
+    // Проверка: для записи выделенного буфера ДОЛЖНЫ стоять оба маркера
+    if (intervalMarker1Time === null || intervalMarker2Time === null) {
+      console.log("[Bindings] Маркеры не установлены — запись отменена.");
+      alert('Для записи выделенного участка установите оба маркера (T1 и T2).\n\nДля записи всего буфера используйте соответствующий пункт меню.');
+      return;
     }
+
+    const startTime = intervalMarker1Time;
+    const endTime = intervalMarker2Time;
+
+    console.log(
+      `[Bindings] Запись между маркерами: ${new Date(startTime).toISOString()} - ${new Date(endTime).toISOString()}`
+    );
 
     const iniConfig = ctx.getCurrentIniConfig();
     const deviceInfo = iniConfig ? iniConfig.device : null;
@@ -240,7 +252,26 @@ export function bindEvents(ctx: BindingsContext): void {
     void ctx.recorder
       ?.exportREC(ctx.getVisibleChannels(), startTime, endTime, deviceInfo)
       .then(() => {
-        console.log("[Bindings] Запись .rec завершена успешно");
+        console.log("[Bindings] Запись выделенного участка .rec завершена успешно");
+      })
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("[Bindings] Ошибка при записи .rec:", err);
+        alert(`Ошибка при записи файла: ${message}`);
+      });
+  });
+
+  ctx.toolbar.onRecordFullBuffer(() => {
+    console.log("[Bindings] Кнопка 'Записать весь буфер' нажата");
+
+    const iniConfig = ctx.getCurrentIniConfig();
+    const deviceInfo = iniConfig ? iniConfig.device : null;
+
+    // null, null — означает запись всего буфера
+    void ctx.recorder
+      ?.exportREC(ctx.getVisibleChannels(), null, null, deviceInfo)
+      .then(() => {
+        console.log("[Bindings] Запись всего буфера .rec завершена успешно");
       })
       .catch((err: unknown) => {
         const message = err instanceof Error ? err.message : String(err);

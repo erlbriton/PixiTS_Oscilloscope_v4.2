@@ -31,11 +31,13 @@ import {
   measureChannelAtTime, formatIntervalDuration, 
   type RenderingContext } from "./scope/OscilloscopeRenderer";
 import { bindEvents, bindTimeZoomWheel, updateTimeScaleReadout, type BindingsContext } from "./scope/OscilloscopeBindings";
+import type { AppState } from "../core/app-state.js";
+
 
 export class Oscilloscope {
   private settings: Settings;
   private archive: Archive;
-    private serial: Serial | null;
+  private serial: Serial | null;
   private recorder: Recorder | null;
   private viewerMode: boolean = false;
   private table!: Table;
@@ -67,6 +69,7 @@ export class Oscilloscope {
   private externalSerial: { write(data: Uint8Array): Promise<void> } | null = null;
   private onPollingStateChangeCallback?: (isPolling: boolean) => void;
   private currentIniConfig: IniConfig | null = null;
+  private appState: AppState | null = null;
 
     constructor(options?: { skipSerial?: boolean; skipRecorder?: boolean; viewerMode?: boolean }) {
     this.settings = new Settings();
@@ -100,6 +103,16 @@ export class Oscilloscope {
 
   public setOnPollingStateChange(cb: (isPolling: boolean) => void): void {
     this.onPollingStateChangeCallback = cb;
+  }
+public setAppState(state: AppState): void {
+    this.appState = state;
+  }
+
+  public getAppState(): AppState {
+    if (!this.appState) {
+      throw new Error("[Oscilloscope] AppState is not set. Call setAppState() first.");
+    }
+    return this.appState;
   }
 
   public async initialize(
@@ -395,10 +408,11 @@ export class Oscilloscope {
       setConnectionStatus: (connected, msg) => this.setConnectionStatus(connected, msg),
       getCommandContext: () => this.getCommandContext(),
       getCurrentIniConfig: () => this.currentIniConfig,
+      getAppState: () => this.getAppState(),
     };
   }
 
-  private getRenderingContext(): RenderingContext {
+  private getRenderingContext(): RenderingContext {//
     return {
       visibleChannels: this.visibleChannels,
       allChannels: this.allChannels,

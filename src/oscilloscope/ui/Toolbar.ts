@@ -15,6 +15,9 @@ export class Toolbar {
   private amplitudeBtn!: HTMLButtonElement;
   private intervalBtn!: HTMLButtonElement;
   private recBtn!: HTMLButtonElement;
+  private recArrowBtn!: HTMLButtonElement;
+  private recMenu!: HTMLDivElement;
+  private recGroup!: HTMLDivElement;
   private sweepBtn!: HTMLButtonElement;
   private pollingBtn!: HTMLButtonElement;
   private propertiesBtn!: HTMLButtonElement;
@@ -30,6 +33,7 @@ export class Toolbar {
   private onToggleAmplitudeModeCallback?: () => void;
   private onToggleIntervalModeCallback?: () => void;
   private onToggleRecCallback?: () => void;
+  private onRecordFullBufferCallback?: () => void;
   
 
     constructor(
@@ -42,6 +46,13 @@ export class Toolbar {
     this.settings = settings;
     this.recorder = recorder;
     this.serial = serial;
+
+    // Закрываем меню режимов записи при клике вне кнопки REC
+    document.addEventListener("click", (e) => {
+      if (this.recGroup && this.recMenu && !this.recGroup.contains(e.target as Node)) {
+        this.recMenu.style.display = "none";
+      }
+    });
   }
 
   public onOpenProperties(cb: () => void): void {
@@ -65,13 +76,16 @@ export class Toolbar {
     public onToggleRec(cb: () => void): void {
     this.onToggleRecCallback = cb;
   }
+  public onRecordFullBuffer(cb: () => void): void {
+    this.onRecordFullBufferCallback = cb;
+  }
   public onToggleIntervalMode(cb: () => void): void {
     this.onToggleIntervalModeCallback = cb;
   }
 
   /** Скрывает кнопки, не нужные в режиме просмотра .rec */
   public applyViewerMode(): void {
-    this.recBtn.style.display = 'none';
+    this.recGroup.style.display = 'none';
     this.pollingBtn.style.display = 'none';
     this.intervalBtn.style.display = 'none';
     this.statusBadge.style.display = 'none';
@@ -294,6 +308,12 @@ export class Toolbar {
     this.intervalBtn.style.marginLeft = "0";
     this.intervalBtn.style.backgroundColor = "#3244e7";
 
+        // === REC: split-кнопка с раскрывающимся меню режимов ===
+    this.recGroup = document.createElement("div");
+    this.recGroup.style.position = "relative";
+    this.recGroup.style.display = "inline-flex";
+    this.recGroup.style.alignItems = "center";
+
     this.recBtn = ToolbarComponents.createButton(
       "⏺",
       "tool-btn-dark",
@@ -302,13 +322,107 @@ export class Toolbar {
           this.onToggleRecCallback();
         }
       },
-      "Запись осциллограммы (REC)",
+      "Записать выделенный буфер",
     );
     this.recBtn.style.width = "32px";
     this.recBtn.style.height = "32px";
     this.recBtn.style.padding = "0";
     this.recBtn.style.marginLeft = "0";
     this.recBtn.style.backgroundColor = "#e7e432";
+    this.recBtn.style.borderRight = "none";
+    this.recBtn.style.borderTopRightRadius = "0";
+    this.recBtn.style.borderBottomRightRadius = "0";
+
+    // Разделитель между основной частью и треугольником (как на скриншоте)
+    const recSeparator = document.createElement("div");
+    recSeparator.style.width = "5px";
+    recSeparator.style.height = "32px";
+    recSeparator.style.flex = "0 0 auto";
+    recSeparator.style.backgroundColor = "#e7e432";
+    recSeparator.style.display = "flex";
+    recSeparator.style.alignItems = "center";
+    recSeparator.style.justifyContent = "center";
+
+    const recSeparatorLine = document.createElement("div");
+    recSeparatorLine.style.width = "2px";
+    recSeparatorLine.style.height = "20px";
+    recSeparatorLine.style.backgroundColor = "rgba(0, 0, 0, 0.65)";
+    recSeparator.append(recSeparatorLine);
+
+    this.recArrowBtn = ToolbarComponents.createButton(
+      "▼",
+      "tool-btn-dark",
+      () => {
+        this.recMenu.style.display =
+          this.recMenu.style.display === "block" ? "none" : "block";
+      },
+      "Режимы записи",
+    );
+    this.recArrowBtn.style.width = "16px";
+    this.recArrowBtn.style.height = "32px";
+    this.recArrowBtn.style.padding = "0";
+    this.recArrowBtn.style.marginLeft = "0";
+    this.recArrowBtn.style.fontSize = "8px";
+    this.recArrowBtn.style.color = "#000";
+    this.recArrowBtn.style.backgroundColor = "#e7e432";
+    this.recArrowBtn.style.borderLeft = "none";
+    this.recArrowBtn.style.borderTopLeftRadius = "0";
+    this.recArrowBtn.style.borderBottomLeftRadius = "0";
+
+    this.recMenu = document.createElement("div");
+    this.recMenu.style.display = "none";
+    this.recMenu.style.position = "absolute";
+    this.recMenu.style.top = "100%";
+    this.recMenu.style.left = "0";
+    this.recMenu.style.marginTop = "2px";
+    this.recMenu.style.minWidth = "210px";
+    this.recMenu.style.backgroundColor = "#1c1f16";
+    this.recMenu.style.border = "1px solid #3a3f2e";
+    this.recMenu.style.borderRadius = "4px";
+    this.recMenu.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.5)";
+    this.recMenu.style.zIndex = "1000";
+    this.recMenu.style.padding = "4px 0";
+
+    const recMenuItemSelected = document.createElement("div");
+    recMenuItemSelected.textContent = "Записать выделенный буфер";
+
+    const recMenuItemFull = document.createElement("div");
+    recMenuItemFull.textContent = "Записать весь буфер";
+
+    const styleRecMenuItem = (el: HTMLDivElement): void => {
+      el.style.padding = "6px 12px";
+      el.style.fontSize = "12px";
+      el.style.color = "#e8e8e8";
+      el.style.cursor = "pointer";
+      el.style.whiteSpace = "nowrap";
+      el.addEventListener("mouseenter", () => {
+        el.style.backgroundColor = "#3a3f2e";
+      });
+      el.addEventListener("mouseleave", () => {
+        el.style.backgroundColor = "transparent";
+      });
+    };
+    styleRecMenuItem(recMenuItemSelected);
+    styleRecMenuItem(recMenuItemFull);
+
+    // Пункт по умолчанию: то же действие, что и основная кнопка
+    recMenuItemSelected.addEventListener("click", () => {
+      this.recMenu.style.display = "none";
+      if (this.onToggleRecCallback) {
+        this.onToggleRecCallback();
+      }
+    });
+
+    // Пункт "Записать весь буфер": логика будет подключена следующим этапом
+    recMenuItemFull.addEventListener("click", () => {
+      this.recMenu.style.display = "none";
+      if (this.onRecordFullBufferCallback) {
+        this.onRecordFullBufferCallback();
+      }
+    });
+
+    this.recMenu.append(recMenuItemSelected, recMenuItemFull);
+    this.recGroup.append(this.recBtn, recSeparator, this.recArrowBtn, this.recMenu);
 
     // === Кнопка "Развертка" (добавляем прямо в groupLeft) ===
     const sweepIcon = `
@@ -358,9 +472,9 @@ export class Toolbar {
       this.autoscaleBtn,
       this.amplitudeBtn,
       this.intervalBtn,
-      this.recBtn,
-      this.sweepBtn,       // Теперь здесь
-      this.exportBtn,      // И здесь
+      this.recGroup,
+      this.sweepBtn,
+      this.exportBtn,
       title,
     );
 

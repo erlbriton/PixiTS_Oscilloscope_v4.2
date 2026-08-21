@@ -14,7 +14,7 @@ export class ChannelRingBuffer {
     public head: number = 0;
     public size: number = 0;
 
-    constructor(capacity: number = 100000) {
+    constructor(capacity: number = 180000) {//Время записи при 20 мС = 1 час
         this.capacity = capacity;
         this.timestamps = new Float64Array(capacity);
         this.values = new Float64Array(capacity);

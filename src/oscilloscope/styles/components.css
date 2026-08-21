@@ -339,9 +339,34 @@ input[type="number"].form-input {
 
 .properties-modal-footer {
     display: flex;
+    align-items: center;
     justify-content: flex-end;
     gap: 12px;
     padding: 12px 20px;
     background: #1a1a1d;
     border-top: 1px solid #333;
+}
+
+.prop-settings-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-right: auto;
+}
+
+.prop-settings-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #00d2ff;
+}
+
+.prop-settings-input {
+    height: 32px;
+    width: 70px;
+    padding: 0 8px;
+    background-color: #1a1a1c;
+    border: 1px solid #2a2a2c;
+    border-radius: 4px;
+    color: #e0e0e0;
+    font-size: 13px;
 }

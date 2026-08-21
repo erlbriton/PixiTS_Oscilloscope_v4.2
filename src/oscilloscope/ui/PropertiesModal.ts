@@ -19,6 +19,7 @@ export class PropertiesModal {
     private lastClickedRightIndex: number | null = null;
 
     private onApplyCallback?: (newVisibleChannels: Channel[]) => void;
+    private onSettingsApplyCallback?: (settings: { pollDelayMs: number }) => void;
 
     constructor() {
         this.overlay = document.createElement('div');
@@ -37,6 +38,17 @@ export class PropertiesModal {
 
     public onApply(cb: (newVisibleChannels: Channel[]) => void): void {
         this.onApplyCallback = cb;
+    }
+
+    public onSettingsApply(cb: (settings: { pollDelayMs: number }) => void): void {
+        this.onSettingsApplyCallback = cb;
+    }
+
+    public setPollDelay(value: number): void {
+        const input = this.modal.querySelector('#prop-poll-delay') as HTMLInputElement;
+        if (input) {
+            input.value = String(value);
+        }
     }
 
     public open(allChannels: Channel[], visibleChannels: Channel[]): void {
@@ -96,6 +108,10 @@ export class PropertiesModal {
                 </div>
             </div>
             <div class="properties-modal-footer">
+                <div class="prop-settings-group">
+                    <label class="prop-settings-label" for="prop-poll-delay">Пауза (мс):</label>
+                    <input class="prop-settings-input" type="number" id="prop-poll-delay" min="1" max="200" value="20" />
+                </div>
                 <button class="toolbar-btn primary" id="prop-apply-btn">Применить</button>
                 <button class="toolbar-btn" id="prop-cancel-btn">Отмена</button>
             </div>
@@ -110,8 +126,20 @@ export class PropertiesModal {
         this.modal.querySelector('#prop-cancel-btn')?.addEventListener('click', () => this.close());
 
         this.modal.querySelector('#prop-apply-btn')?.addEventListener('click', () => {
+            const pollDelayInput = this.modal.querySelector('#prop-poll-delay') as HTMLInputElement;
+            let pollDelayMs = 20;
+            if (pollDelayInput) {
+                const val = parseInt(pollDelayInput.value, 10);
+                if (!isNaN(val) && val >= 1 && val <= 200) {
+                    pollDelayMs = val;
+                }
+            }
+
             if (this.onApplyCallback) {
                 this.onApplyCallback(this.currentRight);
+            }
+            if (this.onSettingsApplyCallback) {
+                this.onSettingsApplyCallback({ pollDelayMs });
             }
             this.close();
         });
