@@ -5,6 +5,7 @@ import { parseModbusReg } from "../core/Channel.js";
 import { buildWriteMultipleRegistersRequest } from "../../serial/modbus.js";
 import type { Channel } from "../core/Channel";
 import type { BottomPanels } from "../ui/BottomPanels";
+import { parseIpToRegisters } from "../../serial/ip-utils.js";
 
 /** Зависимости для обработки команд */
 export interface CommandContext {
@@ -112,7 +113,40 @@ export async function handleCommandSubmit(
     return;
   }
 
-  const typeUpper = (ch.dataType || "").toUpperCase();
+    const typeUpper = (ch.dataType || "").toUpperCase();
+  
+  // === ОБРАБОТКА IP-АДРЕСОВ (TIPADDR) ===
+  if (typeUpper === 'TIPADDR') {
+    const registers = parseIpToRegisters(valueStr);
+    
+    if (!registers) {
+      alert('Неверный формат IP-адреса');
+      ctx.bottomPanels.focusCommand();
+      return;
+    }
+
+    try {
+      const packet = buildWriteMultipleRegistersRequest(
+        ctx.slaveAddress,
+        parsedReg.address,
+        registers, // [lowWord, highWord]
+      );
+      const hexDump = Array.from(packet)
+        .map((b) => b.toString(16).toUpperCase().padStart(2, "0"))
+        .join(" ");
+      console.log(`[Oscilloscope] IP write packet HEX (${packet.length} bytes): ${hexDump}`);
+      await ctx.externalSerial.write(packet);
+      console.log("[Oscilloscope] IP write packet sent successfully.");
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error("[Oscilloscope] Failed to send IP write packet:", errMsg);
+    }
+
+    ctx.bottomPanels.focusCommand();
+    return;
+  }
+  
+  // === СУЩЕСТВУЮЩАЯ ЛОГИКА ДЛЯ 32-БИТНЫХ И 16-БИТНЫХ ЗНАЧЕНИЙ ===
   const is32Bit =
     typeUpper.includes("FLOAT") ||
     typeUpper.includes("DWORD") ||
