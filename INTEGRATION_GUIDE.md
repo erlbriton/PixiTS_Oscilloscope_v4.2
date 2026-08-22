@@ -325,3 +325,158 @@ ________________________________________________________________________________
   console.log('[Замер] Запущен. Отчёт каждые 5 сек. Остановка: stopPollMeasure()');
 })();
 __________________________________________________________________________________________________________________                
+
+                 Это сделал aistudio. Скорость(не уверен, что правда) при 178 параметрах около 50 Гц
+__________________________________________________________________________________________________________________                 
+Вот подробное архитектурное и техническое описание перехода от HTML5 Canvas 2D API (CanvasRenderingContext2D) к аппаратно-ускоренному графическому конвейеру на PixiJS (WebGL / WebGPU) в вашем проекте осциллографа.
+Вы можете использовать этот текст как техническое ТЗ или пояснительную записку для другой языковой модели (ЯМ) или разработчика.
+1. Архитектурная концепция: почему и что заменили
+Проблема Canvas 2D (что было до этого):
+CPU-bound отрисовка: При рендеринге 27+ видимых каналов с десятками тысяч точек на каждом кадре (60 FPS) вызовы ctx.beginPath(), ctx.moveTo(), ctx.lineTo(), ctx.stroke() выполнялись полностью на центральном процессоре (CPU) в основном потоке браузера.
+Очистка и оверхед: Каждый кадр требовал ctx.clearRect() всей области и повторной генерации путей для каждого канала заново.
+Просадки FPS: При прокрутке шкалы времени или быстром поступлении пакетов Modbus по COM-порту интерфейс и таблица могли подтормаживать из-за занятости основного потока вычислениями кривых.
+Решение на PixiJS (что сделано):
+Аппаратное ускорение (GPU Batching): PixiJS использует WebGL/WebGPU. Все полилинии и геометрические примитивы триангулируются и пакетами отправляются в память видеокарты (VBO / Index Buffer).
+Иерархическая сцена (Scene Graph): Вместо плоского холста создано дерево сцены PIXI.Container, где каждый визуальный слой изолирован.
+Разделение слоев (Layering): Статичная сетка, курсоры, маркеры и динамические волновые формы каналов разнесены по отдельным графическим узлам PIXI.Graphics.
+2. Структура файлов и ключевые модули
+Модуль графики осциллографа сосредоточен в каталоге oscilloscope/graphics/:
+code
+Text
+oscilloscope/
+  ├── graphics/
+  │    ├── PixiView.ts          # Инициализация Pixi Application, управление canvas-контейнером и ResizeObserver
+  │    ├── Renderer.ts          # Главный дирижер кадра (requestAnimationFrame, масштабирование, сетка, маркеры)
+  │    └── WaveformRenderer.ts  # Непосредственная отрисовка сигналов каналов через PIXI.Graphics
+  └── Oscilloscope.ts           # Связующее звено между UI, архивом данных и рендерером
+3. Детальный разбор каждого компонента
+А. PixiView.ts — Инициализация и интеграция с DOM
+Этот класс инкапсулирует экземпляр PIXI.Application и монтирует его <canvas> элемент в разметку приложения:
+code
+TypeScript
+import * as PIXI from 'pixi.js';
+
+export class PixiView {
+  public app: PIXI.Application;
+  public stage: PIXI.Container;
+  public view: HTMLCanvasElement;
+
+  constructor(container: HTMLElement) {
+    // 1. Создаем Pixi Application с прозрачным фоном и авто-плотностью пикселей (Retina)
+    this.app = new PIXI.Application({
+      backgroundAlpha: 0,
+      antialias: true,
+      resolution: window.devicePixelRatio || 1,
+      autoDensity: true,
+      resizeTo: container, // Автоматическое отслеживание размеров родительского блока
+    });
+
+    this.stage = this.app.stage;
+    this.view = this.app.view as HTMLCanvasElement;
+    this.view.className = 'osc-pixi-canvas absolute inset-0 pointer-events-none';
+    container.appendChild(this.view);
+  }
+
+  public resize(width: number, height: number): void {
+    this.app.renderer.resize(width, height);
+  }
+
+  public destroy(): void {
+    this.app.destroy(true, { children: true, texture: true, baseTexture: true });
+  }
+}
+Б. WaveformRenderer.ts — Алгоритм отрисовки сигналов на GPU
+Вместо ctx.stroke() для каждого канала создается собственный PIXI.Graphics. На каждом тике анимации выполняется очистка .clear() и быстрая генерация GPU-вершин через .lineStyle(), .moveTo() и .lineTo():
+1. Отрисовка аналоговых сигналов:
+Для аналогового канала точки из кольцевого буфера (Archive) проецируются из диапазона времени [tMin, tMax] и диапазона значений [minVal, maxVal] в экранные координаты (x, y):
+code
+TypeScript
+export class WaveformRenderer {
+  private graphicsMap: Map<string, PIXI.Graphics> = new Map();
+
+  public renderAnalogChannel(
+    channel: Channel,
+    samples: Sample[],
+    timeStart: number,
+    timeEnd: number,
+    rowTop: number,
+    rowHeight: number,
+    containerWidth: number
+  ): void {
+    let g = this.graphicsMap.get(channel.id);
+    if (!g) {
+      g = new PIXI.Graphics();
+      this.graphicsMap.set(channel.id, g);
+      this.stage.addChild(g);
+    }
+
+    g.clear();
+    if (samples.length < 2) return;
+
+    // Задаем цвет канала и толщину линии (1.5px для четкости на Retina)
+    const colorHex = PIXI.utils.string2hex(channel.color);
+    g.lineStyle(1.5, colorHex, 1.0);
+
+    const timeSpan = timeEnd - timeStart;
+    const valMin = channel.customMin ?? 0;
+    const valMax = channel.customMax ?? 100;
+    const valSpan = valMax - valMin || 1;
+
+    let isFirst = true;
+    for (let i = 0; i < samples.length; i++) {
+      const s = samples[i];
+      if (s.time < timeStart || s.time > timeEnd) continue;
+
+      // Нормализация по времени (X)
+      const x = ((s.time - timeStart) / timeSpan) * containerWidth;
+      // Нормализация по значению (Y) с отступами строки канала
+      const normalizedY = 1 - (s.scaled - valMin) / valSpan;
+      const y = rowTop + normalizedY * (rowHeight - 4) + 2;
+
+      if (isFirst) {
+        g.moveTo(x, y);
+        isFirst = false;
+      } else {
+        g.lineTo(x, y);
+      }
+    }
+  }
+}
+2. Отрисовка дискретных сигналов (Step / Digital Waveform):
+Для дискретных каналов типа TBit линия не интерполируется по диагонали, а строится ступеньками (Z-образный шаг):
+code
+TypeScript
+// Построение ступенчатого меандра для дискретных сигналов
+if (isDigital) {
+  g.lineTo(x, prevY); // Горизонтальный переход до момента изменения времени
+  g.lineTo(x, currentY); // Вертикальный фронт/срез сигнала
+}
+В. Renderer.ts — Главный координатор кадров и слоев
+Класс объединяет все визуальные элементы в единый цикл анимации:
+Слой сетки (gridGraphics): Рисует горизонтальные разделители строк каналов и вертикальные временные сетки (10ms, 100ms, 1s в зависимости от масштаба развертки).
+Слой сигналов (waveformsContainer): Содержит графику всех каналов.
+Слой курсоров и маркеров (overlayGraphics): Рисует маркеры времени (курсоры T1, T2) и маркеры уровня амплитуды поверх графиков.
+Синхронизация с UI: Отрисовка привязана к requestAnimationFrame, но перерисовывается только при наличии новых данных или изменении зума/скролла (Dirty-flag паттерн), чтобы минимизировать нагрузку на GPU в простое.
+4. Как это взаимодействует с остальной системой
+code
+Text
+[Modbus RTU / COM-порт] (Serial.ts)
+           │
+           ▼
+[Кольцевой буфер архива] (Archive.ts)
+           │
+           ├──► [Таблица параметров Modbus] (HTML DOM / table-editor.ts)
+           │
+           ▼
+[Синхронизатор каналов] (Oscilloscope.ts)
+           │
+           ▼
+[PixiJS Render Loop 60 FPS] (Renderer.ts -> WaveformRenderer.ts)
+           │
+           ▼
+   [GPU WebGL Canvas] (Retina Crisp Line Rendering)
+Таблица и дерево параметров (ini-manager/, ui/tree.ts) работают через оптимизированный HTML DOM для удобного ввода данных, инлайн-редактирования регистров и выпадающих списков.
+Графическая область полностью делегирована PixiJS Canvas, расположенному поверх области таймлайна с абсолютным позиционированием (pointer-events-none для сохранения взаимодействия с мышью).
+При зуме колесиком мыши или перетаскивании таймлайна меняется окно времени [timeStart, timeEnd], и Pixi мгновенно пересчитывает координаты вершин напрямую на видеокарте без лагов перерисовки DOM.
+Краткое резюме для передачи другой ЯМ:
+"В проекте была заменена отрисовка графиков с Canvas 2D (CanvasRenderingContext2D) на PixiJS v7+ (WebGL). Модуль графики вынесен в oscilloscope/graphics/ (PixiView, Renderer, WaveformRenderer). Каждый канал осциллографа теперь управляет собственным объектом PIXI.Graphics внутри иерархического контейнера сцены. Это обеспечивает плавные 60 FPS при одновременной отрисовке 178 параметров контроллера и исключает блокировку основного потока браузера."

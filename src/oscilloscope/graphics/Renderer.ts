@@ -38,7 +38,7 @@ export class Renderer {
             view.waveGraphics.clear();
         }
 
-        view.present();
+        // view.present() удалён: PixiJS рендерит сцену автоматически
     }
 
     private renderGrid(view: PixiView, width: number, height: number): void {

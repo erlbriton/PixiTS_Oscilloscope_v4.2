@@ -1,6 +1,5 @@
 // src/oscilloscope/Oscilloscope.ts
 
-import { Application } from 'pixi.js';
 import { Channel, ChannelConfig, parseModbusReg } from "./core/Channel.js";
 import { Archive } from "./core/Archive";
 import { Recorder } from "./core/Recorder";
@@ -30,13 +29,14 @@ import { handleCommandSubmit, handleMultiplyCommand, type CommandContext } from 
 import { 
   renderVisibleChannels, updateIntervalDisplay, 
   measureChannelAtTime, formatIntervalDuration, 
+  syncViewPositions, bindSharedCanvasEvents,
   type RenderingContext } from "./scope/OscilloscopeRenderer";
 import { bindEvents, bindTimeZoomWheel, updateTimeScaleReadout, type BindingsContext } from "./scope/OscilloscopeBindings";
 import type { AppState } from "../core/app-state.js";
+import { Application } from 'pixi.js';
 
 
 export class Oscilloscope {/////////////////////////////\
-  public app: Application;
   private settings: Settings;
   private archive: Archive;
   private serial: Serial | null;
@@ -72,13 +72,14 @@ export class Oscilloscope {/////////////////////////////\
   private onPollingStateChangeCallback?: (isPolling: boolean) => void;
   private currentIniConfig: IniConfig | null = null;
   private appState: AppState | null = null;
+  private pixiApp: Application | null = null;
+  private graphColumnOffset: number = 0;
+  private canvasOverlay: HTMLDivElement | null = null;
 
     constructor(options?: { skipSerial?: boolean; skipRecorder?: boolean; viewerMode?: boolean }) {
     this.settings = new Settings();
     this.archive = new Archive();
-    this.viewerMode = options?.viewerMode ?? false;
-    this.app = new Application();
-    
+    this.viewerMode = options?.viewerMode ?? false;    
     if (options?.skipSerial) {
       this.serial = null;
     } else {
@@ -133,16 +134,7 @@ public setAppState(state: AppState): void {
     }
     this.targetRoot = rootElement;
     this.isDestroyed = false;
-    this.settings.applyCSSTemplateVariables();
-    
-    // Инициализируем PixiJS приложение
-    await this.app.init({
-      backgroundAlpha: 0,
-      antialias: true,
-      autoDensity: true,
-      resolution: window.devicePixelRatio || 1,
-    });
-    
+    this.settings.applyCSSTemplateVariables();   
     const layoutElements = Layout.createSkeleton(rootElement);
     this.splitContainer = layoutElements.splitContainer;
     if (this.viewerMode) {
@@ -187,9 +179,99 @@ public setAppState(state: AppState): void {
     this.connectionModal = new ConnectionModal();
     bindEvents(this.getBindingsContext());
     bindTimeZoomWheel(this.getBindingsContext(), this.rowsContainer);
+    
+    // Создаём единое PixiJS приложение для всего осциллографа
+    this.pixiApp = new Application();
+    await this.pixiApp.init({
+      backgroundAlpha: 0,
+      antialias: true,
+      autoDensity: true,
+      resolution: window.devicePixelRatio || 1,
+    });
+    
+    // Создаём персональную обёртку поверх колонки графиков.
+    // Обёртка управляется только нашими инлайн-стилями,
+    // а canvas растягивается внутри неё штатным CSS приложения.
+    const canvasHost = this.rowsContainer.parentElement as HTMLElement;
+    canvasHost.style.position = 'relative';
+    this.canvasOverlay = document.createElement('div');
+    this.canvasOverlay.style.position = 'absolute';
+    this.canvasOverlay.style.overflow = 'hidden';
+    this.canvasOverlay.style.zIndex = '5';
+    canvasHost.appendChild(this.canvasOverlay);
+    this.canvasOverlay.appendChild(this.pixiApp.canvas);
+    this.syncCanvasLayout();
+    
+    // Синхронизируем размер и позицию canvas с rowsContainer
+    const resizeObserver = new ResizeObserver(() => {
+      this.syncCanvasLayout();
+      syncViewPositions(this.getRenderingContext());
+    });
+    resizeObserver.observe(this.rowsContainer);
+    
+    // Синхронизируем canvas и контейнеры при скролле из ЛЮБОГО источника:
+    // колесо мыши, перетаскивание скроллбара, клавиатура
+    this.rowsContainer.addEventListener('scroll', () => {
+      this.updateCanvasPosition();
+      syncViewPositions(this.getRenderingContext());
+    });
+    
+    // Вычисляем отступ до колонки графиков
+    this.updateGraphColumnOffset();
+    
+    // Навешиваем обработчики мыши на rowsContainer для работы с маркерами
+    bindSharedCanvasEvents(() => this.getRenderingContext());
+    
     this.isRunning = true;
     this.lastFrameTime = performance.now();
     this.animFrameId = requestAnimationFrame((t) => this.loop(t));
+  }
+  
+  private getGraphColumnMetrics(): { left: number; width: number } {
+    const host = this.rowsContainer.parentElement as HTMLElement;
+    const hostRect = host.getBoundingClientRect();
+    const firstRow = this.rowsContainer.querySelector(".channel-row");
+    const baseEl = firstRow ?? host.querySelector("#header");
+    const graphEl = baseEl ? (baseEl.querySelector(".col-graph") as HTMLElement | null) : null;
+    if (!graphEl) {
+      return { left: 0, width: Math.max(50, this.rowsContainer.clientWidth) };
+    }
+    const rect = graphEl.getBoundingClientRect();
+    return {
+      left: Math.round(rect.left - hostRect.left),
+      width: Math.max(50, Math.round(rect.width)),
+    };
+  }
+
+  private updateGraphColumnOffset(): void {
+    this.graphColumnOffset = this.getGraphColumnMetrics().left;
+  }
+
+  private updateCanvasPosition(): void {
+    if (!this.pixiApp || !this.canvasOverlay) return;
+    const host = this.rowsContainer.parentElement as HTMLElement;
+    const hostRect = host.getBoundingClientRect();
+    const rowsRect = this.rowsContainer.getBoundingClientRect();
+    const metrics = this.getGraphColumnMetrics();
+    this.canvasOverlay.style.top = `${Math.round(rowsRect.top - hostRect.top)}px`;
+    this.canvasOverlay.style.left = `${metrics.left}px`;
+    this.canvasOverlay.style.width = `${metrics.width}px`;
+    this.canvasOverlay.style.height = `${Math.round(rowsRect.height)}px`;
+  }
+
+  private syncCanvasLayout(): void {
+    if (!this.pixiApp) return;
+    this.updateCanvasPosition();
+    const metrics = this.getGraphColumnMetrics();
+    this.pixiApp.renderer.resize(metrics.width, Math.max(50, this.rowsContainer.clientHeight));
+  }
+  
+  public getPixiApp(): Application | null {
+    return this.pixiApp;
+  }
+  
+  public getGraphColumnOffset(): number {
+    return this.graphColumnOffset;
   }
 
   public draw(data: Record<string, number>): void {
@@ -284,7 +366,6 @@ public setAppState(state: AppState): void {
       }
     });
     this.pixiViews.clear();
-    this.app.destroy(true, { children: true });
     if (this.targetRoot) {
       this.targetRoot.innerHTML = "";
     }
@@ -340,6 +421,9 @@ public setAppState(state: AppState): void {
     }
 
     await renderVisibleChannels(this.getRenderingContext());
+    this.updateGraphColumnOffset();
+    this.syncCanvasLayout();
+    syncViewPositions(this.getRenderingContext());
     console.log(`[Oscilloscope] Switch complete.`);
   }
 
@@ -395,7 +479,7 @@ public setAppState(state: AppState): void {
     };
   }
 
-  private getBindingsContext(): BindingsContext {
+    private getBindingsContext(): BindingsContext {
     return {
       settings: this.settings,
       getChannels: () => this.allChannels,
@@ -425,11 +509,13 @@ public setAppState(state: AppState): void {
     };
   }
 
-  private getRenderingContext(): RenderingContext {//
+  private getRenderingContext(): RenderingContext {
     return {
       visibleChannels: this.visibleChannels,
       allChannels: this.allChannels,
       pixiViews: this.pixiViews,
+      pixiApp: this.pixiApp,
+      graphColumnOffset: this.graphColumnOffset,
       table: this.table,
       renderer: this.renderer,
       archive: this.archive,

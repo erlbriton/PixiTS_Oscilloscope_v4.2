@@ -1,6 +1,7 @@
 // src/oscilloscope/scope/OscilloscopeRenderer.ts
 // Рендеринг графиков каналов и измерение значений в маркерах.
 
+import type { Application } from "pixi.js";
 import type { Channel } from "../core/Channel";
 import type { Archive } from "../core/Archive";
 import type { Renderer } from "../graphics/Renderer";
@@ -14,6 +15,8 @@ export interface RenderingContext {
   visibleChannels: Channel[];
   allChannels: Channel[];
   pixiViews: Map<string, PixiView>;
+  pixiApp: Application | null;
+  graphColumnOffset: number;
   table: Table;
   renderer: Renderer;
   archive: Archive;
@@ -123,6 +126,9 @@ export async function renderVisibleChannels(
     row.onChannelUpdated = () => {
       const allAutoScale = ctx.allChannels.every((ch) => ch.autoScale);
       ctx.toolbar.setAutoScaleButtonState(allAutoScale);
+      // Могла измениться высота строки или её видимость —
+      // пересинхронизируем позиции и размеры контейнеров графиков
+      syncViewPositions(ctx);
     };
 
     row.onDelete = (deletedChannel) => {
@@ -138,185 +144,9 @@ export async function renderVisibleChannels(
       ctx.onToggleBit(toggledChannel);
     };
 
-    const container = row.getGraphContainer();
-    if (container) {
-      const pixiView = new PixiView(container);
-      try {
-        await pixiView.init();
-
-        pixiView.canvas.addEventListener("click", (e: MouseEvent) => {
-          if (!ctx.settings.isAmplitudeMode && !ctx.settings.isIntervalMode)
-            return;
-
-          if (
-            ctx.settings.isIntervalMode &&
-            ctx.settings.intervalMarker1Time !== null &&
-            ctx.settings.intervalMarker2Time !== null
-          ) {
-            return;
-          }
-
-          const rect = pixiView.canvas.getBoundingClientRect();
-          const x = e.clientX - rect.left;
-          const width = rect.width;
-
-          if (width <= 0) return;
-
-          const spacing = 40 * ctx.settings.timeScale;
-          const duration = (width / spacing) * 1000;
-
-          const currentTime = ctx.settings.getCurrentViewTime();
-          const startTime = currentTime - duration;
-
-          const markerTime = startTime + (x / width) * duration;
-
-          if (ctx.settings.isAmplitudeMode) {
-            ctx.settings.amplitudeMarkerTime = markerTime;
-
-            const date = new Date(markerTime);
-            const day = String(date.getDate()).padStart(2, "0");
-            const month = String(date.getMonth() + 1).padStart(2, "0");
-            const year = String(date.getFullYear()).slice(-2);
-            const hours = String(date.getHours()).padStart(2, "0");
-            const minutes = String(date.getMinutes()).padStart(2, "0");
-            const seconds = String(date.getSeconds()).padStart(2, "0");
-            const formattedTime = `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`;
-
-            ctx.bottomPanels.setReadout(2, formattedTime);
-
-            measureChannelAtTime(ctx, channel.id, markerTime);
-          }
-
-          if (ctx.settings.isIntervalMode) {
-            if (ctx.settings.intervalMarker1Time === null) {
-              ctx.settings.intervalMarker1Time = markerTime;
-            } else if (ctx.settings.intervalMarker2Time === null) {
-              if (markerTime !== ctx.settings.intervalMarker1Time) {
-                ctx.settings.intervalMarker2Time = markerTime;
-              }
-            }
-
-            updateIntervalDisplay(ctx);
-          }
-
-          ctx.visibleChannels.forEach((ch) => {
-            const v = ctx.pixiViews.get(ch.id);
-            if (v) {
-              ctx.renderer.renderChannelGraph(ch, v);
-            }
-          });
-        });
-
-        let draggingMarker: 1 | 2 | null = null;
-
-        const getMarkerUnderCursor = (clientX: number): 1 | 2 | null => {
-          if (!ctx.settings.isIntervalMode) return null;
-
-          const rect = pixiView.canvas.getBoundingClientRect();
-          const x = clientX - rect.left;
-          const width = rect.width;
-          if (width <= 0) return null;
-
-          const spacing = 40 * ctx.settings.timeScale;
-          const duration = (width / spacing) * 1000;
-          const currentTime = ctx.settings.getCurrentViewTime();
-          const startTime = currentTime - duration;
-
-          if (ctx.settings.intervalMarker1Time !== null) {
-            const marker1X =
-              ((ctx.settings.intervalMarker1Time - startTime) / duration) *
-              width;
-            if (Math.abs(x - marker1X) <= 5) {
-              return 1;
-            }
-          }
-
-          if (ctx.settings.intervalMarker2Time !== null) {
-            const marker2X =
-              ((ctx.settings.intervalMarker2Time - startTime) / duration) *
-              width;
-            if (Math.abs(x - marker2X) <= 5) {
-              return 2;
-            }
-          }
-
-          return null;
-        };
-
-        pixiView.canvas.addEventListener("mousemove", (e: MouseEvent) => {
-          if (draggingMarker !== null) return;
-
-          const marker = getMarkerUnderCursor(e.clientX);
-          if (marker !== null) {
-            pixiView.canvas.style.cursor = "ew-resize";
-          } else {
-            pixiView.canvas.style.cursor = "";
-          }
-        });
-
-        pixiView.canvas.addEventListener("mousedown", (e: MouseEvent) => {
-          if (!ctx.settings.isIntervalMode) return;
-          if (
-            ctx.settings.intervalMarker1Time === null ||
-            ctx.settings.intervalMarker2Time === null
-          )
-            return;
-
-          const marker = getMarkerUnderCursor(e.clientX);
-          if (marker !== null) {
-            draggingMarker = marker;
-            e.preventDefault();
-          }
-        });
-
-        const globalMouseMove = (e: MouseEvent) => {
-          if (draggingMarker === null) return;
-
-          const rect = pixiView.canvas.getBoundingClientRect();
-          const x = e.clientX - rect.left;
-          const width = rect.width;
-          if (width <= 0) return;
-
-          const spacing = 40 * ctx.settings.timeScale;
-          const duration = (width / spacing) * 1000;
-          const currentTime = ctx.settings.getCurrentViewTime();
-          const startTime = currentTime - duration;
-
-          const markerTime = startTime + (x / width) * duration;
-
-          if (draggingMarker === 1) {
-            ctx.settings.intervalMarker1Time = markerTime;
-          } else {
-            ctx.settings.intervalMarker2Time = markerTime;
-          }
-
-          updateIntervalDisplay(ctx);
-
-          ctx.visibleChannels.forEach((ch) => {
-            const v = ctx.pixiViews.get(ch.id);
-            if (v) {
-              ctx.renderer.renderChannelGraph(ch, v);
-            }
-          });
-        };
-
-        const globalMouseUp = () => {
-          if (draggingMarker !== null) {
-            draggingMarker = null;
-            pixiView.canvas.style.cursor = "";
-          }
-        };
-
-        document.addEventListener("mousemove", globalMouseMove);
-        document.addEventListener("mouseup", globalMouseUp);
-
-        tempPixiViews.set(channel.id, pixiView);
-      } catch (err) {
-        console.warn(
-          `[Oscilloscope] PixiView init failed for channel ${channel.id}:`,
-          err,
-        );
-      }
+    if (ctx.pixiApp) {
+      const pixiView = new PixiView(ctx.pixiApp, 0, 0, 300, channel.rowHeight);
+      tempPixiViews.set(channel.id, pixiView);
     }
   }
 
@@ -326,8 +156,243 @@ export async function renderVisibleChannels(
       ctx.pixiViews.set(id, view);
     });
 
+    syncViewPositions(ctx);
+
     requestAnimationFrame(() => {
       ctx.rowsContainer.scrollTop = savedScrollTop;
+      syncViewPositions(ctx);
     });
   }
+}
+
+/** Позиционирует контейнеры каналов по вертикали с учётом скролла и ширины колонки графиков. */
+export function syncViewPositions(ctx: RenderingContext): void {
+  const firstRow = ctx.rowsContainer.querySelector(".channel-row");
+  const host = ctx.rowsContainer.parentElement as HTMLElement;
+  const baseEl = firstRow ?? host.querySelector("#header");
+  const graphEl = baseEl ? (baseEl.querySelector(".col-graph") as HTMLElement | null) : null;
+  const width = graphEl
+    ? Math.max(50, Math.round(graphEl.getBoundingClientRect().width))
+    : 300;
+
+  let yOffset = 0;
+  const scrollTop = ctx.rowsContainer.scrollTop;
+  for (const channel of ctx.visibleChannels) {
+    const view = ctx.pixiViews.get(channel.id);
+    if (view) {
+      view.updateLayout(0, yOffset - scrollTop, width, channel.rowHeight);
+    }
+    yOffset += channel.rowHeight;
+  }
+}
+
+/** Навешивает обработчики мыши на общий canvas один раз (без дублирования). */
+export function bindSharedCanvasEvents(getCtx: () => RenderingContext): void {
+  const initialCtx = getCtx();
+  if (!initialCtx.pixiApp) return;
+  const canvas = initialCtx.pixiApp.canvas as HTMLCanvasElement;
+
+  let draggingMarker: 1 | 2 | null = null;
+
+  const getGraphRect = (): DOMRect => canvas.getBoundingClientRect();
+
+  const timeFromClientX = (ctx: RenderingContext, clientX: number): number | null => {
+    const rect = getGraphRect();
+    const x = clientX - rect.left;
+    const width = rect.width;
+    if (width <= 0) return null;
+
+    const spacing = 40 * ctx.settings.timeScale;
+    const duration = (width / spacing) * 1000;
+    const currentTime = ctx.settings.getCurrentViewTime();
+    const startTime = currentTime - duration;
+    return startTime + (x / width) * duration;
+  };
+
+  const channelFromClientY = (ctx: RenderingContext, clientY: number): Channel | null => {
+    const rect = getGraphRect();
+    const y = clientY - rect.top + ctx.rowsContainer.scrollTop;
+    let acc = 0;
+    for (const ch of ctx.visibleChannels) {
+      acc += ch.rowHeight;
+      if (y < acc) return ch;
+    }
+    return null;
+  };
+
+  const rerenderAll = (ctx: RenderingContext): void => {
+    ctx.pixiViews.forEach((view, id) => {
+      const ch = ctx.allChannels.find((c) => c.id === id);
+      if (ch) ctx.renderer.renderChannelGraph(ch, view);
+    });
+  };
+
+  const getMarkerUnderCursor = (ctx: RenderingContext, clientX: number): 1 | 2 | null => {
+    if (!ctx.settings.isIntervalMode) return null;
+    const rect = getGraphRect();
+    const x = clientX - rect.left;
+    const width = rect.width;
+    if (width <= 0) return null;
+
+    const spacing = 40 * ctx.settings.timeScale;
+    const duration = (width / spacing) * 1000;
+    const currentTime = ctx.settings.getCurrentViewTime();
+    const startTime = currentTime - duration;
+
+    if (ctx.settings.intervalMarker1Time !== null) {
+      const marker1X = ((ctx.settings.intervalMarker1Time - startTime) / duration) * width;
+      if (Math.abs(x - marker1X) <= 5) return 1;
+    }
+    if (ctx.settings.intervalMarker2Time !== null) {
+      const marker2X = ((ctx.settings.intervalMarker2Time - startTime) / duration) * width;
+      if (Math.abs(x - marker2X) <= 5) return 2;
+    }
+    return null;
+  };
+
+  canvas.addEventListener("click", (e: MouseEvent) => {
+    const ctx = getCtx();
+    const channel = channelFromClientY(ctx, e.clientY);
+
+    if (channel) {
+      const row = ctx.table.getRow(channel.id);
+      if (row) row.getElement().click();
+    }
+
+    if (!ctx.settings.isAmplitudeMode && !ctx.settings.isIntervalMode) return;
+    if (
+      ctx.settings.isIntervalMode &&
+      ctx.settings.intervalMarker1Time !== null &&
+      ctx.settings.intervalMarker2Time !== null
+    ) {
+      return;
+    }
+
+    const markerTime = timeFromClientX(ctx, e.clientX);
+    if (markerTime === null) return;
+
+    if (ctx.settings.isAmplitudeMode) {
+      if (!channel) return;
+      ctx.settings.amplitudeMarkerTime = markerTime;
+
+      const date = new Date(markerTime);
+      const day = String(date.getDate()).padStart(2, "0");
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const year = String(date.getFullYear()).slice(-2);
+      const hours = String(date.getHours()).padStart(2, "0");
+      const minutes = String(date.getMinutes()).padStart(2, "0");
+      const seconds = String(date.getSeconds()).padStart(2, "0");
+      const formattedTime = `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`;
+
+      ctx.bottomPanels.setReadout(2, formattedTime);
+      measureChannelAtTime(ctx, channel.id, markerTime);
+    }
+
+    if (ctx.settings.isIntervalMode) {
+      if (ctx.settings.intervalMarker1Time === null) {
+        ctx.settings.intervalMarker1Time = markerTime;
+      } else if (ctx.settings.intervalMarker2Time === null) {
+        if (markerTime !== ctx.settings.intervalMarker1Time) {
+          ctx.settings.intervalMarker2Time = markerTime;
+        }
+      }
+      updateIntervalDisplay(ctx);
+    }
+
+    rerenderAll(ctx);
+  });
+
+  canvas.addEventListener("contextmenu", (e: MouseEvent) => {
+    const ctx = getCtx();
+    const channel = channelFromClientY(ctx, e.clientY);
+    if (!channel) return;
+    const row = ctx.table.getRow(channel.id);
+    if (!row) return;
+    e.preventDefault();
+    row.getElement().dispatchEvent(
+      new MouseEvent("contextmenu", {
+        clientX: e.clientX,
+        clientY: e.clientY,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  });
+
+  canvas.addEventListener("mousemove", (e: MouseEvent) => {
+    if (draggingMarker !== null) return;
+    const ctx = getCtx();
+    const marker = getMarkerUnderCursor(ctx, e.clientX);
+    canvas.style.cursor = marker !== null ? "ew-resize" : "";
+  });
+
+  canvas.addEventListener("mousedown", (e: MouseEvent) => {
+    const ctx = getCtx();
+    if (!ctx.settings.isIntervalMode) return;
+    if (
+      ctx.settings.intervalMarker1Time === null ||
+      ctx.settings.intervalMarker2Time === null
+    ) {
+      return;
+    }
+    const marker = getMarkerUnderCursor(ctx, e.clientX);
+    if (marker !== null) {
+      draggingMarker = marker;
+      e.preventDefault();
+    }
+  });
+
+  document.addEventListener("mousemove", (e: MouseEvent) => {
+    if (draggingMarker === null) return;
+    const ctx = getCtx();
+
+    const markerTime = timeFromClientX(ctx, e.clientX);
+    if (markerTime === null) return;
+
+    if (draggingMarker === 1) {
+      ctx.settings.intervalMarker1Time = markerTime;
+    } else {
+      ctx.settings.intervalMarker2Time = markerTime;
+    }
+    updateIntervalDisplay(ctx);
+    rerenderAll(ctx);
+  });
+
+  document.addEventListener("mouseup", () => {
+    if (draggingMarker !== null) {
+      draggingMarker = null;
+      canvas.style.cursor = "";
+    }
+  });
+
+  canvas.addEventListener(
+    "wheel",
+    (e: WheelEvent) => {
+      const ctx = getCtx();
+      e.preventDefault();
+
+      const forwarded = new WheelEvent("wheel", {
+        deltaX: e.deltaX,
+        deltaY: e.deltaY,
+        deltaMode: e.deltaMode,
+        clientX: e.clientX,
+        clientY: e.clientY,
+        ctrlKey: e.ctrlKey,
+        shiftKey: e.shiftKey,
+        altKey: e.altKey,
+        metaKey: e.metaKey,
+        bubbles: true,
+        cancelable: true,
+      });
+      ctx.rowsContainer.dispatchEvent(forwarded);
+
+      // Синтетическое событие не вызывает нативный скролл,
+      // поэтому скроллим вручную, если обработчик зума не перехватил событие
+      if (!forwarded.defaultPrevented) {
+        ctx.rowsContainer.scrollTop += e.deltaY;
+        ctx.rowsContainer.scrollLeft += e.deltaX;
+      }
+    },
+    { passive: false },
+  );
 }
