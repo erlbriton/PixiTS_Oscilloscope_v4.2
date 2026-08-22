@@ -1,5 +1,6 @@
 // src/oscilloscope/Oscilloscope.ts
 
+import { Application } from 'pixi.js';
 import { Channel, ChannelConfig, parseModbusReg } from "./core/Channel.js";
 import { Archive } from "./core/Archive";
 import { Recorder } from "./core/Recorder";
@@ -34,7 +35,8 @@ import { bindEvents, bindTimeZoomWheel, updateTimeScaleReadout, type BindingsCon
 import type { AppState } from "../core/app-state.js";
 
 
-export class Oscilloscope {
+export class Oscilloscope {/////////////////////////////\
+  public app: Application;
   private settings: Settings;
   private archive: Archive;
   private serial: Serial | null;
@@ -75,6 +77,7 @@ export class Oscilloscope {
     this.settings = new Settings();
     this.archive = new Archive();
     this.viewerMode = options?.viewerMode ?? false;
+    this.app = new Application();
     
     if (options?.skipSerial) {
       this.serial = null;
@@ -131,6 +134,15 @@ public setAppState(state: AppState): void {
     this.targetRoot = rootElement;
     this.isDestroyed = false;
     this.settings.applyCSSTemplateVariables();
+    
+    // Инициализируем PixiJS приложение
+    await this.app.init({
+      backgroundAlpha: 0,
+      antialias: true,
+      autoDensity: true,
+      resolution: window.devicePixelRatio || 1,
+    });
+    
     const layoutElements = Layout.createSkeleton(rootElement);
     this.splitContainer = layoutElements.splitContainer;
     if (this.viewerMode) {
@@ -272,6 +284,7 @@ public setAppState(state: AppState): void {
       }
     });
     this.pixiViews.clear();
+    this.app.destroy(true, { children: true });
     if (this.targetRoot) {
       this.targetRoot.innerHTML = "";
     }

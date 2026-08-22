@@ -1,6 +1,6 @@
 // src/graphics/PixiView.ts
 
-export interface ViewportBounds {
+export interface ViewportBounds {//////////////////////
     width: number;
     height: number;
 }
@@ -11,7 +11,7 @@ export interface StrokeOptions {
     alpha?: number;
 }
 
-export class Canvas2DGraphics {
+export class Canvas2DGraphics {//////////////////////////////////\
     private paths: Array<{
         commands: Array<{ 
             type: 'moveTo' | 'lineTo' | 'rect'; 
@@ -122,7 +122,7 @@ export class Canvas2DGraphics {
             ctx.restore();
         }
     }
-}
+}///////////////////////////\
 
 export class PixiView {
     public canvas: HTMLCanvasElement;
@@ -193,11 +193,95 @@ export class PixiView {
         this.ctx.restore();
     }
 
+    // src/graphics/PixiView.ts
+
+import { Container, Graphics, Application } from 'pixi.js';
+
+export interface ViewportBounds {
+    width: number;
+    height: number;
+}
+
+export interface StrokeOptions {
+    width?: number;
+    color?: number | string;
+    alpha?: number;
+}
+
+export class PixiView {
+    public container: Container;
+    public gridGraphics: Graphics;
+    public waveGraphics: Graphics;
+    public markerGraphics: Graphics;
+    public cursorGraphics: Graphics;
+    public containerElement: HTMLElement;
+    public bounds: ViewportBounds = { width: 300, height: 120 };
+    private resizeObserver: ResizeObserver | null = null;
+    private app: Application;
+
+    constructor(containerElement: HTMLElement, app: Application) {
+        this.containerElement = containerElement;
+        this.app = app;
+
+        this.container = new Container();
+
+        this.gridGraphics = new Graphics();
+        this.waveGraphics = new Graphics();
+        this.markerGraphics = new Graphics();
+        this.cursorGraphics = new Graphics();
+
+        this.container.addChild(this.gridGraphics);
+        this.container.addChild(this.waveGraphics);
+        this.container.addChild(this.markerGraphics);
+        this.container.addChild(this.cursorGraphics);
+
+        this.app.stage.addChild(this.container);
+    }
+
+    public async init(): Promise<void> {
+        this.containerElement.innerHTML = '';
+        this.containerElement.appendChild(this.app.canvas);
+
+        const rect = this.containerElement.getBoundingClientRect();
+        const width = Math.max(50, Math.floor(rect.width || 400));
+        const height = Math.max(10, Math.floor(rect.height || 20));
+        this.resize(width, height);
+
+        this.resizeObserver = new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                const w = Math.max(50, Math.floor(entry.contentRect.width));
+                const h = Math.max(10, Math.floor(entry.contentRect.height));
+                if (w !== this.bounds.width || h !== this.bounds.height) {
+                    this.resize(w, h);
+                }
+            }
+        });
+        this.resizeObserver.observe(this.containerElement);
+    }
+
+    public resize(width: number, height: number): void {
+        this.bounds = { width, height };
+        this.container.x = 0;
+        this.container.y = 0;
+    }
+
+    public present(): void {
+        // PixiJS рендерит автоматически
+    }
+
     public destroy(): void {
         if (this.resizeObserver) {
             this.resizeObserver.disconnect();
             this.resizeObserver = null;
         }
+
+        this.gridGraphics.destroy();
+        this.waveGraphics.destroy();
+        this.markerGraphics.destroy();
+        this.cursorGraphics.destroy();
+
+        this.container.destroy({ children: true });
+
         this.containerElement.innerHTML = '';
     }
 }
