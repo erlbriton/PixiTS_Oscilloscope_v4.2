@@ -65,7 +65,7 @@ export class Oscilloscope {/////////////////////////////\
   private animFrameId: number | null = null;
   private lastRenderTime: number = 0;
   private lastRenderSignature: string = "";
-  private static readonly RENDER_INTERVAL_MS: number = 50; // ~30 FPS
+  private static readonly RENDER_INTERVAL_MS: number = 20;//  Частота опроса
   private targetRoot: HTMLElement | null = null;
   private isDestroyed: boolean = false;
   private lastLoadedIniContent: string | null = null;
