@@ -1,4 +1,5 @@
 // src/ui/tree.ts
+
 import { populateDeviceForm } from './ui.js';
 import { currentIniConfig, hexToFloat32, float32ToHex } from '../ini-manager/tree-core.js';
 import {
@@ -106,6 +107,7 @@ export function renderModbusTable(config?: IniConfig): void {
                 float32ToHex,
             );
 
+            // Инициализация редакторов (они могут перехватывать клик на td[4] и td[5])
             if (tds[4] && tds[5]) {
                 initHexCellEditor(
                     tds[4], tr, param.rawParts, hexIndex,
@@ -120,13 +122,57 @@ export function renderModbusTable(config?: IniConfig): void {
                 );
             }
 
-            tr.addEventListener('click', () => {
-                clearAnyActiveCellEditors();
-                const prevSelected = document.querySelector('#grid-data-rows tr.is-selected');
-                if (prevSelected && prevSelected !== tr) {
-                    prevSelected.classList.remove('is-selected');
+            // --- ЛОГИКА ВЫДЕЛЕНИЯ СТРОКИ (ДЛЯ КЛИКОВ СЛЕВА) ---
+            // Работает только если клик прошел через td[0..3]
+            tr.addEventListener('click', (event: MouseEvent) => {
+                const target = event.target as HTMLElement;
+                const clickedCell = target.closest('td');
+                
+                // Если клик был по одной из 4-х правых ячеек, игнорируем этот слушатель (их обрабатывают отдельные слушатели ниже)
+                if (clickedCell && (clickedCell === tds[4] || clickedCell === tds[5] || clickedCell === tds[6] || clickedCell === tds[7])) {
+                    return; 
+                }
+
+                // Стандартное выделение строки при клике слева
+                const prevSelectedRow = document.querySelector('#grid-data-rows tr.is-selected');
+                if (prevSelectedRow && prevSelectedRow !== tr) {
+                    prevSelectedRow.classList.remove('is-selected');
+                    clearAnyActiveCellEditors();
                 }
                 tr.classList.add('is-selected');
+                
+                // Сброс желтого цвета при клике слева
+                document.querySelectorAll('#grid-data-rows td.cell-active').forEach(el => el.classList.remove('cell-active'));
+            });
+
+            // --- ЛОГИКА ДЛЯ 4-Х ПРАВЫХ ЯЧЕЕК (БАЗА И КОНТРОЛЛЕР) ---
+            // Вешаем обработчик НАПРЯМУЮ на каждую ячейку, чтобы обойти stopPropagation внутри редакторов
+            const dataCells = [tds[4], tds[5], tds[6], tds[7]];
+            
+            dataCells.forEach((cell) => {
+                if (!cell) return;
+                cell.style.cursor = 'pointer';
+
+                // Добавляем слушатель напрямую на ячейку
+                cell.addEventListener('click', (e) => {
+                    e.stopPropagation(); // Останавливаем всплытие, чтобы не триггерить лишний раз логику строки
+
+                    // 1. Сброс желтого цвета со ВСЕЙ таблицы
+                    document.querySelectorAll('#grid-data-rows td.cell-active').forEach(el => {
+                        el.classList.remove('cell-active');
+                    });
+
+                    // 2. Выделение текущей строки зеленым
+                    const prevSelectedRow = document.querySelector('#grid-data-rows tr.is-selected');
+                    if (prevSelectedRow && prevSelectedRow !== tr) {
+                        prevSelectedRow.classList.remove('is-selected');
+                        clearAnyActiveCellEditors();
+                    }
+                    tr.classList.add('is-selected');
+
+                    // 3. Подсветка текущей ячейки желтым
+                    cell.classList.add('cell-active');
+                });
             });
 
             tableBody.appendChild(tr);

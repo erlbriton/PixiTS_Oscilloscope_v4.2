@@ -189,3 +189,26 @@ tr.row-mismatch td select.table-prm-select {
 tr.row-mismatch td:not(.param-id):not(.param-name):not(.param-desc):not([class*="unit"]):not(:nth-child(-n+4)) {
     color: #ff4d4d !important;
 }
+
+/* =================================================================
+   ПОДСВЕТКА АКТИВНОЙ ЯЧЕЙКИ (ЖЕЛТЫЙ ФОН ПОВЕРХ ЗЕЛЕНОГО)
+   ================================================================= */
+
+/* Желтая подсветка активной ячейки данных (поверх зеленого фона строки) */
+td.cell-active {
+    /* Полупрозрачный желтый фон, чтобы зеленый цвет строки (is-selected) просвечивал */
+    background-color: rgba(255, 251, 0, 0.849) !important;
+    
+    /* Дополнительная визуальная четкость (тонкая рамка) */
+    box-shadow: inset 0 0 0 1px rgba(255, 215, 0, 0.5);
+    
+    /* Сохраняем цвет текста (красный или обычный), заданный другими классами */
+    color: inherit; 
+}
+
+/* Гарантируем, что текст внутри div/span/select тоже наследует цвет */
+td.cell-active .prm-val-display,
+td.cell-active select,
+td.cell-active div {
+    color: inherit !important;
+}
