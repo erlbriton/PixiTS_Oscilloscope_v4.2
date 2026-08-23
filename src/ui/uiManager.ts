@@ -6,6 +6,7 @@ import type { IOscilloscopeApi } from '../core/osc-api.js';
 import type { ModbusParser } from '../serial/modbus.js';
 import { IniParser as CoreIniParser, IniConfig } from '../core/ini/index.js';
 import { RecFileReader } from '../oscilloscope/core/RecFileReader.js';
+import { updateIdBanner } from './ui.js';
 
 /** Буфер данных канала (типизирован явно, без any) */
 export interface ChannelBuffer {
@@ -145,6 +146,7 @@ export function initUI(deps: UiManagerDeps): void {
     serial.onDisconnect(() => {
       console.log('[UI] Обрыв связи обнаружен');
       appState.isPolling = false;
+      updateIdBanner('');
       const osc = window.osc;
       if (osc && typeof osc.setConnectionStatus === 'function') {
         osc.setConnectionStatus(false, 'Связь с устройством потеряна.');
