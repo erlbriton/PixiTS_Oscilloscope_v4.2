@@ -233,12 +233,49 @@ export async function updateDeviceRegisters(
                         parts[6] = scaleStr;
                       }
                       tr.dataset.parts = JSON.stringify(parts);
-                      updateRowValues(
+                                            updateRowValues(
                         tr, parts, dataType, scale, hIdx,
                         originalHexLen, prmListOptions,
                         hexToFloat32, float32ToHex, 6,
                       );
                       tr.classList.add("updated");
+
+                      // Подсветка расхождения База/Контроллер:
+                      // Даем время на обновление DOM перед сравнением
+                      setTimeout(() => {
+                        const tds = tr.querySelectorAll('td');
+                        
+                        // Нормализация: убираем 'x', переводим в число, сравниваем числа
+                        const parseHexValue = (hexStr: string): number | null => {
+                          const clean = hexStr.trim().toUpperCase().replace(/^X/, '');
+                          if (!clean || !/^[0-9A-F]+$/.test(clean)) return null;
+                          try {
+                            return parseInt(clean, 16);
+                          } catch {
+                            return null;
+                          }
+                        };
+
+                        const hexBaseRaw = tds[4] ? (tds[4].textContent || '').trim() : '';
+                        const hexLiveRaw = tds[6] ? (tds[6].textContent || '').trim() : '';
+                        
+                        console.log(`[DEBUG] Сырые значения: База="${hexBaseRaw}", Контроллер="${hexLiveRaw}"`);
+                        
+                        const valBase = parseHexValue(hexBaseRaw);
+                        const valLive = parseHexValue(hexLiveRaw);
+                        
+                        console.log(`[DEBUG] Числовые значения: База=${valBase}, Контроллер=${valLive}`);
+
+                        const mismatch =
+                            hexBaseRaw !== '—' &&
+                            hexLiveRaw !== '—' &&
+                            valBase !== null &&
+                            valLive !== null &&
+                            valBase !== valLive;
+                        
+                        console.log(`[DEBUG] mismatch=${mismatch}`);
+                        tr.classList.toggle('row-mismatch', mismatch);
+                      }, 50);
                     }
                   } catch (e) {
                     console.error(`Error processing row:`, e);

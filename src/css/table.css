@@ -164,3 +164,28 @@
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
 }
+
+/* === НОВАЯ ПОДСВЕТКА РАСХОЖДЕНИЯ  === */
+/* Подсветка расхождения База/Контроллер — ТОЛЬКО ячейки значений */
+
+/* 1. Красим ячейки с hex-значениями (класс .hex-val) */
+tr.row-mismatch td.hex-val {
+    color: #ff4d4d !important;
+}
+
+/* 2. Красим текст внутри физических значений (класс .prm-val-display) */
+tr.row-mismatch td .prm-val-display {
+    color: #ff4d4d !important;
+}
+
+/* 3. Красим select-ы, если они есть (для TPrmList) */
+tr.row-mismatch td select.table-prm-select {
+    color: #ff4d4d !important;
+    border-color: #ff4d4d !important;
+}
+
+/* 4. Если физическое значение просто в div без класса, но внутри td после 4-го */
+/* Используем более точный селектор: td, который НЕ является параметром/именем/описанием/единицей */
+tr.row-mismatch td:not(.param-id):not(.param-name):not(.param-desc):not([class*="unit"]):not(:nth-child(-n+4)) {
+    color: #ff4d4d !important;
+}

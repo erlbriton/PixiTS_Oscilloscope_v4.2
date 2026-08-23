@@ -352,6 +352,19 @@ export async function readLoop(serial: ISerialPort, _parser: unknown, view: IOsc
                             parts[hIdx] = hexValue;
                             tr.dataset.parts = JSON.stringify(parts);
                             updateRowValues(tr, parts, dataType, scale, hIdx, originalHexLen, prmListOptions, hexToFloat32, float32ToHex, 4);
+
+                            // Подсветка расхождения База/Контроллер:
+                            // сравниваем hex-ячейки (td[4] и td[6]), красим диапазон td[4..7]
+                            const tds = tr.querySelectorAll('td');
+                            const normHex = (t: string): string =>
+                                t.trim().toUpperCase().replace(/^X/, '').replace(/^0+(?=.)/, '');
+                            const hexLive = tds[4] ? (tds[4].textContent || '').trim() : '';
+                            const hexBase = tds[6] ? (tds[6].textContent || '').trim() : '';
+                            const mismatch =
+                                hexLive.startsWith('X') &&
+                                hexBase.startsWith('X') &&
+                                normHex(hexLive) !== normHex(hexBase);
+                            tr.classList.toggle('row-mismatch', mismatch);
                         }
                     });
                 }
@@ -361,7 +374,7 @@ export async function readLoop(serial: ISerialPort, _parser: unknown, view: IOsc
     } finally {
         stateObj.isLoopRunning = false;
         console.log("DEBUG: Единый батчевый readLoop остановлен");
-    }
+    }//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////\
 }
 // ── Вспомогательные функции декодирования Modbus-значений ──
 /**

@@ -1,4 +1,5 @@
 // src/ini-manager/table-editor.ts
+
 import { serialManager, calculateCRC } from '../serial/serial-actions.js';
 import { parseRegisterAddress, float32ToHex } from './tree-core.js';
 import type { IniConfig } from '../core/ini/index.js';
