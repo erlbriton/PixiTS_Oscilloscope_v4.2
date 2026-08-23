@@ -87,15 +87,16 @@ export class SearchPanel {
         if (e.key === 'ArrowDown') { e.preventDefault(); this.moveActive(1); }
         else if (e.key === 'ArrowUp') { e.preventDefault(); this.moveActive(-1); }
         else if (e.key === 'Enter') {
+            e.preventDefault();
             const item = this.activeIndex >= 0 ? this.suggestions[this.activeIndex] : this.suggestions[0];
             if (item) this.pick(item);
         }
     }
 
-    private moveActive(delta: number): void {
+        private moveActive(delta: number): void {
         if (this.suggestions.length === 0) return;
         this.activeIndex = Math.min(this.suggestions.length - 1, Math.max(0, this.activeIndex + delta));
-        this.renderList();
+        this.updateHighlight();
     }
 
     private pick(item: SearchItem): void {
@@ -135,8 +136,21 @@ export class SearchPanel {
         return [...exact, ...prefix];
     }
 
+    private rowEls: HTMLDivElement[] = [];
+
+    /** Подсветка активного пункта без пересборки списка. */
+    private updateHighlight(): void {
+        this.rowEls.forEach((el, i) => {
+            el.style.background = i === this.activeIndex ? '#00d2ff' : 'transparent';
+            el.style.color = i === this.activeIndex ? '#0f0f11' : '#c8c8cd';
+        });
+        const active = this.rowEls[this.activeIndex];
+        if (active) active.scrollIntoView({ block: 'nearest' });
+    }
+
     private renderList(): void {
         this.list.innerHTML = '';
+        this.rowEls = [];
         const q = this.input.value.trim();
         if (!q) return;
 
@@ -157,11 +171,11 @@ export class SearchPanel {
             row.style.cursor = 'pointer';
             row.style.fontFamily = 'monospace';
             row.style.fontSize = '12px';
-            row.style.color = i === this.activeIndex ? '#0f0f11' : '#c8c8cd';
-            row.style.background = i === this.activeIndex ? '#00d2ff' : 'transparent';
-            row.addEventListener('mouseenter', () => { this.activeIndex = i; this.renderList(); });
-            row.addEventListener('mousedown', (e) => { e.preventDefault(); this.pick(item); });
+            row.addEventListener('mouseenter', () => { this.activeIndex = i; this.updateHighlight(); });
+            row.addEventListener('click', (e) => { e.stopPropagation(); this.pick(item); });
             this.list.appendChild(row);
+            this.rowEls.push(row);
         });
+        this.updateHighlight();
     }
 }
