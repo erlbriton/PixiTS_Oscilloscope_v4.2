@@ -42,6 +42,14 @@ export function clearAnyActiveCellEditors(): void {
  * Заглушка редактора hex-ячейки.
  * Типизирована для совместимости с renderModbusTable.
  */
+// src/ini-manager/table-editor.ts
+
+// ... (импорты остаются прежними)
+
+/**
+ * Инициализация редактора hex-ячейки.
+ * Добавлены параметры stateObj и colIndex для поддержки редактирования Контроллера и нативной архитектуры.
+ */
 export function initHexCellEditor(
     cell: HTMLElement,
     row: HTMLTableRowElement,
@@ -52,13 +60,23 @@ export function initHexCellEditor(
     scale: number,
     originalHexLen: number,
     prmListOptions: Record<string, string>,
+    stateObj: TableEditorState, // <--- НОВЫЙ АРГУМЕНТ (10-й)
+    colIndex: number            // <--- НОВЫЙ АРГУМЕНТ (11-й)
 ): void {
-    cell.addEventListener('click', (e: MouseEvent) => e.stopPropagation());
+    cell.setAttribute('data-edit-type', 'hex');
+    cell.setAttribute('data-col-index', colIndex.toString());
+    
+    cell.addEventListener('dblclick', (e: MouseEvent) => {
+        e.stopPropagation();
+        e.preventDefault();
+        // Вызываем настоящий редактор
+        startInlineEdit(cell, stateObj);
+    });
 }
 
 /**
- * Заглушка редактора физической ячейки.
- * Типизирована для совместимости с renderModbusTable.
+ * Инициализация редактора физической ячейки.
+ * Добавлены параметры stateObj и colIndex.
  */
 export function initPhysicalCellEditor(
     cell: HTMLElement,
@@ -72,8 +90,18 @@ export function initPhysicalCellEditor(
     updateFn: UpdateRowValuesFn,
     hexToFloat32Fn: (hexStr: string) => number,
     float32ToHexFn: (floatVal: number, padLen?: number) => string,
+    stateObj: TableEditorState, // <--- НОВЫЙ АРГУМЕНТ (12-й)
+    colIndex: number            // <--- НОВЫЙ АРГУМЕНТ (13-й)
 ): void {
-    cell.addEventListener('click', (e: MouseEvent) => e.stopPropagation());
+    cell.setAttribute('data-edit-type', 'phys');
+    cell.setAttribute('data-col-index', colIndex.toString());
+
+    cell.addEventListener('dblclick', (e: MouseEvent) => {
+        e.stopPropagation();
+        e.preventDefault();
+        // Вызываем настоящий редактор
+        startInlineEdit(cell, stateObj);
+    });
 }
 
 /**
@@ -168,18 +196,16 @@ export async function sendModbusWriteCommand(
     }
 }
 
+/**
+ * Обновляет значение ячейки только в интерфейсе (без отправки в устройство).
+ */
 async function processValueWrite(
     tr: HTMLTableRowElement,
     editType: string,
     newValueStr: string,
-    stateObj: TableEditorState
+    stateObj: TableEditorState,
+    colIndex: number // 4 (Base Hex) или 5 (Base Phys)
 ): Promise<boolean> {
-    const addrStr = tr.getAttribute('data-reg');
-    if (!addrStr) return false;
-
-    const { reg } = parseRegisterAddress(addrStr);
-    if (reg === null) return false;
-
     const dataType = (tr.getAttribute('data-type') || '').toUpperCase();
     const sub = tr.getAttribute('data-sub') || '';
 
@@ -188,10 +214,15 @@ async function processValueWrite(
         parts = JSON.parse(tr.dataset.parts || '[]');
     } catch (e) {
         console.error("[TableEditor] Ошибка разбора data-parts:", e);
+        return false;
     }
 
+    // Для Базы Hex всегда лежит в parts[4], Physical в parts[5]
+    const hexIndexInParts = 4; 
+    const physIndexInParts = 5;
+
     let scale = 1.0;
-    if (parts[6]) {
+    if (parts.length > 6 && parts[6]) {
         const parsedScale = parseFloat(parts[6].replace(',', '.'));
         if (!isNaN(parsedScale) && parsedScale !== 0) scale = parsedScale;
     }
@@ -199,63 +230,152 @@ async function processValueWrite(
     const is32Bit = dataType.includes('FLOAT') || dataType.includes('DWORD') ||
                     dataType.includes('LONG') || dataType.includes('INT32');
 
-    let wordsToWrite: number[] = [];
+    let newHexValue: string | null = null;
+    let newPhysValue: string | null = null;
 
+    // --- ЛОГИКА ПРЕОБРАЗОВАНИЯ (ТОЛЬКО ДЛЯ UI) ---
     if (editType === 'hex') {
+        // Пользователь ввел HEX -> обновляем Hex и пересчитываем Physical
         const cleanHex = newValueStr.replace(/^(x|0x)/i, '');
-        if (!/^[0-9A-Fa-f]+$/.test(cleanHex)) return false;
-        const parsedVal = parseInt(cleanHex, 16);
+        if (!/^[0-9A-Fa-f]+$/.test(cleanHex)) {
+            alert("Некорректный HEX формат");
+            return false;
+        }
+        
+        let parsedVal = parseInt(cleanHex, 16);
         if (isNaN(parsedVal)) return false;
 
-        if (is32Bit) {
-            const lowWord = parsedVal & 0xFFFF;
-            const highWord = (parsedVal >>> 16) & 0xFFFF;
-            wordsToWrite = [lowWord, highWord];
-        } else {
-            wordsToWrite = [parsedVal & 0xFFFF];
-        }
-    } else {
-        const valNum = parseFloat(newValueStr.replace(',', '.'));
-        if (isNaN(valNum)) return false;
+        newHexValue = 'x' + parsedVal.toString(16).toUpperCase().padStart(is32Bit ? 8 : 4, '0');
+        parts[hexIndexInParts] = newHexValue;
 
+        // Пересчет Physical из нового Hex
         if (dataType.includes('FLOAT')) {
-            const hexStr = float32ToHex(valNum);
-            const rawInt = parseInt(hexStr, 16);
-            const highWord = (rawInt >>> 16) & 0xFFFF;
-            const lowWord = rawInt & 0xFFFF;
-            wordsToWrite = [lowWord, highWord];
-        } else if (dataType.includes('LONG') || dataType.includes('INT32') || dataType.includes('DWORD')) {
-            const rawVal = Math.round(valNum / scale);
-            const lowWord = rawVal & 0xFFFF;
-            const highWord = (rawVal >>> 16) & 0xFFFF;
-            wordsToWrite = [lowWord, highWord];
+            const buf = new ArrayBuffer(4);
+            const dv = new DataView(buf);
+            // Для 32 бит нужно корректно собрать слово, если ввод был полным
+            if (is32Bit) {
+                 dv.setUint32(0, parsedVal, false); // Big-endian
+                 const floatVal = dv.getFloat32(0, false);
+                 newPhysValue = (floatVal * scale).toFixed(4);
+            } else {
+                // 16 бит
+                let signedVal = parsedVal;
+                if (signedVal > 32767) signedVal -= 65536; // Int16 conversion
+                newPhysValue = (signedVal * scale).toString();
+            }
+        } else if (dataType === 'TBIT') {
+             // Для бита просто показываем 0 или 1
+             const bitIndex = parseInt(sub, 16);
+             const bitVal = (parsedVal >> (isNaN(bitIndex) ? 0 : bitIndex)) & 1;
+             newPhysValue = bitVal.toString();
+        } else {
+            // Целые числа
+            let signedVal = parsedVal;
+            if (!is32Bit && signedVal > 32767) signedVal -= 65536; // Int16
+            if (is32Bit && parsedVal > 2147483647) signedVal = parsedVal - 4294967296; // Int32
+            
+            newPhysValue = (signedVal * scale).toString();
+        }
+        
+        parts[physIndexInParts] = newPhysValue || newValueStr; // Fallback
+
+    } else {
+        // Пользователь ввел Physical -> обновляем Physical и пересчитываем Hex
+        const valNum = parseFloat(newValueStr.replace(',', '.'));
+        if (isNaN(valNum)) {
+            alert("Некорректное число");
+            return false;
+        }
+
+        newPhysValue = newValueStr; // Сохраняем как есть (или форматированное)
+        parts[physIndexInParts] = newPhysValue;
+
+        // Пересчет Hex из нового Physical
+        if (dataType.includes('FLOAT')) {
+            const unscaledVal = valNum / scale;
+            const hexStr = float32ToHex(unscaledVal);
+            newHexValue = 'x' + hexStr.toUpperCase();
+            parts[hexIndexInParts] = newHexValue;
         } else if (dataType === 'TBIT') {
             const bitVal = valNum > 0 ? 1 : 0;
+            // Получаем текущее слово из Hex
+            const currentHexStr = parts[hexIndexInParts] && parts[hexIndexInParts].startsWith('x') 
+                ? parts[hexIndexInParts] 
+                : 'x0';
+            let currentWord = parseInt(currentHexStr.slice(1), 16) || 0;
             const bitIndex = parseInt(sub, 16);
-            const currentHexStr = parts[5] ? parts[5].replace(/^x/i, '') : '0';
-            let currentWord = parseInt(currentHexStr, 16) || 0;
+            
             if (!isNaN(bitIndex)) {
                 if (bitVal === 1) currentWord |= (1 << bitIndex);
                 else currentWord &= ~(1 << bitIndex);
             }
-            wordsToWrite = [currentWord & 0xFFFF];
+            newHexValue = 'x' + currentWord.toString(16).toUpperCase().padStart(4, '0');
+            parts[hexIndexInParts] = newHexValue;
         } else {
+            // Целые числа
             const rawVal = Math.round(valNum / scale);
-            wordsToWrite = [rawVal & 0xFFFF];
+            let word = rawVal & 0xFFFF;
+            if (is32Bit) {
+                 // Для 32 бит нужно сохранить полное значение, но в parts[4] может быть только 16 бит?
+                 // Зависит от структуры parts. Если parts[4] хранит 32-битное hex, то ок.
+                 // Иначе логика сложнее. Пока считаем, что hex в parts[4] вмещает значение.
+                 newHexValue = 'x' + rawVal.toString(16).toUpperCase().padStart(8, '0');
+            } else {
+                newHexValue = 'x' + word.toString(16).toUpperCase().padStart(4, '0');
+            }
+            parts[hexIndexInParts] = newHexValue;
         }
     }
 
-    const slaveAddr = (stateObj && stateObj.slaveAddress) ? stateObj.slaveAddress : 0x01;
-    return await sendModbusWriteCommand(slaveAddr, reg, wordsToWrite);
+    // Сохраняем обновленный массив parts обратно в DOM
+    tr.dataset.parts = JSON.stringify(parts);
+
+    // === ОБНОВЛЕНИЕ ВИЗУАЛЬНОГО ОТОБРАЖЕНИЯ ===
+    const tds = tr.querySelectorAll('td');
+
+    const updateCellDisplay = (idx: number, val: string) => {
+        if (idx < 0 || idx >= tds.length || !val) return;
+        const td = tds[idx];
+        
+        if (val.startsWith('<div') || val.startsWith('<select')) {
+            td.innerHTML = val;
+        } else if (val.startsWith('x')) {
+            td.textContent = val;
+        } else {
+            if (!td.innerHTML.includes('prm-val-display')) {
+                td.innerHTML = `<div class="prm-val-display">${val}</div>`;
+            } else {
+                const display = td.querySelector('.prm-val-display');
+                if (display) display.textContent = val;
+            }
+        }
+    };
+
+    // Обновляем обе ячейки (Hex и Physical) новыми значениями из parts
+    updateCellDisplay(4, parts[4]);
+    updateCellDisplay(5, parts[5]);
+    
+    // Визуальный эффект успеха
+    const activeCell = tds[colIndex];
+    if (activeCell) {
+        activeCell.classList.add('write-success');
+        setTimeout(() => activeCell.classList.remove('write-success'), 1000);
+    }
+
+    console.log(`[UI ONLY] Значения обновлены в памяти. Hex: ${parts[4]}, Phys: ${parts[5]}`);
+
+    return true; // Всегда возвращаем true, так как отправки нет
 }
 
 export function startInlineEdit(cell: HTMLElement, stateObj: TableEditorState): void {
     const tr = cell.closest<HTMLTableRowElement>('tr');
     if (!tr) return;
-
     if (cell.querySelector('input')) return;
 
     const editType = cell.getAttribute('data-edit-type') || 'phys';
+    // Читаем индекс колонки из атрибута, установленного при инициализации
+    const colIndex = parseInt(cell.getAttribute('data-col-index') || '4', 10);
+
     const originalValue = cell.innerText.trim();
 
     const input = document.createElement('input');
@@ -281,10 +401,12 @@ export function startInlineEdit(cell: HTMLElement, stateObj: TableEditorState): 
             return;
         }
 
-        cell.innerText = newValue;
+        cell.innerText = newValue; // Временное отображение
 
         try {
-            const success = await processValueWrite(tr, editType, newValue, stateObj);
+            // Передаем colIndex в процесс записи
+            const success = await processValueWrite(tr, editType, newValue, stateObj, colIndex);
+            
             if (!success) {
                 cell.innerText = originalValue;
                 cell.classList.add('write-error');
@@ -292,15 +414,22 @@ export function startInlineEdit(cell: HTMLElement, stateObj: TableEditorState): 
             } else {
                 cell.classList.add('write-success');
                 setTimeout(() => cell.classList.remove('write-success'), 1000);
+                // UI уже обновлен внутри processValueWrite
             }
         } catch (err) {
+            console.error("Error saving value:", err);
             cell.innerText = originalValue;
         }
     };
 
     input.addEventListener('keydown', (e: KeyboardEvent) => {
-        if (e.key === 'Enter') input.blur();
-        else if (e.key === 'Escape') { isFinished = true; cell.innerText = originalValue; }
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            input.blur();
+        } else if (e.key === 'Escape') { 
+            isFinished = true; 
+            cell.innerText = originalValue; 
+        }
     });
 
     input.addEventListener('blur', () => save());

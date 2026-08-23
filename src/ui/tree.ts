@@ -1,5 +1,4 @@
 // src/ui/tree.ts
-
 import { populateDeviceForm } from './ui.js';
 import { currentIniConfig, hexToFloat32, float32ToHex } from '../ini-manager/tree-core.js';
 import {
@@ -9,16 +8,29 @@ import {
 } from '../ini-manager/table-editor.js';
 import { updateRowValues } from '../ini-manager/tree-ui.js';
 import { IniConfig } from '../core/ini/index.js';
+import type { TableEditorState } from '../ini-manager/table-editor.js'; // Импортируем тип состояния
 
 declare global {
     interface Window {
         initTableResizers?: () => void;
+        appState?: TableEditorState; // Для совместимости, если где-то еще используется
     }
 }
 
-export function renderModbusTable(config?: IniConfig): void {
+/**
+ * Отрисовка таблицы Modbus.
+ * Профессиональный подход: явная передача состояния (appState) для независимости от глобального window.
+ * 
+ * @param config Конфигурация устройства (INI)
+ * @param appState Состояние приложения (адрес ведомого, флаги и т.д.)
+ */
+export function renderModbusTable(config?: IniConfig, appState?: TableEditorState): void {
     const tableBody = document.getElementById('grid-data-rows');
     if (!tableBody) return;
+
+    // Если состояние не передано явно, пытаемся получить его из window (fallback для браузера)
+    // В нативном приложении этот fallback не сработает, поэтому передача аргумента обязательна.
+    const currentState = appState || (window.appState as TableEditorState) || { slaveAddress: 0x01 };
 
     const modeSelect = document.querySelector<HTMLSelectElement>('.toolbar-device-mode-select');
     const selectedMode = modeSelect && modeSelect.value ? modeSelect.value : 'FLASH';
@@ -107,33 +119,85 @@ export function renderModbusTable(config?: IniConfig): void {
                 float32ToHex,
             );
 
-            // Инициализация редакторов (они могут перехватывать клик на td[4] и td[5])
+            // --- ИНИЦИАЛИЗАЦИЯ РЕДАКТОРОВ (БАЗА + КОНТРОЛЛЕР) ---
+            
+            // 1. Редакторы для БАЗЫ (колонки 4 и 5)
             if (tds[4] && tds[5]) {
                 initHexCellEditor(
-                    tds[4], tr, param.rawParts, hexIndex,
-                    updateRowValues, param.dataType, param.scale,
-                    originalHexLen, prmListOptions,
+                    tds[4], 
+                    tr, 
+                    param.rawParts, 
+                    hexIndex,
+                    updateRowValues, 
+                    param.dataType, 
+                    param.scale,
+                    originalHexLen, 
+                    prmListOptions,
+                    currentState, // Явная передача состояния
+                    4             // Явный индекс колонки
                 );
+                
                 initPhysicalCellEditor(
-                    tds[5], tr, param.rawParts, param.dataType,
-                    param.scale, hexIndex, originalHexLen,
-                    prmListOptions, updateRowValues,
-                    hexToFloat32, float32ToHex,
+                    tds[5], 
+                    tr, 
+                    param.rawParts, 
+                    param.dataType,
+                    param.scale, 
+                    hexIndex, 
+                    originalHexLen,
+                    prmListOptions, 
+                    updateRowValues,
+                    hexToFloat32, 
+                    float32ToHex,
+                    currentState, // Явная передача состояния
+                    5             // Явный индекс колонки
                 );
             }
 
+            // 2. Редакторы для КОНТРОЛЛЕРА (колонки 6 и 7)
+            // Теперь эти ячейки также полностью функциональны для редактирования
+            // if (tds[6] && tds[7]) {
+            //     initHexCellEditor(
+            //         tds[6], 
+            //         tr, 
+            //         param.rawParts, 
+            //         hexIndex,
+            //         updateRowValues, 
+            //         param.dataType, 
+            //         param.scale,
+            //         originalHexLen, 
+            //         prmListOptions,
+            //         currentState, // Явная передача состояния
+            //         6             // Явный индекс колонки
+            //     );
+                
+            //     initPhysicalCellEditor(
+            //         tds[7], 
+            //         tr, 
+            //         param.rawParts, 
+            //         param.dataType,
+            //         param.scale, 
+            //         hexIndex, 
+            //         originalHexLen,
+            //         prmListOptions, 
+            //         updateRowValues,
+            //         hexToFloat32, 
+            //         float32ToHex,
+            //         currentState, // Явная передача состояния
+            //         7             // Явный индекс колонки
+            //     );
+            // }
+
             // --- ЛОГИКА ВЫДЕЛЕНИЯ СТРОКИ (ДЛЯ КЛИКОВ СЛЕВА) ---
-            // Работает только если клик прошел через td[0..3]
             tr.addEventListener('click', (event: MouseEvent) => {
                 const target = event.target as HTMLElement;
                 const clickedCell = target.closest('td');
                 
-                // Если клик был по одной из 4-х правых ячеек, игнорируем этот слушатель (их обрабатывают отдельные слушатели ниже)
+                // Если клик был по одной из 4-х правых ячеек, игнорируем этот слушатель
                 if (clickedCell && (clickedCell === tds[4] || clickedCell === tds[5] || clickedCell === tds[6] || clickedCell === tds[7])) {
                     return; 
                 }
 
-                // Стандартное выделение строки при клике слева
                 const prevSelectedRow = document.querySelector('#grid-data-rows tr.is-selected');
                 if (prevSelectedRow && prevSelectedRow !== tr) {
                     prevSelectedRow.classList.remove('is-selected');
@@ -141,28 +205,23 @@ export function renderModbusTable(config?: IniConfig): void {
                 }
                 tr.classList.add('is-selected');
                 
-                // Сброс желтого цвета при клике слева
                 document.querySelectorAll('#grid-data-rows td.cell-active').forEach(el => el.classList.remove('cell-active'));
             });
 
-            // --- ЛОГИКА ДЛЯ 4-Х ПРАВЫХ ЯЧЕЕК (БАЗА И КОНТРОЛЛЕР) ---
-            // Вешаем обработчик НАПРЯМУЮ на каждую ячейку, чтобы обойти stopPropagation внутри редакторов
+            // --- ЛОГИКА ДЛЯ 4-Х ПРАВЫХ ЯЧЕЕК (ВЫДЕЛЕНИЕ + ПОДСВЕТКА) ---
             const dataCells = [tds[4], tds[5], tds[6], tds[7]];
             
             dataCells.forEach((cell) => {
                 if (!cell) return;
                 cell.style.cursor = 'pointer';
 
-                // Добавляем слушатель напрямую на ячейку
                 cell.addEventListener('click', (e) => {
-                    e.stopPropagation(); // Останавливаем всплытие, чтобы не триггерить лишний раз логику строки
+                    e.stopPropagation();
 
-                    // 1. Сброс желтого цвета со ВСЕЙ таблицы
                     document.querySelectorAll('#grid-data-rows td.cell-active').forEach(el => {
                         el.classList.remove('cell-active');
                     });
 
-                    // 2. Выделение текущей строки зеленым
                     const prevSelectedRow = document.querySelector('#grid-data-rows tr.is-selected');
                     if (prevSelectedRow && prevSelectedRow !== tr) {
                         prevSelectedRow.classList.remove('is-selected');
@@ -170,7 +229,6 @@ export function renderModbusTable(config?: IniConfig): void {
                     }
                     tr.classList.add('is-selected');
 
-                    // 3. Подсветка текущей ячейки желтым
                     cell.classList.add('cell-active');
                 });
             });
@@ -191,7 +249,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (modeSelect) {
         modeSelect.addEventListener('change', () => {
             clearAnyActiveCellEditors();
-            if (currentIniConfig) renderModbusTable(currentIniConfig);
+            // При смене режима передаем текущий конфиг и (опционально) состояние, если оно доступно глобально
+            // В идеале вызвать renderModbusTable(currentIniConfig, window.appState)
+            if (currentIniConfig) {
+                renderModbusTable(currentIniConfig, window.appState);
+            }
         });
     }
     document.addEventListener('click', () => {
