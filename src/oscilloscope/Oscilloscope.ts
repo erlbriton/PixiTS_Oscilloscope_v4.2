@@ -34,6 +34,7 @@ import {
 import { bindEvents, bindTimeZoomWheel, updateTimeScaleReadout, type BindingsContext } from "./scope/OscilloscopeBindings";
 import type { AppState } from "../core/app-state.js";
 import { Application } from 'pixi.js';
+import { SearchPanel } from './ui/SearchPanel';
 
 
 export class Oscilloscope {/////////////////////////////\
@@ -49,6 +50,7 @@ export class Oscilloscope {/////////////////////////////\
   private iniPanel!: IniPanel;
   private bottomPanels!: BottomPanels;
   private cursorsFooter!: CursorsFooter;
+  private searchPanel!: SearchPanel;
   private connectionModal!: ConnectionModal;
   private timelineScrollbar!: TimelineScrollbar;
   private connectionLost: boolean = false;
@@ -237,6 +239,22 @@ public setAppState(state: AppState): void {
     this.isRunning = true;
     this.lastFrameTime = performance.now();
     this.animFrameId = requestAnimationFrame((t) => this.loop(t));
+
+        this.searchPanel = new SearchPanel();
+    this.searchPanel.onSelect = (item) => {
+      document.querySelectorAll(".channel-row.selected").forEach((el) => {
+        el.classList.remove("selected");
+      });
+      const row = this.table.getRow(item.id);
+      if (row) {
+        const rowElement = row.getElement();
+        rowElement.classList.add("selected");
+        rowElement.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    };
+    window.addEventListener("oscilloscope-search", () => {
+      this.searchPanel.open(this.allChannels);
+    });
   }
   
   private getGraphColumnMetrics(): { left: number; width: number } {

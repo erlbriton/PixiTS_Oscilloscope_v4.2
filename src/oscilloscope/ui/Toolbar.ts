@@ -21,6 +21,7 @@ export class Toolbar {
   private sweepBtn!: HTMLButtonElement;
   private pollingBtn!: HTMLButtonElement;
   private propertiesBtn!: HTMLButtonElement;
+  private searchBtn!: HTMLButtonElement;
   private exportBtn!: HTMLButtonElement;
   private windowSizeBtn!: HTMLButtonElement;
   private statusBadge!: HTMLSpanElement;
@@ -457,6 +458,16 @@ export class Toolbar {
       "Экспорт CSV",
     );
 
+    // === Кнопка "Поиск" ===
+    this.searchBtn = ToolbarComponents.createButton(
+      "🔍",
+      "",
+      () => {
+        window.dispatchEvent(new CustomEvent("oscilloscope-search"));
+      },
+      "Поиск параметра",
+    );
+
     const groupLeft = document.createElement("div");
     groupLeft.className = "toolbar-group";
 
@@ -475,6 +486,7 @@ export class Toolbar {
       this.recGroup,
       this.sweepBtn,
       this.exportBtn,
+      this.searchBtn,
       title,
     );
 
