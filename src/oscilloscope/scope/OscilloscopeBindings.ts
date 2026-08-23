@@ -286,8 +286,8 @@ export function bindTimeZoomWheel(ctx: BindingsContext, rowsContainer: HTMLEleme
     "wheel",
     (e: WheelEvent) => {
       if (!ctx.settings.timeZoomEnabled) return;
-      const target = e.target as HTMLElement;
-      if (!target.closest(".col-graph")) return;
+      // Зум работает на всём canvas, а не только над .col-graph
+      // (canvas теперь лежит поверх rowsContainer и покрывает всю область графиков)
       e.preventDefault();
       e.stopPropagation();
       const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
