@@ -63,6 +63,9 @@ export class Oscilloscope {/////////////////////////////\
   private availableIniFiles: IniFileItem[] = [];
   private currentIniId: string | null = null;
   private animFrameId: number | null = null;
+  private lastRenderTime: number = 0;
+  private lastRenderSignature: string = "";
+  private static readonly RENDER_INTERVAL_MS: number = 50; // ~30 FPS
   private targetRoot: HTMLElement | null = null;
   private isDestroyed: boolean = false;
   private lastLoadedIniContent: string | null = null;
@@ -549,25 +552,50 @@ public setAppState(state: AppState): void {
     if (this.settings.isPolling && this.settings.isLive()) {
       this.timelineScrollbar.setPosition(range.max);
     }
-    
+
     try {
-      this.table.updateValues();
       this.toolbar.updateRecordTimer();
-      this.visibleChannels.forEach((channel) => {
-        const row = this.table.getRow(channel.id);
-        if (row && !row.getIsVisible()) return;
-        const view = this.pixiViews.get(channel.id);
-        if (view) {
-          try {
-            this.renderer.renderChannelGraph(channel, view);
-          } catch (renderErr) {
-            console.error(`Error rendering channel ${channel.id}:`, renderErr);
-          }
-        }
-      });
+
+      // Dirty-flag: есть ли смысл перерисовывать в этом тике
+      const signature =
+        `${range.max}|${this.settings.getCurrentViewTime()}|` +
+        `${this.settings.timeScale}|${this.settings.amplitudeMarkerTime}|` +
+        `${this.settings.intervalMarker1Time}|${this.settings.intervalMarker2Time}`;
+      const dirty = signature !== this.lastRenderSignature;
+      const throttled = now - this.lastRenderTime >= Oscilloscope.RENDER_INTERVAL_MS;
+
+      if (dirty && throttled) {
+        this.lastRenderSignature = signature;
+        this.lastRenderTime = now;
+        this.table.updateValues();
+        this.renderVisibleGraphs();
+      }
     } catch (err) {
       console.error("Oscilloscope loop error:", err);
     }
     this.animFrameId = requestAnimationFrame((t) => this.loop(t));
+  }
+
+  /** Рендерит только те каналы, чьи строки сейчас видимы в области прокрутки. */
+  private renderVisibleGraphs(): void {
+    const rowsRect = this.rowsContainer.getBoundingClientRect();
+    const viewportTop = rowsRect.top - 60;
+    const viewportBottom = rowsRect.bottom + 60;
+
+    for (const channel of this.visibleChannels) {
+      const row = this.table.getRow(channel.id);
+      if (!row || !row.getIsVisible()) continue;
+
+      const rowRect = row.getElement().getBoundingClientRect();
+      if (rowRect.bottom < viewportTop || rowRect.top > viewportBottom) continue;
+
+      const view = this.pixiViews.get(channel.id);
+      if (!view) continue;
+      try {
+        this.renderer.renderChannelGraph(channel, view);
+      } catch (renderErr) {
+        console.error(`Error rendering channel ${channel.id}:`, renderErr);
+      }
+    }
   }
 }

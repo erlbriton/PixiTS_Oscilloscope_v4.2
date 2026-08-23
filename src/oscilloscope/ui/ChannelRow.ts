@@ -13,12 +13,13 @@ export class ChannelRow {
     private readonly graphElement: HTMLDivElement;
     private readonly colorIndicator: HTMLSpanElement;
     private isVisible: boolean = true;
+    private lastHex: string = "";
+    private lastValue: string = "";
 
     public onChannelUpdated?: (channel: Channel) => void;
     public onDelete?: (channel: Channel) => void;
     public onSelect?: (channel: Channel) => void;
     public onToggleBit?: (channel: Channel) => void;
-    
 
     constructor(public readonly channel: Channel) {
         this.element = document.createElement('div');
@@ -43,7 +44,7 @@ export class ChannelRow {
 
         // 2. Колонка HEX значение (hex)
         this.hexElement = document.createElement('div');
-        this.hexElement.className = 'col-description'; 
+        this.hexElement.className = 'col-description';
         this.hexElement.textContent = channel.hexValue;
         this.hexElement.style.fontFamily = 'monospace';
         this.hexElement.style.color = '#38bdf8';
@@ -62,33 +63,33 @@ export class ChannelRow {
         this.graphElement.className = 'col-graph';
 
         this.element.append(
-          this.nameElement,
-          this.hexElement,
-          this.valueElement,
-          this.unitElement,
-          this.graphElement,
+            this.nameElement,
+            this.hexElement,
+            this.valueElement,
+            this.unitElement,
+            this.graphElement,
         );
 
         this.updateValue();
 
         this.element.addEventListener("click", () => {
-          const container = this.element.parentElement;
-          if (container) {
-            container
-              .querySelectorAll(".channel-row.selected")
-              .forEach((el) => {
-                if (el !== this.element) el.classList.remove("selected");
-                this.element.addEventListener("dblclick", () => {
-                  if (this.channel.isBit && this.onToggleBit) {
-                    this.onToggleBit(this.channel);
-                  }
-                });
-              });
-          }
-          this.element.classList.add("selected");
-          if (this.onSelect) {
-            this.onSelect(this.channel);
-          }
+            const container = this.element.parentElement;
+            if (container) {
+                container
+                    .querySelectorAll(".channel-row.selected")
+                    .forEach((el) => {
+                        if (el !== this.element) el.classList.remove("selected");
+                        this.element.addEventListener("dblclick", () => {
+                            if (this.channel.isBit && this.onToggleBit) {
+                                this.onToggleBit(this.channel);
+                            }
+                        });
+                    });
+            }
+            this.element.classList.add("selected");
+            if (this.onSelect) {
+                this.onSelect(this.channel);
+            }
         });
 
         this.element.addEventListener('contextmenu', (e) => {
@@ -101,7 +102,7 @@ export class ChannelRow {
                     if (el !== this.element) el.classList.remove('selected');
                 });
             }
-                       this.element.classList.add('selected');
+            this.element.classList.add('selected');
             if (this.onSelect) {
                 this.onSelect(this.channel);
             }
@@ -119,7 +120,7 @@ export class ChannelRow {
                 },
                 {
                     label: 'Свойства',
-                    icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+                    icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
                     onClick: () => {
                         this.openProperties();
                     }
@@ -185,14 +186,12 @@ export class ChannelRow {
     public updateValue(): void {
         if (!this.isVisible) return;
 
-        // Специальный случай для IP-адресов (TIPAddr)
         if (this.channel.dataType.toUpperCase() === 'TIPADDR') {
             const num = Math.floor(this.channel.rawDecValue) >>> 0;
-            // HEX: x00000000 (8 символов, как 4-байтный uint32)
-            this.hexElement.textContent = 'x' + num.toString(16).toUpperCase().padStart(8, '0');
-            // Физическое значение: 192.168.x.x
+            const hex = 'x' + num.toString(16).toUpperCase().padStart(8, '0');
             const ip = `${(num >>> 24) & 0xFF}.${(num >>> 16) & 0xFF}.${(num >>> 8) & 0xFF}.${num & 0xFF}`;
-            this.valueElement.textContent = ip;
+            this.applyHexText(hex);
+            this.applyValueText(ip);
             return;
         }
 
@@ -202,17 +201,34 @@ export class ChannelRow {
             const val = this.channel.scaledValue;
             const displayVal = typeof val === 'number' ? val.toString() : String(val);
             const textColor = this.getContrastColor(this.channel.color);
-            this.hexElement.innerHTML = `<span class="discrete-value-square" style="background-color: ${this.channel.color}; color: ${textColor};">${displayVal}</span>`;
-            this.valueElement.textContent = '';
+            this.applyHexHtml(`<span class="discrete-value-square" style="background-color: ${this.channel.color}; color: ${textColor};">${displayVal}</span>`);
+            this.applyValueText('');
         } else {
-            this.hexElement.textContent = this.channel.hexValue;
             const val = this.channel.scaledValue;
-            if (typeof val === 'number') {
-                this.valueElement.textContent = Number.isInteger(val) ? val.toString() : val.toFixed(3);
-            } else {
-                this.valueElement.textContent = String(val);
-            }
+            const valueText = typeof val === 'number'
+                ? (Number.isInteger(val) ? val.toString() : val.toFixed(3))
+                : String(val);
+            this.applyHexText(this.channel.hexValue);
+            this.applyValueText(valueText);
         }
+    }
+
+    private applyHexText(text: string): void {
+        if (text === this.lastHex) return;
+        this.lastHex = text;
+        this.hexElement.textContent = text;
+    }
+
+    private applyHexHtml(html: string): void {
+        if (html === this.lastHex) return;
+        this.lastHex = html;
+        this.hexElement.innerHTML = html;
+    }
+
+    private applyValueText(text: string): void {
+        if (text === this.lastValue) return;
+        this.lastValue = text;
+        this.valueElement.textContent = text;
     }
 
     public getGraphContainer(): HTMLElement {
