@@ -57,13 +57,40 @@ export class WaveformRenderer {
             return Math.max(0, Math.min(height, y));
         };
 
-        const startX = getX(samples[0].time);
-        const startY = getY(samples[0].value);
+        // Децимация: не более ~2 точек на пиксель, пики сохраняются (min/max)
+        const maxPoints = Math.max(64, Math.floor(width) * 2);
+        let draw: Sample[] = samples;
+        if (samples.length > maxPoints) {
+            const bucketCount = Math.max(1, Math.floor(maxPoints / 2));
+            const bucketSize = samples.length / bucketCount;
+            const decimated: Sample[] = [];
+            for (let b = 0; b < bucketCount; b++) {
+                const start = Math.floor(b * bucketSize);
+                const end = Math.min(samples.length, Math.floor((b + 1) * bucketSize) + 1);
+                let minS = samples[start];
+                let maxS = samples[start];
+                for (let i = start; i < end; i++) {
+                    if (samples[i].value < minS.value) minS = samples[i];
+                    if (samples[i].value > maxS.value) maxS = samples[i];
+                }
+                if (minS.time <= maxS.time) {
+                    decimated.push(minS);
+                    if (maxS !== minS) decimated.push(maxS);
+                } else {
+                    decimated.push(maxS);
+                    if (minS !== maxS) decimated.push(minS);
+                }
+            }
+            draw = decimated;
+        }
+
+        const startX = getX(draw[0].time);
+        const startY = getY(draw[0].value);
         g.moveTo(Math.max(0, Math.min(width, startX)), startY);
 
-        for (let i = 1; i < samples.length; i++) {
-            const x = getX(samples[i].time);
-            const y = getY(samples[i].value);
+        for (let i = 1; i < draw.length; i++) {
+            const x = getX(draw[i].time);
+            const y = getY(draw[i].value);
             g.lineTo(x, y);
         }
 
