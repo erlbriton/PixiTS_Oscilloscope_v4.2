@@ -66,6 +66,9 @@ export class Oscilloscope {/////////////////////////////\
   private lastRenderTime: number = 0;
   private lastRenderSignature: string = "";
   private static readonly RENDER_INTERVAL_MS: number = 20;//  Частота опроса
+  private drawCallCount: number = 0;
+  private lastReportedHz: number = 0;
+  private statsTimerId: number | null = null;
   private targetRoot: HTMLElement | null = null;
   private isDestroyed: boolean = false;
   private lastLoadedIniContent: string | null = null;
@@ -177,6 +180,12 @@ public setAppState(state: AppState): void {
     this.iniPanel = new IniPanel(layoutElements.iniPanelContainer);
     this.bottomPanels = new BottomPanels(layoutElements.bottomPanelsContainer);
     this.cursorsFooter = new CursorsFooter(layoutElements.footerContainer);
+    this.statsTimerId = window.setInterval(() => {
+      const hz = this.drawCallCount / 5;
+      this.lastReportedHz = hz;
+      this.drawCallCount = 0;
+      this.cursorsFooter?.setStats(this.allChannels.length, hz);
+    }, 5000);
     this.rowsContainer = layoutElements.rowsContainer;
     this.propertiesModal = new PropertiesModal();
     this.connectionModal = new ConnectionModal();
@@ -279,6 +288,7 @@ public setAppState(state: AppState): void {
 
   public draw(data: Record<string, number>): void {
     if (this.isDestroyed || !data) return;
+    this.drawCallCount++;
     const now = Date.now();
     this.allChannels.forEach((ch) => {
       if (data[ch.id] !== undefined) {
@@ -357,6 +367,10 @@ public setAppState(state: AppState): void {
     this.isDestroyed = true;
     this.isRunning = false;
     this.connectionModal?.close();
+    if (this.statsTimerId !== null) {
+      clearInterval(this.statsTimerId);
+      this.statsTimerId = null;
+    }
     if (this.animFrameId !== null) {
       cancelAnimationFrame(this.animFrameId);
       this.animFrameId = null;
@@ -427,6 +441,7 @@ public setAppState(state: AppState): void {
     this.updateGraphColumnOffset();
     this.syncCanvasLayout();
     syncViewPositions(this.getRenderingContext());
+    this.cursorsFooter?.setStats(this.allChannels.length, this.lastReportedHz);
     console.log(`[Oscilloscope] Switch complete.`);
   }
 

@@ -17,6 +17,7 @@ export class CursorsFooter {
     private readonly curX2: HTMLElement;
     private readonly curDt: HTMLElement;
     private readonly curFreq: HTMLElement;
+    private readonly statsInfo: HTMLElement;
     private amplitudeTimeText: string | null = null; // Храним отформатированное время
 
     /**
@@ -46,6 +47,31 @@ export class CursorsFooter {
         this.curX2 = curX2;
         this.curDt = curDt;
         this.curFreq = curFreq;
+
+        // Статистика (параметры · частота) — в первую видимую ячейку подвала
+        const readCell = document.getElementById('read-cell-1');
+        if (readCell) {
+            readCell.style.color = '#4ade80';
+            readCell.style.fontWeight = 'bold';
+            readCell.textContent = '—';
+            this.statsInfo = readCell;
+        } else {
+            const statsInfo = document.createElement('span');
+            statsInfo.id = 'stats-info';
+            statsInfo.style.color = '#4ade80';
+            statsInfo.style.fontWeight = 'bold';
+            statsInfo.style.marginRight = '16px';
+            statsInfo.textContent = '—';
+            curX1.parentElement?.insertBefore(statsInfo, curX1);
+            this.statsInfo = statsInfo;
+        }
+    }
+
+    /**
+     * Обновляет строку статистики: количество параметров · частота опроса.
+     */
+    public setStats(paramsCount: number, hz: number): void {
+        this.statsInfo.textContent = `${paramsCount} · ${hz.toFixed(1)} Гц`;
     }
 
     /**
@@ -55,13 +81,13 @@ export class CursorsFooter {
      * @param x2Pct Позиция курсора X2 в процентах (0-100).
      * @param timeWindowMs Длительность видимого окна в миллисекундах (для вычисления dt и freq).
      */
-      public update(x1Pct: number, x2Pct: number, timeWindowMs: number): void {
+    public update(x1Pct: number, x2Pct: number, timeWindowMs: number): void {
         const dtMs = (Math.abs(x2Pct - x1Pct) / 100) * timeWindowMs;
         const freqHz = dtMs > 0 ? (1000 / dtMs).toFixed(2) : '0';
 
         this.curX1.textContent = `${x1Pct.toFixed(1)}%`;
         this.curX2.textContent = `${x2Pct.toFixed(1)}%`;
-        
+
         // Если активно время амплитуды, сохраняем его в 3-й ячейке, иначе показываем dt
         if (this.amplitudeTimeText !== null) {
             this.curDt.textContent = this.amplitudeTimeText;
@@ -72,7 +98,7 @@ export class CursorsFooter {
             this.curDt.style.color = '';
             this.curDt.style.fontWeight = '';
         }
-        
+
         this.curFreq.textContent = `${freqHz} Hz`;
     }
 
@@ -80,7 +106,7 @@ export class CursorsFooter {
      * Отображает абсолютное время маркера измерения во 2-й ячейке.
      * Если timeMs === null, ячейка очищается (или возвращается в дефолтное состояние).
      */
-           public setAmplitudeTime(timeMs: number | null): void {
+    public setAmplitudeTime(timeMs: number | null): void {
         if (timeMs !== null) {
             const date = new Date(timeMs);
             const day = String(date.getDate()).padStart(2, '0');
@@ -89,24 +115,24 @@ export class CursorsFooter {
             const hours = String(date.getHours()).padStart(2, '0');
             const minutes = String(date.getMinutes()).padStart(2, '0');
             const seconds = String(date.getSeconds()).padStart(2, '0');
-            
+
             // Формат: 15.08.26 11:25:38
             this.amplitudeTimeText = `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`;
-            
+
             this.curDt.textContent = this.amplitudeTimeText;
             this.curDt.style.color = '#00d2ff';
             this.curDt.style.fontWeight = 'bold';
-            
+
             this.curX2.textContent = '0.0%';
             this.curX2.style.color = '';
             this.curX2.style.fontWeight = '';
         } else {
             this.amplitudeTimeText = null;
-            
+
             this.curDt.textContent = '0.0 ms';
             this.curDt.style.color = '';
             this.curDt.style.fontWeight = '';
-            
+
             this.curX2.textContent = '0.0%';
             this.curX2.style.color = '';
             this.curX2.style.fontWeight = '';
