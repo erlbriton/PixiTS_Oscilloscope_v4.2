@@ -56,10 +56,10 @@ export function renderModbusTable(config?: IniConfig, appState?: TableEditorStat
                 }
             }
             
-            // Для TByte: извлекаем модификатор байта (L/H) из регистра и сохраняем в data-sub.
+            // Для TByte и TPrmList: извлекаем модификатор байта (L/H) из регистра и сохраняем в data-sub.
             // Это гарантирует, что при повторном редактировании мы его не потеряем,
             // даже если device_updater обновит parts.
-            if (param.dataType && param.dataType.toUpperCase() === 'TBYTE') {
+            if (param.dataType && (param.dataType.toUpperCase() === 'TBYTE' || param.dataType.toUpperCase() === 'TPRMLIST')) {
                 let byteMod = '';
                 for (const p of param.rawParts) {
                     const m = /^r[0-9A-Fa-f]+\.([LHlh])$/.exec((p || '').trim());

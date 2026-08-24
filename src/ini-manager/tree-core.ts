@@ -132,6 +132,7 @@ const CONTROLLER_EDITABLE_TYPES: ReadonlySet<string> = new Set([
     'TDWORD', 'TLONG', 'TINT32',
     'TINTEGER', // Знаковый 16-битный
     'TBYTE',    // 8-битный, байт внутри 16-битного слова
+    'TPRMLIST', // 8-битный, байт из выпадающего списка
 ]);
 
 /** 16-битные знаковые типы — используют диапазон -32768...32767 вместо 0...65535 */
@@ -163,8 +164,8 @@ export function planControllerWrite(
 
     const safeScale = (!isNaN(scale) && scale !== 0) ? scale : 1.0;
 
-    // --- TBYTE: 8 бит, байт внутри 16-битного слова ---
-    if (dataType === 'TBYTE') {
+    // --- TBYTE / TPRMLIST: 8 бит, байт внутри 16-битного слова ---
+    if (dataType === 'TBYTE' || dataType === 'TPRMLIST') {
         const bytePos = bytePosRaw.toUpperCase();
         if (bytePos !== 'L' && bytePos !== 'H') return { ok: false };
 

@@ -231,24 +231,38 @@ async function processControllerWrite(
         if (!isNaN(parsedScale) && parsedScale !== 0) scale = parsedScale;
     }
 
-    // Для TBYTE: модификатор байта (L/H) берём из data-sub, куда его сохранил tree.ts
+    // Для TBYTE и TPRMLIST: модификатор байта (L/H) берём из data-sub, куда его сохранил tree.ts
     let bytePos = '';
-    if (dataType === 'TBYTE') {
+    if (dataType === 'TBYTE' || dataType === 'TPRMLIST') {
         bytePos = (sub || '').toUpperCase();
     }
 
     // Чистая валидация и построение плана записи (без DOM)
     const plan = planControllerWrite(dataType, editType, newValueStr, scale, sub, bytePos);
 
-    // --- ДИАГНОСТИКА TByte (только лог, без изменения логики) ---
-    if (dataType === 'TBYTE') {
+    // --- ДИАГНОСТИКА TByte и TPrmList (только лог, без изменения логики) ---
+    if (dataType === 'TBYTE' || dataType === 'TPRMLIST') {
         let partsRaw: string[] = [];
         try { partsRaw = JSON.parse(tr.dataset.parts || '[]'); } catch { partsRaw = []; }
-        console.log('[CONTROLLER] TBYTE диагностика:');
+        
+        // Извлекаем опции списка из parts (формат "hex#текст")
+        const prmOptions: Record<string, string> = {};
+        for (const p of partsRaw) {
+            const part = (p || '').trim();
+            if (part.includes('#')) {
+                const [h, t] = part.split('#');
+                if (h && t) {
+                    prmOptions[h.toLowerCase()] = t;
+                }
+            }
+        }
+        
+        console.log(`[CONTROLLER] ${dataType} диагностика:`);
         console.log('  data-reg:', tr.getAttribute('data-reg'));
         console.log('  data-sub:', tr.getAttribute('data-sub'));
         console.log('  data-hex-index:', tr.getAttribute('data-hex-index'));
         console.log('  parts (полный массив):', JSON.stringify(partsRaw));
+        console.log('  prmListOptions:', JSON.stringify(prmOptions));
         console.log('  plan:', JSON.stringify(plan));
     }
     // -------------------------------------------------------------
@@ -886,6 +900,97 @@ export function startInlineEdit(cell: HTMLElement, stateObj: TableEditorState): 
 
     const originalValue = cell.innerText.trim();
 
+    // Для TPrmList: создаём выпадающий список вместо текстового поля
+    const dataType = (tr.getAttribute('data-type') || '').toUpperCase();
+
+    if (dataType === 'TPRMLIST') {
+        // Извлекаем опции из parts (формат "hex#текст")
+        let partsRaw: string[] = [];
+        try { partsRaw = JSON.parse(tr.dataset.parts || '[]'); } catch { partsRaw = []; }
+
+        const prmOptions: { hex: string; text: string }[] = [];
+        for (const p of partsRaw) {
+            const part = (p || '').trim();
+            if (part.includes('#')) {
+                const [h, t] = part.split('#');
+                if (h && t) {
+                    prmOptions.push({ hex: h.toLowerCase(), text: t });
+                }
+            }
+        }
+
+        // Текущее значение
+        const hexIndex = parseInt(tr.getAttribute('data-hex-index') || '-1', 10);
+        const currentHex = (hexIndex >= 0 && hexIndex < partsRaw.length)
+            ? (partsRaw[hexIndex] || '').toLowerCase()
+            : '';
+
+        const select = document.createElement('select');
+        select.className = 'inline-cell-select';
+        select.style.width = '100%';
+
+        for (const opt of prmOptions) {
+            const option = document.createElement('option');
+            option.value = opt.hex;
+            option.textContent = opt.text;
+            if (opt.hex === currentHex) {
+                option.selected = true;
+            }
+            select.appendChild(option);
+        }
+
+        cell.innerHTML = '';
+        cell.appendChild(select);
+        select.focus();
+
+        let isFinished = false;
+
+        const saveSelect = async () => {
+            if (isFinished) return;
+            isFinished = true;
+
+            const selectedHex = select.value; // например, "x06"
+            if (!selectedHex || selectedHex === currentHex) {
+                cell.innerText = originalValue;
+                return;
+            }
+
+            // Отображаем хекс или текст в зависимости от типа ячейки
+            const selectedText = select.options[select.selectedIndex]?.text || selectedHex;
+            cell.innerText = (editType === 'phys') ? selectedText : selectedHex;
+
+            try {
+                // Передаём хекс опции как новое значение
+                const success = await processValueWrite(tr, 'hex', selectedHex, stateObj, colIndex);
+                if (!success) {
+                    cell.innerText = originalValue;
+                    cell.classList.add('write-error');
+                    setTimeout(() => cell.classList.remove('write-error'), 1500);
+                } else {
+                    cell.classList.add('write-success');
+                    setTimeout(() => cell.classList.remove('write-success'), 1000);
+                }
+            } catch (err) {
+                console.error('Error saving TPrmList value:', err);
+                cell.innerText = originalValue;
+            }
+        };
+
+        select.addEventListener('change', () => saveSelect());
+        select.addEventListener('keydown', (e: KeyboardEvent) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                select.blur();
+            } else if (e.key === 'Escape') {
+                isFinished = true;
+                cell.innerText = originalValue;
+            }
+        });
+
+        return; // Выходим, чтобы не создавать input
+    }
+
+    // Для остальных типов: текстовое поле
     const input = document.createElement('input');
     input.type = 'text';
     input.value = originalValue;
