@@ -27,9 +27,9 @@ type UpdateRowValuesFn = (
 ) => void;
 
 export interface TableEditorState {
-  slaveAddress?: number;
-  isPolling?: boolean;
-  currentIniConfig?: IniConfig | null;
+    slaveAddress?: number;
+    isPolling?: boolean;
+    currentIniConfig?: IniConfig | null;
 }
 
 /**
@@ -68,7 +68,7 @@ export function initHexCellEditor(
 ): void {
     cell.setAttribute('data-edit-type', 'hex');
     cell.setAttribute('data-col-index', colIndex.toString());
-    
+
     cell.addEventListener('dblclick', (e: MouseEvent) => {
         e.stopPropagation();
         e.preventDefault();
@@ -254,18 +254,38 @@ async function processControllerWrite(
             `words=[${plan.words.map((w) => '0x' + w.toString(16)).join(', ')}]`
         );
 
-        const writeOk = await writeRegistersFC16(slaveAddr, reg, plan.words);
+        // Шаг 7: приостановка фонового опроса (осциллограф) на время serial-транзакций.
+        // Паттерн как в device_updater.ts: сохранили флаг, опустили, восстановили в finally.
+        const wasPolling = stateObj.isPolling === true;
+        if (wasPolling) {
+            console.log('[CONTROLLER] Фоновый опрос активен — приостанавливаю на время транзакций...');
+            stateObj.isPolling = false;
+            // Даём readLoop время завершить текущую итерацию
+            await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+
+        let writeOk = false;
+        let readWords: number[] | null = null;
+
+        try {
+            writeOk = await writeRegistersFC16(slaveAddr, reg, plan.words);
+
+            if (writeOk) {
+                console.log('[CONTROLLER] Запись FC16 подтверждена устройством.');
+                readWords = await readHoldingRegistersFC03(slaveAddr, reg, plan.words.length);
+            }
+        } finally {
+            // Восстанавливаем опрос при ЛЮБОМ исходе записи
+            if (wasPolling) {
+                console.log('[CONTROLLER] Возобновляю фоновый опрос.');
+                stateObj.isPolling = true;
+            }
+        }
 
         if (!writeOk) {
             console.error('[CONTROLLER] Запись FC16 не удалась (таймаут или исключение).');
             return false;
         }
-
-        console.log('[CONTROLLER] Запись FC16 подтверждена устройством.');
-
-        // Шаг 5: обратное чтение того же регистра по FC 0x03.
-        // Пока только читаем и логируем; сравнение и исходы — в шаге 6.
-        const readWords = await readHoldingRegistersFC03(slaveAddr, reg, plan.words.length);
 
         if (readWords === null) {
             console.error('[CONTROLLER] Обратное чтение FC03 не удалось (таймаут или исключение).');
@@ -395,7 +415,7 @@ async function processValueWrite(
     }
 
     // Для Базы Hex всегда лежит в parts[4], Physical в parts[5]
-    const hexIndexInParts = 4; 
+    const hexIndexInParts = 4;
     const physIndexInParts = 5;
 
     let scale = 1.0;
@@ -405,7 +425,7 @@ async function processValueWrite(
     }
 
     const is32Bit = dataType.includes('FLOAT') || dataType.includes('DWORD') ||
-                    dataType.includes('LONG') || dataType.includes('INT32');
+        dataType.includes('LONG') || dataType.includes('INT32');
 
     let newHexValue: string | null = null;
     let newPhysValue: string | null = null;
@@ -418,7 +438,7 @@ async function processValueWrite(
             alert("Некорректный HEX формат");
             return false;
         }
-        
+
         let parsedVal = parseInt(cleanHex, 16);
         if (isNaN(parsedVal)) return false;
 
@@ -431,9 +451,9 @@ async function processValueWrite(
             const dv = new DataView(buf);
             // Для 32 бит нужно корректно собрать слово, если ввод был полным
             if (is32Bit) {
-                 dv.setUint32(0, parsedVal, false); // Big-endian
-                 const floatVal = dv.getFloat32(0, false);
-                 newPhysValue = (floatVal * scale).toFixed(4);
+                dv.setUint32(0, parsedVal, false); // Big-endian
+                const floatVal = dv.getFloat32(0, false);
+                newPhysValue = (floatVal * scale).toFixed(4);
             } else {
                 // 16 бит
                 let signedVal = parsedVal;
@@ -441,19 +461,19 @@ async function processValueWrite(
                 newPhysValue = (signedVal * scale).toString();
             }
         } else if (dataType === 'TBIT') {
-             // Для бита просто показываем 0 или 1
-             const bitIndex = parseInt(sub, 16);
-             const bitVal = (parsedVal >> (isNaN(bitIndex) ? 0 : bitIndex)) & 1;
-             newPhysValue = bitVal.toString();
+            // Для бита просто показываем 0 или 1
+            const bitIndex = parseInt(sub, 16);
+            const bitVal = (parsedVal >> (isNaN(bitIndex) ? 0 : bitIndex)) & 1;
+            newPhysValue = bitVal.toString();
         } else {
             // Целые числа
             let signedVal = parsedVal;
             if (!is32Bit && signedVal > 32767) signedVal -= 65536; // Int16
             if (is32Bit && parsedVal > 2147483647) signedVal = parsedVal - 4294967296; // Int32
-            
+
             newPhysValue = (signedVal * scale).toString();
         }
-        
+
         parts[physIndexInParts] = newPhysValue || newValueStr; // Fallback
 
     } else {
@@ -476,12 +496,12 @@ async function processValueWrite(
         } else if (dataType === 'TBIT') {
             const bitVal = valNum > 0 ? 1 : 0;
             // Получаем текущее слово из Hex
-            const currentHexStr = parts[hexIndexInParts] && parts[hexIndexInParts].startsWith('x') 
-                ? parts[hexIndexInParts] 
+            const currentHexStr = parts[hexIndexInParts] && parts[hexIndexInParts].startsWith('x')
+                ? parts[hexIndexInParts]
                 : 'x0';
             let currentWord = parseInt(currentHexStr.slice(1), 16) || 0;
             const bitIndex = parseInt(sub, 16);
-            
+
             if (!isNaN(bitIndex)) {
                 if (bitVal === 1) currentWord |= (1 << bitIndex);
                 else currentWord &= ~(1 << bitIndex);
@@ -493,10 +513,10 @@ async function processValueWrite(
             const rawVal = Math.round(valNum / scale);
             let word = rawVal & 0xFFFF;
             if (is32Bit) {
-                 // Для 32 бит нужно сохранить полное значение, но в parts[4] может быть только 16 бит?
-                 // Зависит от структуры parts. Если parts[4] хранит 32-битное hex, то ок.
-                 // Иначе логика сложнее. Пока считаем, что hex в parts[4] вмещает значение.
-                 newHexValue = 'x' + rawVal.toString(16).toUpperCase().padStart(8, '0');
+                // Для 32 бит нужно сохранить полное значение, но в parts[4] может быть только 16 бит?
+                // Зависит от структуры parts. Если parts[4] хранит 32-битное hex, то ок.
+                // Иначе логика сложнее. Пока считаем, что hex в parts[4] вмещает значение.
+                newHexValue = 'x' + rawVal.toString(16).toUpperCase().padStart(8, '0');
             } else {
                 newHexValue = 'x' + word.toString(16).toUpperCase().padStart(4, '0');
             }
@@ -513,7 +533,7 @@ async function processValueWrite(
     const updateCellDisplay = (idx: number, val: string) => {
         if (idx < 0 || idx >= tds.length || !val) return;
         const td = tds[idx];
-        
+
         if (val.startsWith('<div') || val.startsWith('<select')) {
             td.innerHTML = val;
         } else if (val.startsWith('x')) {
@@ -531,7 +551,7 @@ async function processValueWrite(
     // Обновляем обе ячейки (Hex и Physical) новыми значениями из parts
     updateCellDisplay(4, parts[4]);
     updateCellDisplay(5, parts[5]);
-    
+
     // Визуальный эффект успеха
     const activeCell = tds[colIndex];
     if (activeCell) {
@@ -583,7 +603,7 @@ export function startInlineEdit(cell: HTMLElement, stateObj: TableEditorState): 
         try {
             // Передаем colIndex в процесс записи
             const success = await processValueWrite(tr, editType, newValue, stateObj, colIndex);
-            
+
             if (!success) {
                 cell.innerText = originalValue;
                 cell.classList.add('write-error');
@@ -603,9 +623,9 @@ export function startInlineEdit(cell: HTMLElement, stateObj: TableEditorState): 
         if (e.key === 'Enter') {
             e.preventDefault();
             input.blur();
-        } else if (e.key === 'Escape') { 
-            isFinished = true; 
-            cell.innerText = originalValue; 
+        } else if (e.key === 'Escape') {
+            isFinished = true;
+            cell.innerText = originalValue;
         }
     });
 
