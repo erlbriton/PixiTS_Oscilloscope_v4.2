@@ -76,9 +76,28 @@ export function updateRowValues(
     const dataTypeUpper = (rowDataType || '').toUpperCase();
 
     if (dataTypeUpper === 'TBIT') {
-        const bitValue = rowParts[rowParts.length - 1] ? rowParts[rowParts.length - 1].trim() : '0';
-        bPhysical = (bitValue === '1' || bitValue === '0') ? bitValue : '0';
-        bHex = bPhysical;
+        // device_updater пишет в последний элемент parts hexValue вида "x0", "x1" или "x0000", "x0001" (с паддингом).
+        // Извлекаем значение бита (0 или 1) правильно.
+        const bitValueRaw = rowParts[rowParts.length - 1] ? rowParts[rowParts.length - 1].trim() : 'x0';
+        let bitStr = '0';
+        
+        if (bitValueRaw.startsWith('x') || bitValueRaw.startsWith('X')) {
+            const hexPart = bitValueRaw.slice(1);
+            if (hexPart.length > 0) {
+                // Берём последний hex-символ (младшая цифра числа)
+                const lastChar = hexPart[hexPart.length - 1];
+                const bitNum = parseInt(lastChar, 16);
+                if (!isNaN(bitNum)) {
+                    bitStr = (bitNum & 1).toString();
+                }
+            }
+        } else if (bitValueRaw === '1' || bitValueRaw === '0') {
+            // Fallback, если где-то всё же записано просто "0" или "1"
+            bitStr = bitValueRaw;
+        }
+        
+        bPhysical = bitStr;
+        bHex = bitStr;
     } else {
         let rHex = '';
         if (rowHexIndex !== -1) {

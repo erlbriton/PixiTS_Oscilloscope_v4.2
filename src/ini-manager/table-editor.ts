@@ -384,10 +384,156 @@ async function processControllerWrite(
         return true;
     }
 
-    // Для TBIT (kind === 'bit') — отдельная ветка на следующем шаге.
-    console.log(
-        `[CONTROLLER] План для бита: bitIndex=${plan.bitIndex}, bitValue=${plan.bitValue}. Отправка — на следующем шаге.`
-    );
+    // TBIT (kind === 'bit'): схема read-modify-write.
+    // Приостановка фонового опроса на время всех трёх транзакций (чтение, запись, проверка).
+    const wasPolling = stateObj.isPolling === true;
+    if (wasPolling) {
+        console.log('[CONTROLLER] TBIT: Фоновый опрос активен — приостанавливаю на время транзакций...');
+        stateObj.isPolling = false;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+
+    let currentWords: number[] | null = null;
+    let writeOk = false;
+    let readWords: number[] | null = null;
+
+    try {
+        // 1) Предварительное чтение текущего слова по FC03.
+        currentWords = await readHoldingRegistersFC03(slaveAddr, reg, 1);
+
+        if (currentWords === null) {
+            console.error('[CONTROLLER] TBIT: не удалось прочитать текущее слово (таймаут или исключение).');
+            return false;
+        }
+
+        const currentWord = currentWords[0];
+        console.log(
+            `[CONTROLLER] TBIT: reg=0x${reg.toString(16)}, bitIndex=${plan.bitIndex}, ` +
+            `желаемый bitValue=${plan.bitValue}, текущее слово=0x${currentWord.toString(16)}, ` +
+            `текущее значение бита=${(currentWord >> plan.bitIndex) & 1}`
+        );
+
+        // 2) Modify: устанавливаем или сбрасываем ТОЛЬКО нужный бит, остальные не трогаем.
+        const bitMask = 1 << plan.bitIndex;
+        const newWord = plan.bitValue === 1
+            ? (currentWord | bitMask) & 0xFFFF
+            : (currentWord & ~bitMask) & 0xFFFF;
+
+        console.log(
+            `[CONTROLLER] TBIT: записываю слово=0x${newWord.toString(16)} ` +
+            `(было 0x${currentWord.toString(16)}), остальные биты слова без изменений`
+        );
+
+        writeOk = await writeRegistersFC16(slaveAddr, reg, [newWord]);
+
+        if (writeOk) {
+            // 3) Обратное чтение и проверка ТОЛЬКО нужного бита.
+            readWords = await readHoldingRegistersFC03(slaveAddr, reg, 1);
+        }
+    } finally {
+        // Восстанавливаем опрос при ЛЮБОМ исходе
+        if (wasPolling) {
+            console.log('[CONTROLLER] TBIT: Возобновляю фоновый опрос.');
+            stateObj.isPolling = true;
+        }
+    }
+
+    if (!writeOk) {
+        console.error('[CONTROLLER] TBIT: запись слова по FC16 не удалась (таймаут или исключение).');
+        showIdModal('Значение не записалось');
+        return false;
+    }
+
+    if (readWords === null) {
+        console.error('[CONTROLLER] TBIT: обратное чтение по FC03 не удалось (таймаут или исключение).');
+        showIdModal('Значение не записалось');
+        return false;
+    }
+
+    const readBit = (readWords[0] >> plan.bitIndex) & 1;
+
+    if (readBit !== plan.bitValue) {
+        console.error(
+            `[CONTROLLER] TBIT: НЕСОВПАДЕНИЕ: бит ${plan.bitIndex} после записи = ${readBit}, ` +
+            `ожидалось ${plan.bitValue} (прочитано слово=0x${readWords[0].toString(16)})`
+        );
+        showIdModal('Значение не записалось');
+        return false;
+    }
+
+    console.log('[CONTROLLER] TBIT: бит записан и проверен.');
+
+    // Обновление UI ячеек 6 и 7 + пересчёт row-mismatch.
+    const tds = tr.querySelectorAll('td');
+    const hexIndex = parseInt(tr.getAttribute('data-hex-index') || '-1', 10);
+
+    const updateCellDisplay = (idx: number, val: string) => {
+        if (idx < 0 || idx >= tds.length || !val) return;
+        const td = tds[idx];
+        if (val.startsWith('<div') || val.startsWith('<select')) {
+            td.innerHTML = val;
+        } else if (val.startsWith('x')) {
+            td.textContent = val;
+        } else {
+            if (!td.innerHTML.includes('prm-val-display')) {
+                td.innerHTML = `<div class="prm-val-display">${val}</div>`;
+            } else {
+                const display = td.querySelector('.prm-val-display');
+                if (display) display.textContent = val;
+            }
+        }
+    };
+
+    // Для TBIT и в hex, и в physical показывается значение бита (0/1), а не полное слово.
+    // parts[hexIndex] для TBIT — это последний элемент, туда кладём бит как hex.
+    const bitStr = plan.newPhys; // '0' или '1'
+    const bitHex = 'x' + bitStr.padStart(4, '0');
+
+    if (hexIndex >= 0 && hexIndex < parts.length) {
+        parts[hexIndex] = bitHex;
+    }
+    if (parts.length > 0) {
+        parts[parts.length - 1] = bitHex;
+    }
+
+    // Ячейка 6 (hex): показываем бит напрямую (как updateRowValues: rCellHex.textContent = bHex)
+    if (tds[6]) {
+        tds[6].textContent = bitStr;
+    }
+    // Ячейка 7 (physical): показываем бит в обёртке prm-val-display
+    updateCellDisplay(7, bitStr);
+
+    tr.dataset.parts = JSON.stringify(parts);
+
+    // Пересчитываем класс row-mismatch (красная подсветка расхождения с Базой)
+    const parseHexValue = (hexStr: string): number | null => {
+        if (!hexStr) return null;
+        const clean = hexStr.trim().toUpperCase().replace(/^X/, '');
+        if (!clean || !/^[0-9A-F]+$/.test(clean)) return null;
+        const n = parseInt(clean, 16);
+        return isNaN(n) ? null : n;
+    };
+
+    const hexBaseRaw = tds[4] ? (tds[4].textContent || '').trim() : '';
+    const hexLiveRaw = tds[6] ? (tds[6].textContent || '').trim() : '';
+    const valBase = parseHexValue(hexBaseRaw);
+    const valLive = parseHexValue(hexLiveRaw);
+    const mismatch =
+        hexBaseRaw !== '—' &&
+        hexLiveRaw !== '—' &&
+        valBase !== null &&
+        valLive !== null &&
+        valBase !== valLive;
+    tr.classList.toggle('row-mismatch', mismatch);
+
+    // Зелёная вспышка успеха на отредактированной ячейке
+    const activeCell = tds[colIndex];
+    if (activeCell) {
+        activeCell.classList.add('write-success');
+        setTimeout(() => activeCell.classList.remove('write-success'), 1000);
+    }
+
+    console.log('[CONTROLLER] TBIT: Значение успешно записано, подтверждено и синхронизировано.');
     return true;
 }
 
