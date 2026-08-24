@@ -122,6 +122,7 @@ export function addDeviceToRegistry(iniConfig: IniConfig): boolean {
 export type ControllerWritePlan =
     | { ok: true; kind: 'words'; words: number[]; newHex: string; newPhys: string }
     | { ok: true; kind: 'bit'; bitIndex: number; bitValue: number; newPhys: string }
+    | { ok: true; kind: 'byte'; byteValue: number; bytePos: 'L' | 'H'; newPhys: string }
     | { ok: false };
 
 /** Белый список типов, разрешённых к редактированию в Контроллере */
@@ -129,11 +130,19 @@ const CONTROLLER_EDITABLE_TYPES: ReadonlySet<string> = new Set([
     'TWORD', 'TINT', 'TBIT',
     'TFLOAT', 'TFLOAT32', 'FLOAT',
     'TDWORD', 'TLONG', 'TINT32',
+    'TINTEGER', // Знаковый 16-битный
+    'TBYTE',    // 8-битный, байт внутри 16-битного слова
+]);
+
+/** 16-битные знаковые типы — используют диапазон -32768...32767 вместо 0...65535 */
+const SIGNED_16BIT_TYPES: ReadonlySet<string> = new Set([
+    'TINTEGER',
 ]);
 
 /**
  * Проверяет введённое значение и строит план записи.
  * Не выполняет никаких операций с DOM или портом.
+ * bytePosRaw — модификатор байта ('L'/'H') для TBYTE, извлекается вызывающим кодом.
  */
 export function planControllerWrite(
     dataTypeRaw: string,
@@ -141,6 +150,7 @@ export function planControllerWrite(
     valueStr: string,
     scale: number,
     subRaw: string,
+    bytePosRaw: string = '',
 ): ControllerWritePlan {
     const dataType = dataTypeRaw.toUpperCase();
     if (!CONTROLLER_EDITABLE_TYPES.has(dataType)) return { ok: false };
@@ -149,8 +159,42 @@ export function planControllerWrite(
         dataType.includes('LONG') || dataType.includes('INT32');
     const isFloat = dataType.includes('FLOAT');
     const isBit = dataType === 'TBIT';
+    const isSigned16 = SIGNED_16BIT_TYPES.has(dataType);
 
     const safeScale = (!isNaN(scale) && scale !== 0) ? scale : 1.0;
+
+    // --- TBYTE: 8 бит, байт внутри 16-битного слова ---
+    if (dataType === 'TBYTE') {
+        const bytePos = bytePosRaw.toUpperCase();
+        if (bytePos !== 'L' && bytePos !== 'H') return { ok: false };
+
+        if (editType === 'hex') {
+            const cleanHex = valueStr.replace(/^(x|0x)/i, '');
+            if (!/^[0-9A-Fa-f]+$/.test(cleanHex)) return { ok: false };
+            if (cleanHex.length > 2) return { ok: false };
+            const parsed = parseInt(cleanHex, 16);
+            if (isNaN(parsed) || parsed > 255) return { ok: false };
+            return {
+                ok: true,
+                kind: 'byte',
+                byteValue: parsed,
+                bytePos: bytePos as 'L' | 'H',
+                newPhys: String(parsed * safeScale),
+            };
+        }
+
+        const valNum = parseFloat(valueStr.replace(',', '.'));
+        if (isNaN(valNum) || !isFinite(valNum)) return { ok: false };
+        const raw = Math.round(valNum / safeScale);
+        if (raw < 0 || raw > 255) return { ok: false };
+        return {
+            ok: true,
+            kind: 'byte',
+            byteValue: raw,
+            bytePos: bytePos as 'L' | 'H',
+            newPhys: String(valNum),
+        };
+    }
 
     // --- Ввод HEX ---
     if (editType === 'hex') {
@@ -158,6 +202,8 @@ export function planControllerWrite(
         if (!/^[0-9A-Fa-f]+$/.test(cleanHex)) return { ok: false };
         // 16 бит — максимум 4 hex-цифры, 32 бита — максимум 8
         if (is32Bit ? cleanHex.length > 8 : cleanHex.length > 4) return { ok: false };
+        // Для знаковых 16-битных не допускаем старшего бита (unsigned > 0x7FFF)
+        if (isSigned16 && parseInt(cleanHex, 16) > 0x7FFF) return { ok: false };
 
         const parsed = parseInt(cleanHex, 16);
         if (isNaN(parsed)) return { ok: false };
@@ -240,8 +286,21 @@ export function planControllerWrite(
         };
     }
 
-    // 16 бит: сюда попадает и попытка записать 32-битное значение -> invalid
-    if (raw < -32768 || raw > 65535) return { ok: false };
+    // 16 бит
+    if (isSigned16) {
+        // Знаковый диапазон: -32768...32767
+        if (raw < -32768 || raw > 32767) return { ok: false };
+        const word = (raw < 0 ? raw + 0x10000 : raw) & 0xFFFF;
+        return {
+            ok: true,
+            kind: 'words',
+            words: [word],
+            newHex: 'x' + word.toString(16).toUpperCase().padStart(4, '0'),
+            newPhys: String(valNum),
+        };
+    }
+    // Unsigned 16-бит
+    if (raw < 0 || raw > 65535) return { ok: false };
     const word = raw & 0xFFFF;
     return {
         ok: true,

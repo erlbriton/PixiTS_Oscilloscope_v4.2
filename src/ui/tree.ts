@@ -55,6 +55,23 @@ export function renderModbusTable(config?: IniConfig, appState?: TableEditorStat
                     tr.setAttribute('data-sub', param.bitIndex.toString(16));
                 }
             }
+            
+            // Для TByte: извлекаем модификатор байта (L/H) из регистра и сохраняем в data-sub.
+            // Это гарантирует, что при повторном редактировании мы его не потеряем,
+            // даже если device_updater обновит parts.
+            if (param.dataType && param.dataType.toUpperCase() === 'TBYTE') {
+                let byteMod = '';
+                for (const p of param.rawParts) {
+                    const m = /^r[0-9A-Fa-f]+\.([LHlh])$/.exec((p || '').trim());
+                    if (m) {
+                        byteMod = m[1].toUpperCase();
+                        break;
+                    }
+                }
+                if (byteMod) {
+                    tr.setAttribute('data-sub', byteMod);
+                }
+            }
 
             let hexIndex = -1;
             if (param.isBit) {

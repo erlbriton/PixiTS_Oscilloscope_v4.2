@@ -231,8 +231,27 @@ async function processControllerWrite(
         if (!isNaN(parsedScale) && parsedScale !== 0) scale = parsedScale;
     }
 
+    // Для TBYTE: модификатор байта (L/H) берём из data-sub, куда его сохранил tree.ts
+    let bytePos = '';
+    if (dataType === 'TBYTE') {
+        bytePos = (sub || '').toUpperCase();
+    }
+
     // Чистая валидация и построение плана записи (без DOM)
-    const plan = planControllerWrite(dataType, editType, newValueStr, scale, sub);
+    const plan = planControllerWrite(dataType, editType, newValueStr, scale, sub, bytePos);
+
+    // --- ДИАГНОСТИКА TByte (только лог, без изменения логики) ---
+    if (dataType === 'TBYTE') {
+        let partsRaw: string[] = [];
+        try { partsRaw = JSON.parse(tr.dataset.parts || '[]'); } catch { partsRaw = []; }
+        console.log('[CONTROLLER] TBYTE диагностика:');
+        console.log('  data-reg:', tr.getAttribute('data-reg'));
+        console.log('  data-sub:', tr.getAttribute('data-sub'));
+        console.log('  data-hex-index:', tr.getAttribute('data-hex-index'));
+        console.log('  parts (полный массив):', JSON.stringify(partsRaw));
+        console.log('  plan:', JSON.stringify(plan));
+    }
+    // -------------------------------------------------------------
 
     if (!plan.ok) {
         console.warn(`[CONTROLLER] Некорректное значение: тип=${dataType}, editType=${editType}, value="${newValueStr}"`);
@@ -381,6 +400,152 @@ async function processControllerWrite(
         }
 
         console.log('[CONTROLLER] Значение успешно записано, подтверждено и синхронизировано.');
+        return true;
+    }
+
+    // TBYTE (kind === 'byte'): байтовый read-modify-write.
+    if (plan.kind === 'byte') {
+        const wasPolling = stateObj.isPolling === true;
+        if (wasPolling) {
+            console.log('[CONTROLLER] TBYTE: Фоновый опрос активен — приостанавливаю на время транзакций...');
+            stateObj.isPolling = false;
+            await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+
+        let currentWords: number[] | null = null;
+        let writeOk = false;
+        let readWords: number[] | null = null;
+
+        try {
+            // 1) Чтение текущего 16-битного слова
+            currentWords = await readHoldingRegistersFC03(slaveAddr, reg, 1);
+
+            if (currentWords === null) {
+                console.error('[CONTROLLER] TBYTE: не удалось прочитать текущее слово (таймаут или исключение).');
+                return false;
+            }
+
+            const currentWord = currentWords[0];
+            console.log(
+                `[CONTROLLER] TBYTE: reg=0x${reg.toString(16)}, bytePos=${plan.bytePos}, ` +
+                `желаемый байт=0x${plan.byteValue.toString(16)}, текущее слово=0x${currentWord.toString(16)}`
+            );
+
+            // 2) Modify: заменяем нужный байт, второй не трогаем
+            const highByte = (currentWord >> 8) & 0xFF;
+            const lowByte = currentWord & 0xFF;
+            const newWord = plan.bytePos === 'H'
+                ? ((plan.byteValue << 8) | lowByte) & 0xFFFF
+                : ((highByte << 8) | plan.byteValue) & 0xFFFF;
+
+            console.log(
+                `[CONTROLLER] TBYTE: записываю слово=0x${newWord.toString(16)} ` +
+                `(было 0x${currentWord.toString(16)}), другой байт слова без изменений`
+            );
+
+            writeOk = await writeRegistersFC16(slaveAddr, reg, [newWord]);
+
+            if (writeOk) {
+                // 3) Обратное чтение и проверка байта
+                readWords = await readHoldingRegistersFC03(slaveAddr, reg, 1);
+            }
+        } finally {
+            if (wasPolling) {
+                console.log('[CONTROLLER] TBYTE: Возобновляю фоновый опрос.');
+                stateObj.isPolling = true;
+            }
+        }
+
+        if (!writeOk) {
+            console.error('[CONTROLLER] TBYTE: запись слова по FC16 не удалась (таймаут или исключение).');
+            showIdModal('Значение не записалось');
+            return false;
+        }
+
+        if (readWords === null) {
+            console.error('[CONTROLLER] TBYTE: обратное чтение по FC03 не удалось (таймаут или исключение).');
+            showIdModal('Значение не записалось');
+            return false;
+        }
+
+        const readWord = readWords[0];
+        const readByte = plan.bytePos === 'H' ? (readWord >> 8) & 0xFF : readWord & 0xFF;
+
+        if (readByte !== plan.byteValue) {
+            console.error(
+                `[CONTROLLER] TBYTE: НЕСОВПАДЕНИЕ: байт ${plan.bytePos} после записи = 0x${readByte.toString(16)}, ` +
+                `ожидалось 0x${plan.byteValue.toString(16)} (прочитано слово=0x${readWord.toString(16)})`
+            );
+            showIdModal('Значение не записалось');
+            return false;
+        }
+
+        console.log('[CONTROLLER] TBYTE: байт записан и проверен.');
+
+        // Обновление UI ячеек 6 и 7 + пересчёт row-mismatch.
+        const tds = tr.querySelectorAll('td');
+        const hexIndex = parseInt(tr.getAttribute('data-hex-index') || '-1', 10);
+
+        const updateCellDisplay = (idx: number, val: string) => {
+            if (idx < 0 || idx >= tds.length || !val) return;
+            const td = tds[idx];
+            if (val.startsWith('<div') || val.startsWith('<select')) {
+                td.innerHTML = val;
+            } else if (val.startsWith('x')) {
+                td.textContent = val;
+            } else {
+                if (!td.innerHTML.includes('prm-val-display')) {
+                    td.innerHTML = `<div class="prm-val-display">${val}</div>`;
+                } else {
+                    const display = td.querySelector('.prm-val-display');
+                    if (display) display.textContent = val;
+                }
+            }
+        };
+
+        // Для TBYTE: в parts[hexIndex] хранится hex байта (x0A), в physical — число
+        const byteHex = 'x' + plan.byteValue.toString(16).toUpperCase().padStart(2, '0');
+
+        if (hexIndex >= 0 && hexIndex < parts.length) {
+            parts[hexIndex] = byteHex;
+        }
+
+        tr.dataset.parts = JSON.stringify(parts);
+
+        // Ячейка 6 (hex): показываем hex байта
+        updateCellDisplay(6, byteHex);
+        // Ячейка 7 (physical): показываем число
+        updateCellDisplay(7, plan.newPhys);
+
+        // Пересчитываем класс row-mismatch (красная подсветка расхождения с Базой)
+        const parseHexValue = (hexStr: string): number | null => {
+            if (!hexStr) return null;
+            const clean = hexStr.trim().toUpperCase().replace(/^X/, '');
+            if (!clean || !/^[0-9A-F]+$/.test(clean)) return null;
+            const n = parseInt(clean, 16);
+            return isNaN(n) ? null : n;
+        };
+
+        const hexBaseRaw = tds[4] ? (tds[4].textContent || '').trim() : '';
+        const hexLiveRaw = tds[6] ? (tds[6].textContent || '').trim() : '';
+        const valBase = parseHexValue(hexBaseRaw);
+        const valLive = parseHexValue(hexLiveRaw);
+        const mismatch =
+            hexBaseRaw !== '—' &&
+            hexLiveRaw !== '—' &&
+            valBase !== null &&
+            valLive !== null &&
+            valBase !== valLive;
+        tr.classList.toggle('row-mismatch', mismatch);
+
+        // Зелёная вспышка успеха на отредактированной ячейке
+        const activeCell = tds[colIndex];
+        if (activeCell) {
+            activeCell.classList.add('write-success');
+            setTimeout(() => activeCell.classList.remove('write-success'), 1000);
+        }
+
+        console.log('[CONTROLLER] TBYTE: Значение успешно записано, подтверждено и синхронизировано.');
         return true;
     }
 
