@@ -119,9 +119,9 @@ export function renderModbusTable(config?: IniConfig, appState?: TableEditorStat
                 float32ToHex,
             );
 
-            // --- ИНИЦИАЛИЗАЦИЯ РЕДАКТОРОВ (БАЗА + КОНТРОЛЛЕР) ---
+                        // --- ИНИЦИАЛИЗАЦИЯ РЕДАКТОРОВ (БАЗА + КОНТРОЛЛЕР) ---
             
-            // 1. Редакторы для БАЗЫ (колонки 4 и 5)
+            // 1. Редакторы для БАЗЫ (колонки 4 и 5) — только UI, без отправки
             if (tds[4] && tds[5]) {
                 initHexCellEditor(
                     tds[4], 
@@ -133,8 +133,8 @@ export function renderModbusTable(config?: IniConfig, appState?: TableEditorStat
                     param.scale,
                     originalHexLen, 
                     prmListOptions,
-                    currentState, // Явная передача состояния
-                    4             // Явный индекс колонки
+                    currentState, 
+                    4             // Индекс колонки Базы Hex
                 );
                 
                 initPhysicalCellEditor(
@@ -149,11 +149,45 @@ export function renderModbusTable(config?: IniConfig, appState?: TableEditorStat
                     updateRowValues,
                     hexToFloat32, 
                     float32ToHex,
-                    currentState, // Явная передача состояния
-                    5             // Явный индекс колонки
+                    currentState, 
+                    5             // Индекс колонки Базы Physical
                 );
             }
 
+            // 2. Редакторы для КОНТРОЛЛЕРА (колонки 6 и 7)
+            // Запись в устройство и обратное чтение будут реализованы
+            // в processControllerWrite в следующих шагах
+            if (tds[6] && tds[7]) {
+                initHexCellEditor(
+                    tds[6], 
+                    tr, 
+                    param.rawParts, 
+                    hexIndex,
+                    updateRowValues, 
+                    param.dataType, 
+                    param.scale,
+                    originalHexLen, 
+                    prmListOptions,
+                    currentState, 
+                    6             // Индекс колонки Контроллера Hex
+                );
+                
+                initPhysicalCellEditor(
+                    tds[7], 
+                    tr, 
+                    param.rawParts, 
+                    param.dataType,
+                    param.scale, 
+                    hexIndex, 
+                    originalHexLen,
+                    prmListOptions, 
+                    updateRowValues,
+                    hexToFloat32, 
+                    float32ToHex,
+                    currentState, 
+                    7             // Индекс колонки Контроллера Physical
+                );
+            }
             // 2. Редакторы для КОНТРОЛЛЕРА (колонки 6 и 7)
             // Теперь эти ячейки также полностью функциональны для редактирования
             // if (tds[6] && tds[7]) {

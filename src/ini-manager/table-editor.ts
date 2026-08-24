@@ -3,6 +3,9 @@
 import { serialManager, calculateCRC } from '../serial/serial-actions.js';
 import { parseRegisterAddress, float32ToHex } from './tree-core.js';
 import type { IniConfig } from '../core/ini/index.js';
+import { planControllerWrite } from './tree-core.js';
+import { showIdModal } from '../ui/ui.js';
+import { writeRegistersFC16, readHoldingRegistersFC03 } from '../serial/serial-actions.js';
 
 /** Ячейка с активным инлайн-редактором */
 interface EditableCell extends HTMLElement {
@@ -199,13 +202,187 @@ export async function sendModbusWriteCommand(
 /**
  * Обновляет значение ячейки только в интерфейсе (без отправки в устройство).
  */
+/**
+ * Обработка значения Контроллера (колонки 6 и 7).
+ * Шаг 3: валидация ввода через чистую функцию planControllerWrite.
+ * Отправка (FC16), обратное чтение (FC03) и сравнение — в следующих шагах.
+ */
+async function processControllerWrite(
+    tr: HTMLTableRowElement,
+    editType: string,
+    newValueStr: string,
+    stateObj: TableEditorState,
+    colIndex: number
+): Promise<boolean> {
+    const dataType = (tr.getAttribute('data-type') || '').toUpperCase();
+    const sub = tr.getAttribute('data-sub') || '';
+
+    let parts: string[] = [];
+    try {
+        parts = JSON.parse(tr.dataset.parts || '[]');
+    } catch (e) {
+        console.error('[TableEditor] Ошибка разбора data-parts:', e);
+        return false;
+    }
+
+    let scale = 1.0;
+    if (parts.length > 6 && parts[6]) {
+        const parsedScale = parseFloat(parts[6].replace(',', '.'));
+        if (!isNaN(parsedScale) && parsedScale !== 0) scale = parsedScale;
+    }
+
+    // Чистая валидация и построение плана записи (без DOM)
+    const plan = planControllerWrite(dataType, editType, newValueStr, scale, sub);
+
+    if (!plan.ok) {
+        console.warn(`[CONTROLLER] Некорректное значение: тип=${dataType}, editType=${editType}, value="${newValueStr}"`);
+        showIdModal('Некорректное значение');
+        return false;
+    }
+
+    // Значение валидно. Шаг 4: реальная отправка по FC 0x10.
+    const addrStr = tr.getAttribute('data-reg');
+    if (!addrStr) return false;
+    const reg = parseInt(addrStr, 16);
+    if (isNaN(reg)) return false;
+
+    const slaveAddr = (stateObj && stateObj.slaveAddress) ? stateObj.slaveAddress : 0x01;
+
+    if (plan.kind === 'words') {
+        console.log(
+            `[CONTROLLER] Запись FC16: slave=0x${slaveAddr.toString(16)}, reg=0x${reg.toString(16)}, ` +
+            `words=[${plan.words.map((w) => '0x' + w.toString(16)).join(', ')}]`
+        );
+
+        const writeOk = await writeRegistersFC16(slaveAddr, reg, plan.words);
+
+        if (!writeOk) {
+            console.error('[CONTROLLER] Запись FC16 не удалась (таймаут или исключение).');
+            return false;
+        }
+
+        console.log('[CONTROLLER] Запись FC16 подтверждена устройством.');
+
+        // Шаг 5: обратное чтение того же регистра по FC 0x03.
+        // Пока только читаем и логируем; сравнение и исходы — в шаге 6.
+        const readWords = await readHoldingRegistersFC03(slaveAddr, reg, plan.words.length);
+
+        if (readWords === null) {
+            console.error('[CONTROLLER] Обратное чтение FC03 не удалось (таймаут или исключение).');
+            return false;
+        }
+
+        console.log(
+            `[CONTROLLER] Обратное чтение FC03: reg=0x${reg.toString(16)}, ` +
+            `read=[${readWords.map((w) => '0x' + w.toString(16)).join(', ')}]`
+        );
+
+        // Шаг 6: сравнение отправленных и прочитанных слов
+        const wordsMatch =
+            readWords.length === plan.words.length &&
+            plan.words.every((w, i) => readWords[i] === w);
+
+        if (!wordsMatch) {
+            console.error(
+                `[CONTROLLER] НЕСОВПАДЕНИЕ: sent=[${plan.words.map((w) => '0x' + w.toString(16)).join(', ')}], ` +
+                `read=[${readWords.map((w) => '0x' + w.toString(16)).join(', ')}]`
+            );
+            showIdModal('Значение не записалось');
+            return false;
+        }
+
+        // Значение записано и подтверждено. Обновляем UI ячеек 6 и 7.
+        const tds = tr.querySelectorAll('td');
+
+        const updateCellDisplay = (idx: number, val: string) => {
+            if (idx < 0 || idx >= tds.length || !val) return;
+            const td = tds[idx];
+            if (val.startsWith('<div') || val.startsWith('<select')) {
+                td.innerHTML = val;
+            } else if (val.startsWith('x')) {
+                td.textContent = val;
+            } else {
+                if (!td.innerHTML.includes('prm-val-display')) {
+                    td.innerHTML = `<div class="prm-val-display">${val}</div>`;
+                } else {
+                    const display = td.querySelector('.prm-val-display');
+                    if (display) display.textContent = val;
+                }
+            }
+        };
+
+        // Сохраняем новые значения в parts (для пересчёта mismatch и будущих операций)
+        let parts: string[] = [];
+        try {
+            parts = JSON.parse(tr.dataset.parts || '[]');
+        } catch {
+            parts = [];
+        }
+
+        // Обновляем соответствующую пару ячеек (Hex=6, Phys=7 для Контроллера)
+        if (plan.newHex) {
+            if (parts.length > 6) parts[6] = plan.newHex;
+            updateCellDisplay(6, plan.newHex);
+        }
+        if (plan.newPhys) {
+            if (parts.length > 7) parts[7] = plan.newPhys;
+            updateCellDisplay(7, plan.newPhys);
+        }
+
+        tr.dataset.parts = JSON.stringify(parts);
+
+        // Пересчитываем класс row-mismatch (красная подсветка расхождения с Базой)
+        // Логика — копия из device_updater.ts
+        const parseHexValue = (hexStr: string): number | null => {
+            if (!hexStr) return null;
+            const clean = hexStr.trim().toUpperCase().replace(/^X/, '');
+            if (!clean || !/^[0-9A-F]+$/.test(clean)) return null;
+            const n = parseInt(clean, 16);
+            return isNaN(n) ? null : n;
+        };
+
+        const hexBaseRaw = tds[4] ? (tds[4].textContent || '').trim() : '';
+        const hexLiveRaw = tds[6] ? (tds[6].textContent || '').trim() : '';
+        const valBase = parseHexValue(hexBaseRaw);
+        const valLive = parseHexValue(hexLiveRaw);
+        const mismatch =
+            hexBaseRaw !== '—' &&
+            hexLiveRaw !== '—' &&
+            valBase !== null &&
+            valLive !== null &&
+            valBase !== valLive;
+        tr.classList.toggle('row-mismatch', mismatch);
+
+        // Зелёная вспышка успеха на отредактированной ячейке
+        const activeCell = tds[colIndex];
+        if (activeCell) {
+            activeCell.classList.add('write-success');
+            setTimeout(() => activeCell.classList.remove('write-success'), 1000);
+        }
+
+        console.log('[CONTROLLER] Значение успешно записано, подтверждено и синхронизировано.');
+        return true;
+    }
+
+    // Для TBIT (kind === 'bit') — отдельная ветка на следующем шаге.
+    console.log(
+        `[CONTROLLER] План для бита: bitIndex=${plan.bitIndex}, bitValue=${plan.bitValue}. Отправка — на следующем шаге.`
+    );
+    return true;
+}
+
 async function processValueWrite(
     tr: HTMLTableRowElement,
     editType: string,
     newValueStr: string,
     stateObj: TableEditorState,
-    colIndex: number // 4 (Base Hex) или 5 (Base Phys)
+    colIndex: number // 4, 5 - База (только UI); 6, 7 - Контроллер
 ): Promise<boolean> {
+    // Ветвление по колонкам: Контроллер обрабатывается отдельной функцией
+    if (colIndex === 6 || colIndex === 7) {
+        return await processControllerWrite(tr, editType, newValueStr, stateObj, colIndex);
+    }
+
     const dataType = (tr.getAttribute('data-type') || '').toUpperCase();
     const sub = tr.getAttribute('data-sub') || '';
 
