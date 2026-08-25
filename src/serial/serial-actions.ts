@@ -178,10 +178,11 @@ export function updateComInterfaceName(serial: ISerialPort, comSelect: HTMLSelec
     comSelect.className = 'select-blue';
     return chipName;
 }
-export async function executeDeviceIdentification(serial: ISerialPort, comSelect: HTMLSelectElement | null, stateObj: AppState): Promise<void> {
+export async function executeDeviceIdentification(serial: ISerialPort, comSelect: HTMLSelectElement | null, stateObj: AppState, baudSelect: HTMLSelectElement | null = null): Promise<void> {
     try {
         stateObj.isIdentifying = true;
-        await serial.connect(115200);
+        const baudRate = baudSelect ? parseInt(baudSelect.value, 10) || 115200 : 115200;
+        await serial.connect(baudRate);
         serialManager.init(serial);
         updateComInterfaceName(serial, comSelect);
         await new Promise((r) => setTimeout(r, 500));

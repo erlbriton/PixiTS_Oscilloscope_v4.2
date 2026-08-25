@@ -304,6 +304,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // В идеале вызвать renderModbusTable(currentIniConfig, window.appState)
             if (currentIniConfig) {
                 renderModbusTable(currentIniConfig, window.appState);
+                // Автоопрос контроллера при смене секции памяти (как после загрузки INI-файла)
+                window.dispatchEvent(new CustomEvent('app:ini-file-loaded'));
             }
         });
     }

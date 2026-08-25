@@ -32,7 +32,8 @@ export interface UiManagerDeps {
   executeDeviceIdentification: (
     serial: ISerialPort,
     select: HTMLSelectElement | null,
-    state: AppState
+    state: AppState,
+    baudSelect?: HTMLSelectElement | null
   ) => Promise<void>;
   readLoop: (
     serial: ISerialPort,
@@ -61,6 +62,7 @@ export function initUI(deps: UiManagerDeps): void {
   const idBtn = document.getElementById("idBtn") as HTMLButtonElement | null;
   const connectBtn = document.getElementById("connectBtn") as HTMLButtonElement | null;
   const comSelect = document.getElementById("comSelect") as HTMLSelectElement | null;
+  const baudSelect = document.getElementById("baudSelect") as HTMLSelectElement | null;
   const toggleOscMainBtn = document.getElementById('toggleOscMainBtn') as HTMLButtonElement | null;
   const toggleOscArrowBtn = document.getElementById('toggleOscArrowBtn') as HTMLButtonElement | null;
   const toggleOscDropdown = document.getElementById('toggleOscDropdown') as HTMLElement | null;
@@ -116,26 +118,28 @@ export function initUI(deps: UiManagerDeps): void {
     };
   }
 
-  if (connectBtn) {
-        connectBtn.addEventListener("click", async () => {
-          console.log('[DEBUG] Клик по кнопке "Подключить" обработан!');
-      if (serial.isConnected) { showIdModal("Порт уже открыт!"); return; }
+    if (connectBtn) {
+    connectBtn.addEventListener("click", async () => {
+      if (serial.isConnected) { 
+          showIdModal("Порт уже открыт!"); 
+          return; 
+      }
+      
+      // Берем скорость из селектора
+      const baudRate = baudSelect ? parseInt(baudSelect.value, 10) || 115200 : 115200;
+      
       try {
-        await serial.connect(115200);
-                console.log('[DEBUG] serial.connect завершен, isConnected:', serial.isConnected);
+        await serial.connect(baudRate);
+        console.log(`[DEBUG] Подключено на скорости: ${baudRate}`);
+        
         const chipName = updateComInterfaceName(serial, comSelect);
         console.log(`Успешно подключено к: ${chipName}`);
         
-        // === ВСТАВЬТЕ ЭТОТ БЛОК ===
         const osc = window.osc;
         if (osc && typeof osc.setSerialPort === 'function') {
-            console.log('[uiManager] Передаю порт в осциллограф для записи...');
             osc.setSerialPort(serial);
-        } else {
-            console.warn('[uiManager] Осциллограф не найден или нет метода setSerialPort!');
         }
-        // ============================
-
+        
         restoreConnection();
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -156,19 +160,20 @@ export function initUI(deps: UiManagerDeps): void {
     });
   }
 
-  if (idBtn) {
+    if (idBtn) {
     idBtn.addEventListener("click", async () => {
-            if (serial.isConnected) { showIdModal("Порт уже открыт!"); return; }
-      await executeDeviceIdentification(serial, comSelect, appState);
+      if (serial.isConnected) { 
+          showIdModal("Порт уже открыт!"); 
+          return; 
+      }
+      // Передаем baudSelect в функцию идентификации
+      await executeDeviceIdentification(serial, comSelect, appState, baudSelect);
       
-      // === ПЕРЕДАЧА ПОРТА В ОСЦИЛЛОГРАФ ===
       const osc = window.osc;
       if (osc && typeof osc.setSerialPort === 'function') {
-          console.log('[uiManager] Передаю порт в осциллограф для записи (после ID)...');
           osc.setSerialPort(serial);
       }
-      // ====================================
-
+      
       restoreConnection();
     });
   }
@@ -292,6 +297,23 @@ export function initUI(deps: UiManagerDeps): void {
     folderDropdown?.classList.remove('show');
     toggleOscDropdown?.classList.remove('show');
   });
+
+  // Обработчик смены скорости: ЖЕСТКИЙ сброс и переподключение
+    // Обработчик смены скорости: просто запоминаем выбор для следующего подключения.
+  // Переподключение "на лету" удалено из-за нестабильности Web Serial API.
+  if (baudSelect) {
+    baudSelect.addEventListener('change', () => {
+      const newBaudRate = parseInt(baudSelect.value, 10) || 115200;
+      
+      if (serial.isConnected) {
+        console.log(`[UI] Скорость изменена на ${newBaudRate}. Для применения необходимо переподключиться (кнопка "Подключить").`);
+        // Опционально: можно показать подсказку пользователю, но пока оставим лог.
+        // showIdModal(`Скорость изменена на ${newBaudRate}. Нажмите "Подключить", чтобы применить.`);
+      } else {
+        console.log(`[UI] Скорость установлена на ${newBaudRate} (будет использована при подключении).`);
+      }
+    });
+  }
 
   initTableEditor('grid-data-rows', appState);
   setupSaveButton(appState);
