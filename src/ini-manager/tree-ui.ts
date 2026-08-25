@@ -38,6 +38,9 @@ export function renderDeviceTree(): void {
                 if (window.osc) {
                     window.osc.setActiveIni(device.id);
                 }
+
+                // Автоопрос контроллера при смене устройства (как после первой загрузки файла)
+                window.dispatchEvent(new CustomEvent('app:ini-file-loaded'));
             });
 
             ulElement.appendChild(liElement);

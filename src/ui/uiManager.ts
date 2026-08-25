@@ -173,34 +173,48 @@ export function initUI(deps: UiManagerDeps): void {
     });
   }
 
+  // Обновление таблицы (FC03). Используется и кнопкой "Обновить",
+  // и автообновлением после загрузки INI-файла.
+  const performRefresh = async (notifyIfDisconnected: boolean): Promise<void> => {
+    if (!serial?.isConnected) {
+      if (notifyIfDisconnected) showIdModal("Устройство не подключено!");
+      return;
+    }
+    if (appState.isRefreshing) return;
+    appState.isRefreshing = true;
+    if (refreshBtn) refreshBtn.disabled = true;
+
+    const wasPolling = appState.isPolling;
+
+    try {
+      // Выполняем обновление таблицы
+      await updateDeviceRegisters(serial, appState.slaveAddress, appState);
+
+      // Восстанавливаем опрос, если он был активен до обновления
+      if (wasPolling) {
+        console.log('[UI] Восстанавливаем опрос после обновления');
+        appState.isLoopRunning = false;
+        appState.isPolling = true;
+        readLoop(serial, parser, view, buffers, appState);
+      }
+    } catch (err) {
+      console.error("Ошибка при обновлении:", err);
+    } finally {
+      appState.isRefreshing = false;
+      if (refreshBtn) refreshBtn.disabled = false;
+    }
+  };
+
   if (refreshBtn) {
     refreshBtn.addEventListener("click", async () => {
-      if (!serial?.isConnected) { showIdModal("Устройство не подключено!"); return; }
-      if (appState.isRefreshing) return;
-      appState.isRefreshing = true;
-      refreshBtn.disabled = true;
-      
-      const wasPolling = appState.isPolling;
-      
-      try {
-        // Выполняем обновление таблицы
-        const result = await updateDeviceRegisters(serial, appState.slaveAddress, appState);
-        
-        // Восстанавливаем опрос, если он был активен до обновления
-        if (wasPolling) {
-          console.log('[UI] Восстанавливаем опрос после обновления');
-          appState.isLoopRunning = false;
-          appState.isPolling = true;
-          readLoop(serial, parser, view, buffers, appState);
-        }
-      } catch (err) {
-        console.error("Ошибка при обновлении:", err);
-      } finally {
-        appState.isRefreshing = false;
-        refreshBtn.disabled = false;
-      }
+      await performRefresh(true);
     });
   }
+
+  // Автообновление после загрузки/смены INI-файла: тихо, только если порт открыт
+  window.addEventListener('app:ini-file-loaded', () => {
+    void performRefresh(false);
+  });
 
       // Функция переключения видимости осциллографа
   const toggleOscilloscope = async () => {

@@ -125,6 +125,10 @@ async function processSingleFileContent(content: string, fileName: string, appSt
         console.error('[file-loader] Failed to set active INI:', uiErr);
       }
     }
+
+    // Событие "INI-файл загружен": uiManager по нему выполнит автоматический
+    // опрос контроллера (как кнопка "Обновить"), если порт открыт.
+    window.dispatchEvent(new CustomEvent('app:ini-file-loaded'));
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     showIdModal('Ошибка обработки файла ' + fileName + ': ' + msg);
