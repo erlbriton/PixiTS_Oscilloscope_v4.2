@@ -309,6 +309,58 @@ async function processBasePrmListWrite(
     return true;
 }
 
+/**
+ * Обработка значения TIPADDR в БАЗЕ (колонки 4 и 5).
+ * Переиспользует planControllerWrite для валидации и преобразования IP <-> hex,
+ * но БЕЗ отправки по Modbus — только обновление ячеек в памяти браузера.
+ */
+async function processBaseIpAddrWrite(
+    tr: HTMLTableRowElement,
+    editType: string,
+    newValueStr: string,
+    colIndex: number
+): Promise<boolean> {
+    const plan = planControllerWrite('TIPADDR', editType, newValueStr, 1.0, '');
+    if (!plan.ok) {
+        showIdModal('Некорректное значение');
+        return false;
+    }
+
+    // TIPADDR всегда возвращает kind 'words' — сужаем тип для TypeScript,
+    // чтобы стали доступны поля newHex и newPhys.
+    if (plan.kind !== 'words') {
+        return false;
+    }
+
+    // Обновляем обе ячейки Базы: hex (4) и точечный IP (5).
+    // parts и слот живого значения Контроллера НЕ трогаем.
+    const tds = tr.querySelectorAll('td');
+    const setCell = (idx: number, val: string) => {
+        if (idx < 0 || idx >= tds.length) return;
+        const td = tds[idx];
+        const display = td.querySelector('.prm-val-display');
+        if (display) {
+            display.textContent = val;
+        } else {
+            td.innerHTML = `<div class="prm-val-display">${val}</div>`;
+        }
+    };
+    setCell(4, plan.newHex);
+    setCell(5, plan.newPhys);
+
+    // Пересчитываем подсветку расхождения с Контроллером
+    updateMismatchClass(tr, 'TIPADDR');
+
+    const activeCell = tds[colIndex];
+    if (activeCell) {
+        activeCell.classList.add('write-success');
+        setTimeout(() => activeCell.classList.remove('write-success'), 1000);
+    }
+
+    console.log(`[BASE TIPADDR] Значение обновлено в памяти: ${plan.newPhys} (без отправки по Modbus).`);
+    return true;
+}
+
 //  Обработка значения Контроллера (колонки 6 и 7).
 //  * Шаг 3: валидация ввода через чистую функцию planControllerWrite.
 //  * Отправка (FC16), обратное чтение (FC03) и сравнение — в следующих шагах.
@@ -802,6 +854,11 @@ async function processValueWrite(
     // TPrmList в БАЗЕ: ведём себя как Контроллер, но БЕЗ отправки по Modbus.
     if (dataType === 'TPRMLIST') {
         return processBasePrmListWrite(tr, newValueStr, colIndex);
+    }
+
+    // TIPADDR в БАЗЕ: ведём себя как Контроллер, но БЕЗ отправки по Modbus.
+    if (dataType === 'TIPADDR') {
+        return processBaseIpAddrWrite(tr, editType, newValueStr, colIndex);
     }
 
     let parts: string[] = [];

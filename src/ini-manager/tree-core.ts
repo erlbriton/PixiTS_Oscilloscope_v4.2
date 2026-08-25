@@ -84,7 +84,8 @@ export function getSectionRange(
         const is32Bit = dataType.toUpperCase().includes('FLOAT') ||
           dataType.toUpperCase().includes('DWORD') ||
           dataType.toUpperCase().includes('LONG') ||
-          dataType.toUpperCase().includes('INT32');
+          dataType.toUpperCase().includes('INT32') ||
+          dataType.toUpperCase() === 'TIPADDR';
         maxReg = Math.max(maxReg, parsed.reg + (is32Bit ? 1 : 0));
       }
     }
@@ -133,6 +134,7 @@ const CONTROLLER_EDITABLE_TYPES: ReadonlySet<string> = new Set([
     'TINTEGER', // Знаковый 16-битный
     'TBYTE',    // 8-битный, байт внутри 16-битного слова
     'TPRMLIST', // 8-битный, байт из выпадающего списка
+    'TIPADDR',  // 32-битный, IP-адрес (точечный формат или hex)
 ]);
 
 /** 16-битные знаковые типы — используют диапазон -32768...32767 вместо 0...65535 */
@@ -163,6 +165,23 @@ export function planControllerWrite(
     const isSigned16 = SIGNED_16BIT_TYPES.has(dataType);
 
     const safeScale = (!isNaN(scale) && scale !== 0) ? scale : 1.0;
+
+    // --- TIPADDR: 32 бит, IP-адрес ---
+    if (dataType === 'TIPADDR') {
+        const registers = parseIpToRegisters(valueStr);
+        if (!registers) return { ok: false };
+
+        const [lowWord, highWord] = registers;
+        const rawInt = ((highWord << 16) | lowWord) >>> 0;
+
+        return {
+            ok: true,
+            kind: 'words',
+            words: [lowWord, highWord], // Младшее слово первым (LE порядок регистров)
+            newHex: 'x' + rawInt.toString(16).toUpperCase().padStart(8, '0'),
+            newPhys: registersToIp(lowWord, highWord),
+        };
+    }
 
     // --- TBYTE / TPRMLIST: 8 бит, байт внутри 16-битного слова ---
     if (dataType === 'TBYTE' || dataType === 'TPRMLIST') {
@@ -310,4 +329,52 @@ export function planControllerWrite(
         newHex: 'x' + word.toString(16).toUpperCase().padStart(4, '0'),
         newPhys: String(valNum),
     };
+}
+
+/**
+ * Преобразует строку IP-адреса в массив из двух 16-битных регистров.
+ * Возвращает регистры в порядке для контроллера (младшее слово первым).
+ * 
+ * Поддерживает форматы:
+ * - "192.168.1.10" (десятичный)
+ * - "xC0A8010A" или "0xC0A8010A" (шестнадцатеричный)
+ * 
+ * @returns [lowWord, highWord] или null при неверном формате
+ */
+function parseIpToRegisters(ipString: string): [number, number] | null {
+  const trimmed = ipString.trim();
+  let value: number | null = null;
+
+  // 1. HEX формат (8 hex-символов с префиксом x или 0x)
+  if (/^0?x[0-9a-fA-F]{8}$/i.test(trimmed)) {
+    const hexPart = trimmed.replace(/^0?x/i, '');
+    value = parseInt(hexPart, 16);
+  } 
+  // 2. Decimal формат (4 октета через точки)
+  else if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(trimmed)) {
+    const parts = trimmed.split('.').map(Number);
+    if (parts.length === 4 && parts.every(p => p >= 0 && p <= 255)) {
+      value = (parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3];
+      value = value >>> 0; // Беззнаковое 32-битное
+    }
+  }
+
+  if (value === null || value < 0 || value > 0xFFFFFFFF) {
+    return null;
+  }
+
+  // Разбиваем на два 16-битных слова (Big-Endian порядок байтов)
+  const highWord = (value >> 16) & 0xFFFF;
+  const lowWord = value & 0xFFFF;
+
+  // Возвращаем в порядке Little-Endian регистров (младшее слово первым)
+  return [lowWord, highWord];
+}
+
+/**
+ * Преобразует два 16-битных регистра (в порядке LE: [lowWord, highWord]) в точечный IP-адрес.
+ */
+function registersToIp(lowWord: number, highWord: number): string {
+  const value = ((highWord << 16) | lowWord) >>> 0;
+  return `${(value >>> 24) & 0xFF}.${(value >>> 16) & 0xFF}.${(value >>> 8) & 0xFF}.${value & 0xFF}`;
 }

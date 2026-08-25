@@ -36,8 +36,8 @@ export function renderDeviceTree(): void {
 
                 // SYNC WITH OSCILLOSCOPE
                 if (window.osc) {
-                 window.osc.setActiveIni(device.id);
-             }
+                    window.osc.setActiveIni(device.id);
+                }
             });
 
             ulElement.appendChild(liElement);
@@ -80,7 +80,7 @@ export function updateRowValues(
         // Извлекаем значение бита (0 или 1) правильно.
         const bitValueRaw = rowParts[rowParts.length - 1] ? rowParts[rowParts.length - 1].trim() : 'x0';
         let bitStr = '0';
-        
+
         if (bitValueRaw.startsWith('x') || bitValueRaw.startsWith('X')) {
             const hexPart = bitValueRaw.slice(1);
             if (hexPart.length > 0) {
@@ -95,7 +95,7 @@ export function updateRowValues(
             // Fallback, если где-то всё же записано просто "0" или "1"
             bitStr = bitValueRaw;
         }
-        
+
         bPhysical = bitStr;
         bHex = bitStr;
     } else {
@@ -106,7 +106,17 @@ export function updateRowValues(
         if (rHex && rHex.startsWith('x')) {
             bHex = 'x' + rHex.slice(1).toUpperCase();
 
-                                    if (dataTypeUpper === 'TPRMLIST') {
+            if (dataTypeUpper === 'TIPADDR') {
+                // Для TIPAddr: rHex содержит 8 hex-символов (32 бита).
+                // Разбиваем на lowWord и highWord (LE порядок регистров), как в осциллографе.
+                const hexVal = parseInt(rHex.slice(1), 16);
+                if (!isNaN(hexVal)) {
+                    const ipStr = `${(hexVal >>> 24) & 0xFF}.${(hexVal >>> 16) & 0xFF}.${(hexVal >>> 8) & 0xFF}.${hexVal & 0xFF}`;
+                    bPhysical = `<div class="prm-val-display">${ipStr}</div>`;
+                } else {
+                    bPhysical = `<div class="prm-val-display">—</div>`;
+                }
+            } else if (dataTypeUpper === 'TPRMLIST') {
                 const decValue = parseInt(rHex.slice(1), 16);
 
                 // Собираем опции: сначала из переданного rowPrmListOptions,
@@ -123,35 +133,21 @@ export function updateRowValues(
                     }
                 }
 
+                // Числовой поиск опции (игнорирует ведущие нули: x0005 == x05)
+                let displayText = decValue.toString();
                 if (Object.keys(options).length > 0) {
-                    // Числовой поиск опции (игнорирует ведущие нули: x0005 == x05)
-                    let currentText = decValue.toString();
-                    let currentHexKey = '';
                     for (const hexKey in options) {
                         if (parseInt(hexKey.slice(1), 16) === decValue) {
-                            currentText = options[hexKey];
-                            currentHexKey = hexKey;
+                            displayText = options[hexKey];
                             break;
                         }
                     }
-                    
-                    // В База-hex показываем текст опции (не hex)
-                    bHex = currentText;
-                    
-                    // В База-physical создаём выпадающий список для редактирования
-                    let selectHtml = `<div class="prm-val-display">${currentText}</div>`;
-                    selectHtml += `<select class="table-prm-select" style="display: none; width: 100%; height: 100%; box-sizing: border-box; text-align: center; text-align-last: center;">`;
-                    for (const hexKey in options) {
-                        const textVal = options[hexKey];
-                        const isSelected = (hexKey === currentHexKey) ? 'selected' : '';
-                        selectHtml += `<option value="${hexKey}" ${isSelected}>${textVal}</option>`;
-                    }
-                    selectHtml += '</select>';
-                    bPhysical = selectHtml;
-                } else {
-                    bHex = decValue.toString();
-                    bPhysical = `<div class="prm-val-display">${decValue.toString()}</div>`;
                 }
+
+                // В обеих ячейках Базы показываем только текст опции (или число), без <select> и без hex.
+                // Редактирование Базы происходит через startInlineEdit (по двойному клику), а не через встроенный список.
+                bHex = displayText;
+                bPhysical = displayText;
             } else if (dataTypeUpper === 'TFLOAT' || dataTypeUpper === 'FLOAT' || dataTypeUpper === 'TFLOAT32') {
                 const floatValue = finalHexToFloat32(rHex.slice(1));
                 if (!isNaN(floatValue)) {

@@ -88,7 +88,7 @@ public setExternalFiles(files: IniFileItem[]): void {
     }
 
     this.render();
-}///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+}
 
     public openFilePicker(): void {
         this.fileInput.click();

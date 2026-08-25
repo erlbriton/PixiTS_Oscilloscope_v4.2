@@ -57,7 +57,8 @@ export async function updateDeviceRegisters(
       if (
         dataType === "TFLOAT" || dataType === "TFLOAT32" ||
         dataType === "FLOAT"  || dataType === "TDWORD"  ||
-        dataType === "TLONG"  || dataType === "TINT32"
+        dataType === "TLONG"  || dataType === "TINT32"  ||
+        dataType === "TIPADDR"
       ) {
         addresses.push(addr);
         addresses.push(addr + 1);
@@ -208,7 +209,8 @@ export async function updateDeviceRegisters(
                     } else if (
                       dataType === "TFLOAT" || dataType === "TFLOAT32" ||
                       dataType === "FLOAT"  || dataType === "TDWORD"  ||
-                      dataType === "TLONG"  || dataType === "TINT32"
+                      dataType === "TLONG"  || dataType === "TINT32"  ||
+                      dataType === "TIPADDR"
                     ) {
                       if (i + 1 < count) {
                         const nextValH = reply[3 + (i + 1) * 2];
@@ -238,7 +240,7 @@ export async function updateDeviceRegisters(
                         originalHexLen, prmListOptions,
                         hexToFloat32, float32ToHex, 6,
                       );
-                      tr.classList.add("updated");
+                      tr.classList.add("updated");///////////////////////////////////////
 
                       // Подсветка расхождения База/Контроллер:
                       // Даем время на обновление DOM перед сравнением
