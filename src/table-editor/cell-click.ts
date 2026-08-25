@@ -1,9 +1,12 @@
 // src/table-editor/cell-click.ts
-// Обработка клика по групповым заголовкам "БАЗА" и "КОНТРОЛЛЕР".
+// Логический слой: обработка клика по групповым заголовкам "БАЗА" и "КОНТРОЛЛЕР".
+// НЕ строит DOM сам — диалоги импортируются из UI-слоя (src/ui),
+// чтобы при портировании на нативное приложение достаточно было подменить UI-модуль.
+
+import { showCopyBaseConfirm, showCopyControllerConfirm } from '../ui/confirm-dialog.js';
 
 /**
  * Вызывается при одиночном клике по групповому заголовку "БАЗА" или "КОНТРОЛЛЕР".
- * Пока — только диагностика с подсветкой. Реальное действие — на следующем шаге.
  */
 export function handleGroupHeaderClick(
     th: HTMLElement,
@@ -18,4 +21,18 @@ export function handleGroupHeaderClick(
     setTimeout(() => {
         th.style.backgroundColor = '';
     }, 600);
+
+    // Клик по БАЗЕ: окно подтверждения. Реальное копирование — на следующем шаге.
+    if (groupName === 'base') {
+        showCopyBaseConfirm().then((ok) => {
+            console.log(`[BASE COPY] Пользователь выбрал: ${ok ? 'Yes' : 'No'}`);
+        });
+    }
+
+    // Клик по КОНТРОЛЛЕРУ: окно подтверждения. Реальное копирование — на следующем шаге.
+    if (groupName === 'controller') {
+        showCopyControllerConfirm().then((ok) => {
+            console.log(`[CONTROLLER COPY] Пользователь выбрал: ${ok ? 'Yes' : 'No'}`);
+        });
+    }
 }
