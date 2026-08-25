@@ -1,4 +1,5 @@
 // src\ui\layout.ts
+import { handleGroupHeaderClick } from '../table-editor/cell-click.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     const sidebar = document.querySelector<HTMLElement>('.left-sidebar-column');
@@ -182,6 +183,51 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 window.addEventListener('mousemove', doDragGroup);
                 window.addEventListener('mouseup', stopDragGroup);
+            });
+        }
+
+        // =====================================================
+        // 3) Клик по групповым заголовкам "БАЗА" и "КОНТРОЛЛЕР".
+        //    Индексы в groupHeaders: 0=ПАРАМЕТРЫ, 1=БАЗА, 2=КОНТРОЛЛЕР.
+        //    Игнорируем клики по ресайзеру (он лежит внутри <th>).
+        // =====================================================
+        const clickableHeaderMap: Record<number, 'base' | 'controller'> = {
+            1: 'base',
+            2: 'controller',
+        };
+        for (const idxStr of Object.keys(clickableHeaderMap)) {
+            const idx = parseInt(idxStr, 10);
+            const th = groupHeaders[idx];
+            const groupName = clickableHeaderMap[idx];
+            if (!th || !groupName) continue;
+
+            th.style.cursor = 'pointer';
+            th.classList.add('clickable-group-header');
+
+            // Стрелка, направленная к границе БАЗА|КОНТРОЛЛЕР.
+            // Рисуем реальным <span> с инлайн-стилями — не зависит от кэша CSS.
+            const arrow = document.createElement('span');
+            arrow.textContent = groupName === 'base' ? '>' : '<';
+            arrow.style.position = 'absolute';
+            arrow.style.top = '50%';
+            arrow.style.transform = 'translateY(-50%)';
+            if (groupName === 'base') {
+                arrow.style.right = '6px';   // остриё ">" к правому краю (границе)
+            } else {
+                arrow.style.left = '6px';    // остриё "<" к левому краю (границе)
+            }
+            arrow.style.fontSize = '30px';
+            arrow.style.fontWeight = '900';
+            arrow.style.lineHeight = '1';
+            arrow.style.color = '#00b050';
+            arrow.style.pointerEvents = 'none';
+            th.appendChild(arrow);
+
+            th.addEventListener('click', (e: MouseEvent) => {
+                const target = e.target as HTMLElement;
+                // Если клик был по ресайзеру — игнорируем (ресайзер обрабатывает mousedown)
+                if (target && target.classList.contains('table-resizer')) return;
+                handleGroupHeaderClick(th, groupName);
             });
         }
     }

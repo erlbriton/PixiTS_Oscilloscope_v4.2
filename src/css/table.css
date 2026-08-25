@@ -85,6 +85,36 @@
     background-color: #dbdada;
 }
 
+/* Стрелка ">" у правого края заголовка БАЗА — остриё к границе с КОНТРОЛЛЕР */
+.table-wrapper .modbus-grid th.base-header::after {
+    content: '>';
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 30px;
+    font-weight: 900;
+    -webkit-text-stroke: 1.5px currentColor;
+    color: #00b050;
+    line-height: 1;
+    pointer-events: none;
+}
+
+/* Стрелка "<" у левого края заголовка КОНТРОЛЛЕР — остриё к границе с БАЗА */
+.table-wrapper .modbus-grid th.controller-header::before {
+    content: '<';
+    position: absolute;
+    left: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 30px;
+    font-weight: 900;
+    -webkit-text-stroke: 1.5px currentColor;
+    color: #00b050;
+    line-height: 1;
+    pointer-events: none;
+}
+
 /* ИЗМЕНЕНО: top уменьшен до 26px, чтобы убрать зазор между рядами шапки */
 .table-wrapper .modbus-grid thead tr:nth-child(2) th {
     top: 26px;
