@@ -200,13 +200,119 @@ export async function sendModbusWriteCommand(
 }
 
 /**
- * Обновляет значение ячейки только в интерфейсе (без отправки в устройство).
+ * Обновляет класс row-mismatch (красная подсветка расхождения с Базой)
+ * для строки таблицы. Для TPrmList сравнивает текст опции, для остальных — хекс.
  */
+function updateMismatchClass(tr: HTMLTableRowElement, dataType: string): void {
+    const tds = tr.querySelectorAll('td');
+    let mismatch = false;
+
+    if (dataType === 'TPRMLIST') {
+        // Для TPrmList сравниваем текст опции из <div class="prm-val-display">,
+        // потому что в ячейке может быть скрытый <select>, и td.textContent
+        // вернёт лишний текст из него.
+        const getDisplayText = (td: Element): string => {
+            const display = td.querySelector('.prm-val-display');
+            if (display) return (display.textContent || '').trim();
+            return (td.textContent || '').trim();
+        };
+        const baseText = tds[4] ? getDisplayText(tds[4]) : '';
+        const liveText = tds[6] ? getDisplayText(tds[6]) : '';
+        mismatch = baseText !== '—' && liveText !== '—' && baseText !== '' && liveText !== '' && baseText !== liveText;
+    } else {
+        // Для остальных типов сравниваем как хекс
+        const parseHexValue = (hexStr: string): number | null => {
+            if (!hexStr) return null;
+            const clean = hexStr.trim().toUpperCase().replace(/^X/, '');
+            if (!clean || !/^[0-9A-F]+$/.test(clean)) return null;
+            const n = parseInt(clean, 16);
+            return isNaN(n) ? null : n;
+        };
+
+        const hexBaseRaw = tds[4] ? (tds[4].textContent || '').trim() : '';
+        const hexLiveRaw = tds[6] ? (tds[6].textContent || '').trim() : '';
+        const valBase = parseHexValue(hexBaseRaw);
+        const valLive = parseHexValue(hexLiveRaw);
+        mismatch =
+            hexBaseRaw !== '—' &&
+            hexLiveRaw !== '—' &&
+            valBase !== null &&
+            valLive !== null &&
+            valBase !== valLive;
+    }
+    tr.classList.toggle('row-mismatch', mismatch);
+}
+
 /**
- * Обработка значения Контроллера (колонки 6 и 7).
- * Шаг 3: валидация ввода через чистую функцию planControllerWrite.
- * Отправка (FC16), обратное чтение (FC03) и сравнение — в следующих шагах.
+ * Обработка значения TPrmList в БАЗЕ (колонки 4 и 5).
+ * Полностью повторяет логику Контроллера для TPrmList,
+ * но БЕЗ отправки по Modbus — только обновление в памяти браузера.
  */
+async function processBasePrmListWrite(
+    tr: HTMLTableRowElement,
+    selectedHex: string,
+    colIndex: number
+): Promise<boolean> {
+    const byteValue = parseInt(selectedHex.replace(/^(x|0x)/i, ''), 16);
+    if (isNaN(byteValue)) return false;
+
+    let parts: string[] = [];
+    try {
+        parts = JSON.parse(tr.dataset.parts || '[]');
+    } catch {
+        parts = [];
+    }
+
+    // Находим текст опции по численному значению (игнорируем ведущие нули)
+    let optionText = selectedHex;
+    for (const p of parts) {
+        const part = (p || '').trim();
+        if (part.includes('#')) {
+            const [h, t] = part.split('#');
+            if (h && t && parseInt(h.slice(1), 16) === byteValue) {
+                optionText = t;
+                break;
+            }
+        }
+    }
+
+    // ВАЖНО: НЕ пишем в parts[hexIndex] — этот слот принадлежит живому значению
+    // Контроллера. Иначе редактор Контроллера посчитает, что текущее значение уже
+    // равно значению Базы, и защита "selectedHex === currentHex" запретит запись.
+    // База хранится только в тексте ячеек 4/5 (в памяти браузера).
+
+    // Обновляем обе ячейки Базы (4 и 5) текстом опции
+    const tds = tr.querySelectorAll('td');
+    const setCellText = (idx: number) => {
+        if (idx < 0 || idx >= tds.length) return;
+        const td = tds[idx];
+        const display = td.querySelector('.prm-val-display');
+        if (display) {
+            display.textContent = optionText;
+        } else {
+            td.innerHTML = `<div class="prm-val-display">${optionText}</div>`;
+        }
+    };
+    setCellText(4);
+    setCellText(5);
+
+    // Пересчитываем подсветку расхождения с Контроллером
+    updateMismatchClass(tr, 'TPRMLIST');
+
+    const activeCell = tds[colIndex];
+    if (activeCell) {
+        activeCell.classList.add('write-success');
+        setTimeout(() => activeCell.classList.remove('write-success'), 1000);
+    }
+
+    console.log(`[BASE TPrmList] Значение обновлено в памяти: ${optionText} (без отправки по Modbus).`);
+    return true;
+}
+
+//  Обработка значения Контроллера (колонки 6 и 7).
+//  * Шаг 3: валидация ввода через чистую функцию planControllerWrite.
+//  * Отправка (FC16), обратное чтение (FC03) и сравнение — в следующих шагах.
+//  */
 async function processControllerWrite(
     tr: HTMLTableRowElement,
     editType: string,
@@ -385,26 +491,7 @@ async function processControllerWrite(
         tr.dataset.parts = JSON.stringify(parts);
 
         // Пересчитываем класс row-mismatch (красная подсветка расхождения с Базой)
-        // Логика — копия из device_updater.ts
-        const parseHexValue = (hexStr: string): number | null => {
-            if (!hexStr) return null;
-            const clean = hexStr.trim().toUpperCase().replace(/^X/, '');
-            if (!clean || !/^[0-9A-F]+$/.test(clean)) return null;
-            const n = parseInt(clean, 16);
-            return isNaN(n) ? null : n;
-        };
-
-        const hexBaseRaw = tds[4] ? (tds[4].textContent || '').trim() : '';
-        const hexLiveRaw = tds[6] ? (tds[6].textContent || '').trim() : '';
-        const valBase = parseHexValue(hexBaseRaw);
-        const valLive = parseHexValue(hexLiveRaw);
-        const mismatch =
-            hexBaseRaw !== '—' &&
-            hexLiveRaw !== '—' &&
-            valBase !== null &&
-            valLive !== null &&
-            valBase !== valLive;
-        tr.classList.toggle('row-mismatch', mismatch);
+        updateMismatchClass(tr, dataType);
 
         // Зелёная вспышка успеха на отредактированной ячейке
         const activeCell = tds[colIndex];
@@ -517,7 +604,7 @@ async function processControllerWrite(
             }
         };
 
-        // Для TBYTE: в parts[hexIndex] хранится hex байта (x0A), в physical — число
+        // Для TBYTE и TPRMLIST: в parts[hexIndex] хранится hex байта (x0A)
         const byteHex = 'x' + plan.byteValue.toString(16).toUpperCase().padStart(2, '0');
 
         if (hexIndex >= 0 && hexIndex < parts.length) {
@@ -526,31 +613,30 @@ async function processControllerWrite(
 
         tr.dataset.parts = JSON.stringify(parts);
 
-        // Ячейка 6 (hex): показываем hex байта
-        updateCellDisplay(6, byteHex);
-        // Ячейка 7 (physical): показываем число
-        updateCellDisplay(7, plan.newPhys);
+        // Для TPRMLIST: в обеих ячейках показываем текст опции (например, "115200"),
+        // а не хекс или число.
+        if (dataType === 'TPRMLIST') {
+            let optionText = byteHex; // fallback, если опция не найдена
+            for (const p of parts) {
+                const part = (p || '').trim();
+                if (part.includes('#')) {
+                    const [h, t] = part.split('#');
+                    if (h && t && h.toLowerCase() === byteHex.toLowerCase()) {
+                        optionText = t;
+                        break;
+                    }
+                }
+            }
+            updateCellDisplay(6, optionText);
+            updateCellDisplay(7, optionText);
+        } else {
+            // Для TBYTE: в хекс-ячейке — хекс, в физикал — число
+            updateCellDisplay(6, byteHex);
+            updateCellDisplay(7, plan.newPhys);
+        }
 
         // Пересчитываем класс row-mismatch (красная подсветка расхождения с Базой)
-        const parseHexValue = (hexStr: string): number | null => {
-            if (!hexStr) return null;
-            const clean = hexStr.trim().toUpperCase().replace(/^X/, '');
-            if (!clean || !/^[0-9A-F]+$/.test(clean)) return null;
-            const n = parseInt(clean, 16);
-            return isNaN(n) ? null : n;
-        };
-
-        const hexBaseRaw = tds[4] ? (tds[4].textContent || '').trim() : '';
-        const hexLiveRaw = tds[6] ? (tds[6].textContent || '').trim() : '';
-        const valBase = parseHexValue(hexBaseRaw);
-        const valLive = parseHexValue(hexLiveRaw);
-        const mismatch =
-            hexBaseRaw !== '—' &&
-            hexLiveRaw !== '—' &&
-            valBase !== null &&
-            valLive !== null &&
-            valBase !== valLive;
-        tr.classList.toggle('row-mismatch', mismatch);
+        updateMismatchClass(tr, dataType);
 
         // Зелёная вспышка успеха на отредактированной ячейке
         const activeCell = tds[colIndex];
@@ -685,25 +771,7 @@ async function processControllerWrite(
     tr.dataset.parts = JSON.stringify(parts);
 
     // Пересчитываем класс row-mismatch (красная подсветка расхождения с Базой)
-    const parseHexValue = (hexStr: string): number | null => {
-        if (!hexStr) return null;
-        const clean = hexStr.trim().toUpperCase().replace(/^X/, '');
-        if (!clean || !/^[0-9A-F]+$/.test(clean)) return null;
-        const n = parseInt(clean, 16);
-        return isNaN(n) ? null : n;
-    };
-
-    const hexBaseRaw = tds[4] ? (tds[4].textContent || '').trim() : '';
-    const hexLiveRaw = tds[6] ? (tds[6].textContent || '').trim() : '';
-    const valBase = parseHexValue(hexBaseRaw);
-    const valLive = parseHexValue(hexLiveRaw);
-    const mismatch =
-        hexBaseRaw !== '—' &&
-        hexLiveRaw !== '—' &&
-        valBase !== null &&
-        valLive !== null &&
-        valBase !== valLive;
-    tr.classList.toggle('row-mismatch', mismatch);
+    updateMismatchClass(tr, dataType);
 
     // Зелёная вспышка успеха на отредактированной ячейке
     const activeCell = tds[colIndex];
@@ -730,6 +798,11 @@ async function processValueWrite(
 
     const dataType = (tr.getAttribute('data-type') || '').toUpperCase();
     const sub = tr.getAttribute('data-sub') || '';
+
+    // TPrmList в БАЗЕ: ведём себя как Контроллер, но БЕЗ отправки по Modbus.
+    if (dataType === 'TPRMLIST') {
+        return processBasePrmListWrite(tr, newValueStr, colIndex);
+    }
 
     let parts: string[] = [];
     try {
@@ -873,9 +946,12 @@ async function processValueWrite(
         }
     };
 
-    // Обновляем обе ячейки (Hex и Physical) новыми значениями из parts
+        // Обновляем обе ячейки (Hex и Physical) новыми значениями из parts
     updateCellDisplay(4, parts[4]);
     updateCellDisplay(5, parts[5]);
+
+    // Пересчитываем цвет расхождения Базы и Контроллера после правки Базы
+    updateMismatchClass(tr, dataType);
 
     // Визуальный эффект успеха
     const activeCell = tds[colIndex];
@@ -886,7 +962,7 @@ async function processValueWrite(
 
     console.log(`[UI ONLY] Значения обновлены в памяти. Hex: ${parts[4]}, Phys: ${parts[5]}`);
 
-    return true; // Всегда возвращаем true, так как отправки нет
+    return true; // Всегда возвращаем true, т.к. отправки нет
 }
 
 export function startInlineEdit(cell: HTMLElement, stateObj: TableEditorState): void {
@@ -919,11 +995,20 @@ export function startInlineEdit(cell: HTMLElement, stateObj: TableEditorState): 
             }
         }
 
-        // Текущее значение
+        // Текущее значение.
+        // Для Контроллера (колонки 6/7) — живое значение из parts[hexIndex].
+        // Для Базы (колонки 4/5) — значение, отображённое в ячейке Базы,
+        //   переведённое обратно в hex через список опций.
         const hexIndex = parseInt(tr.getAttribute('data-hex-index') || '-1', 10);
-        const currentHex = (hexIndex >= 0 && hexIndex < partsRaw.length)
-            ? (partsRaw[hexIndex] || '').toLowerCase()
-            : '';
+        let currentHex = '';
+        if (colIndex === 4 || colIndex === 5) {
+            const match = prmOptions.find((o) => o.text === originalValue);
+            currentHex = match ? match.hex : '';
+        } else {
+            currentHex = (hexIndex >= 0 && hexIndex < partsRaw.length)
+                ? (partsRaw[hexIndex] || '').toLowerCase()
+                : '';
+        }
 
         const select = document.createElement('select');
         select.className = 'inline-cell-select';
@@ -955,9 +1040,10 @@ export function startInlineEdit(cell: HTMLElement, stateObj: TableEditorState): 
                 return;
             }
 
-            // Отображаем хекс или текст в зависимости от типа ячейки
+            // Для TPrmList в обеих ячейках показываем текст опции (например, "115200"),
+            // а не хекс (например, "x06").
             const selectedText = select.options[select.selectedIndex]?.text || selectedHex;
-            cell.innerText = (editType === 'phys') ? selectedText : selectedHex;
+            cell.innerText = selectedText;
 
             try {
                 // Передаём хекс опции как новое значение
@@ -986,6 +1072,10 @@ export function startInlineEdit(cell: HTMLElement, stateObj: TableEditorState): 
                 cell.innerText = originalValue;
             }
         });
+        // Если фокус ушёл со списка без выбора (клик мимо, Enter, Tab) —
+        // возвращаем ячейку к исходному текстовому виду.
+        // Без этого список "зависает" в ячейке, как на скриншоте.
+        select.addEventListener('blur', () => saveSelect());
 
         return; // Выходим, чтобы не создавать input
     }

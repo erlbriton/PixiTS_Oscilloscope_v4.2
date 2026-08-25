@@ -106,20 +106,50 @@ export function updateRowValues(
         if (rHex && rHex.startsWith('x')) {
             bHex = 'x' + rHex.slice(1).toUpperCase();
 
-            if (dataTypeUpper === 'TPRMLIST') {
+                                    if (dataTypeUpper === 'TPRMLIST') {
                 const decValue = parseInt(rHex.slice(1), 16);
-                if (Object.keys(rowPrmListOptions).length > 0) {
-                    const currentText = rowPrmListOptions[rHex.toLowerCase()] || decValue.toString();
+
+                // Собираем опции: сначала из переданного rowPrmListOptions,
+                // а если он пуст — парсим напрямую из rowParts (формат "hex#текст")
+                const options: Record<string, string> = {};
+                for (const key in rowPrmListOptions) options[key] = rowPrmListOptions[key];
+                if (Object.keys(options).length === 0) {
+                    for (const p of rowParts) {
+                        const part = (p || '').trim();
+                        if (part.includes('#')) {
+                            const [h, t] = part.split('#');
+                            if (h && t) options[h.toLowerCase()] = t;
+                        }
+                    }
+                }
+
+                if (Object.keys(options).length > 0) {
+                    // Числовой поиск опции (игнорирует ведущие нули: x0005 == x05)
+                    let currentText = decValue.toString();
+                    let currentHexKey = '';
+                    for (const hexKey in options) {
+                        if (parseInt(hexKey.slice(1), 16) === decValue) {
+                            currentText = options[hexKey];
+                            currentHexKey = hexKey;
+                            break;
+                        }
+                    }
+                    
+                    // В База-hex показываем текст опции (не hex)
+                    bHex = currentText;
+                    
+                    // В База-physical создаём выпадающий список для редактирования
                     let selectHtml = `<div class="prm-val-display">${currentText}</div>`;
                     selectHtml += `<select class="table-prm-select" style="display: none; width: 100%; height: 100%; box-sizing: border-box; text-align: center; text-align-last: center;">`;
-                    for (const hexKey in rowPrmListOptions) {
-                        const textVal = rowPrmListOptions[hexKey];
-                        const isSelected = (hexKey === rHex.toLowerCase()) ? 'selected' : '';
+                    for (const hexKey in options) {
+                        const textVal = options[hexKey];
+                        const isSelected = (hexKey === currentHexKey) ? 'selected' : '';
                         selectHtml += `<option value="${hexKey}" ${isSelected}>${textVal}</option>`;
                     }
                     selectHtml += '</select>';
                     bPhysical = selectHtml;
                 } else {
+                    bHex = decValue.toString();
                     bPhysical = `<div class="prm-val-display">${decValue.toString()}</div>`;
                 }
             } else if (dataTypeUpper === 'TFLOAT' || dataTypeUpper === 'FLOAT' || dataTypeUpper === 'TFLOAT32') {
