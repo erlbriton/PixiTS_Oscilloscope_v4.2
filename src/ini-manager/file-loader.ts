@@ -7,6 +7,49 @@ import { renderModbusTable } from '../ui/tree.js';
 import { IniParser as CoreIniParser, IniConfig, iniParamsToChannelConfigs } from '../core/ini/index.js';
 import type { AppState } from '../core/app-state.js';
 
+/**
+ * Открывает INI-файл через File System Access API.
+ * Сохраняет хэндл файла в appState для последующей записи.
+ */
+/** Хэндлы открытых INI-файлов (имя файла → хэндл) для записи обратно */
+const iniFileHandles = new Map<string, FileSystemFileHandle>();
+let currentIniFileName: string | null = null;
+
+/** Возвращает хэндл файла, с которым сейчас работает аджастер */
+export function getCurrentIniFileHandle(): FileSystemFileHandle | null {
+  if (!currentIniFileName) return null;
+  return iniFileHandles.get(currentIniFileName) ?? null;
+}
+
+export async function openIniFile(appState: AppState): Promise<void> {
+  try {
+    const handles = await (window as any).showOpenFilePicker({
+      types: [
+        {
+          description: 'INI Files',
+          accept: { 'text/plain': ['.ini', '.txt'] },
+        },
+      ],
+      multiple: true,
+    });
+
+    for (const fileHandle of handles) {
+      const file = await fileHandle.getFile();
+      const content = await readFileAsText(file);
+      iniFileHandles.set(file.name, fileHandle);
+      await processSingleFileContent(content, file.name, appState);
+    }
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      // Пользователь отменил выбор файла
+      return;
+    }
+    const msg = err instanceof Error ? err.message : String(err);
+    showIdModal('Ошибка открытия файла: ' + msg);
+    console.error('[file-loader] openIniFile error:', err);
+  }
+}
+
 /** Элемент списка INI-файлов для синхронизации с осциллографом */
 interface OscIniFile {
   id: string;
@@ -16,35 +59,10 @@ interface OscIniFile {
   lastModified: number;
 }
 
-export function setupFileHandling(fileInput: HTMLInputElement, appState: AppState): void {
-  let processingQueue: Promise<void> = Promise.resolve();
+// setupFileHandling больше не используется — вместо неё openIniFile с File System Access API
 
-  fileInput.addEventListener('change', (event: Event) => {
-    const target = event.target as HTMLInputElement;
-    if (!target || !target.files) return;
-    const files: File[] = Array.from(target.files);
-    if (files.length === 0) return;
-    target.value = '';
-    files.forEach((file: File) => {
-      processingQueue = processingQueue
-        .then(() => processSingleFile(file, appState))
-        .catch((err: unknown) => {
-          console.error('[file-loader] Unhandled file processing error:', err);
-        });
-    });
-  });
-}
-
-async function processSingleFile(file: File, appState: AppState): Promise<void> {
-  let content: string;
-  try {
-    content = await readFileAsText(file);
-  } catch (err) {
-    showIdModal(`Ошибка чтения файла: ${file.name}`);
-    console.error('[file-loader] Read error:', err);
-    return;
-  }
-
+async function processSingleFileContent(content: string, fileName: string, appState: AppState): Promise<void> {
+  currentIniFileName = fileName;
   try {
     if (!content) {
       throw new Error('Файл пуст');
@@ -109,7 +127,7 @@ async function processSingleFile(file: File, appState: AppState): Promise<void> 
     }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    showIdModal('Ошибка обработки файла ' + file.name + ': ' + msg);
+    showIdModal('Ошибка обработки файла ' + fileName + ': ' + msg);
     console.error('Parser Error:', err);
   }
 }
@@ -210,4 +228,30 @@ function serializeConfig(config: RawIniConfig): string {
     out += '\n';
   }
   return out;
+}
+
+/**
+ * Старый способ открытия файла через <input type="file">.
+ * Временно оставляем для совместимости, пока не переключимся на openIniFile.
+ */
+export function setupFileHandling(fileInput: HTMLInputElement, appState: AppState): void {
+  let processingQueue: Promise<void> = Promise.resolve();
+
+  fileInput.addEventListener('change', (event: Event) => {
+    const target = event.target as HTMLInputElement;
+    if (!target || !target.files) return;
+    const files: File[] = Array.from(target.files);
+    if (files.length === 0) return;
+    target.value = '';
+    files.forEach((file: File) => {
+      processingQueue = processingQueue
+        .then(async () => {
+          const content = await readFileAsText(file);
+          await processSingleFileContent(content, file.name, appState);
+        })
+        .catch((err: unknown) => {
+          console.error('[file-loader] Unhandled file processing error:', err);
+        });
+    });
+  });
 }

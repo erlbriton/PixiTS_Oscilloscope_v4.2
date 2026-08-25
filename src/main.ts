@@ -8,7 +8,7 @@ import './ui/layout.js';
 
 import { showIdModal } from './ui/ui.js';
 import { updateDeviceRegisters } from './serial/device_updater.js';
-import { setupFileHandling } from './ini-manager/file-loader.js';
+import { setupFileHandling, openIniFile } from './ini-manager/file-loader.js';
 import {
     updateComInterfaceName,
     executeDeviceIdentification,
@@ -23,14 +23,15 @@ declare global {
 }
 
 const appState: AppState = {
-    isIdentifying: false,
-    isPolling: false,
-    isRefreshing: false,
-    isLoopRunning: false,
-    slaveAddress: 0x01,
-    currentIniContent: null,
-    currentIniConfig: null,
-    pollDelayMs: 20,
+  isIdentifying: false,
+  isPolling: false,
+  isRefreshing: false,
+  isLoopRunning: false,
+  slaveAddress: 0x01,
+  currentIniContent: null,
+  currentIniConfig: null,
+  currentIniFileHandle: null,
+  pollDelayMs: 20,
 };
 
 document.addEventListener('DOMContentLoaded', async () => {

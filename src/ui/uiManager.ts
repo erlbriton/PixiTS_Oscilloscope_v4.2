@@ -1,5 +1,7 @@
 // src/ui/uiManager.ts
 import { initTableEditor } from '../ini-manager/table-editor.js';
+import { setupSaveButton } from '../ini-manager/save-ini.js';
+import { openIniFile } from '../ini-manager/file-loader.js';
 import type { ISerialPort } from '../serial/ISerialPort.js';
 import type { AppState } from '../core/app-state.js';
 import type { IOscilloscopeApi } from '../core/osc-api.js';
@@ -262,8 +264,14 @@ export function initUI(deps: UiManagerDeps): void {
     });
   }
 
-  if (folderActionBtn) folderActionBtn.addEventListener('click', (e) => { e.stopPropagation(); filePicker?.click(); });
-  if (menuOpenFile) menuOpenFile.addEventListener('click', () => { filePicker?.click(); folderDropdown?.classList.remove('show'); });
+  if (folderActionBtn) folderActionBtn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    await openIniFile(appState);
+  });
+  if (menuOpenFile) menuOpenFile.addEventListener('click', async () => {
+    await openIniFile(appState);
+    folderDropdown?.classList.remove('show');
+  });
   if (menuOpenFolder) menuOpenFolder.addEventListener('click', () => { folderPicker?.click(); folderDropdown?.classList.remove('show'); });
   if (folderArrowBtn) folderArrowBtn.addEventListener('click', (e) => { e.stopPropagation(); folderDropdown?.classList.toggle('show'); });
     document.addEventListener('click', () => {
@@ -272,5 +280,6 @@ export function initUI(deps: UiManagerDeps): void {
   });
 
   initTableEditor('grid-data-rows', appState);
+  setupSaveButton(appState);
   console.log("UI Manager: Интерфейс и обработчики инициализированы.");
 }

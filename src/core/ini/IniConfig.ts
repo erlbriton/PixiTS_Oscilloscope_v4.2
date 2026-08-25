@@ -91,6 +91,30 @@ export class IniConfig {
   }
 
   /**
+   * Обновляет значение по умолчанию параметра в rawSections (для последующей сериализации).
+   * Для TBit обновляет parts[8], для остальных типов — parts[9].
+   * Возвращает true, если параметр найден и обновлён.
+   */
+  public setParamValue(section: string, key: string, value: string): boolean {
+    const sectionUpper = section.toUpperCase();
+    const raw = this.parseResult.rawSections;
+    const entry = raw[sectionUpper]?.[key];
+    if (!entry || !Array.isArray(entry)) return false;
+
+    // Для TBit значение в parts[8], для остальных — в parts[9]
+    const param = this.getParameter(section, key);
+    if (!param) return false;
+
+    const valueIndex = param.isBit ? 8 : 9;
+    if (valueIndex >= entry.length) {
+      // Дополняем массив, если он короче
+      while (entry.length <= valueIndex) entry.push('');
+    }
+    entry[valueIndex] = value;
+    return true;
+  }
+
+  /**
    * Сериализация обратно в INI-текст.
    * Только для сохранения файлов, НЕ для передачи между модулями.
    */

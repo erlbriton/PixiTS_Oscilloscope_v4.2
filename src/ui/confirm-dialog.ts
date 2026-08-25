@@ -8,7 +8,7 @@
  * Возвращает true при "Yes", false при "No"/закрытии.
  * Стили — инлайн, чтобы не зависеть от кэша CSS.
  */
-function showConfirmDialog(message: string): Promise<boolean> {
+export function showConfirmDialog(message: string): Promise<boolean> {
     return new Promise((resolve) => {
         const overlay = document.createElement('div');
         overlay.style.position = 'fixed';
