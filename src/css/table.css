@@ -196,14 +196,23 @@ tr.row-mismatch td:not(.param-id):not(.param-name):not(.param-desc):not([class*=
 
 /* Желтая подсветка активной ячейки данных (поверх зеленого фона строки) */
 td.cell-active {
-    /* Полупрозрачный желтый фон, чтобы зеленый цвет строки (is-selected) просвечивал */
     background-color: rgba(255, 251, 0, 0.849) !important;
-    
-    /* Дополнительная визуальная четкость (тонкая рамка) */
     box-shadow: inset 0 0 0 1px rgba(255, 215, 0, 0.5);
-    
-    /* Сохраняем цвет текста (красный или обычный), заданный другими классами */
-    color: inherit; 
+    color: inherit;
+}
+
+/* Зелёная вспышка (~1 сек) на ячейке после успешной записи */
+td.write-success {
+    background-color: rgba(0, 200, 80, 0.65) !important;
+    box-shadow: inset 0 0 0 1px rgba(0, 160, 60, 0.6);
+    transition: background-color 0.2s ease;
+}
+
+/* Красная вспышка (~1.5 сек) на ячейке, если запись не удалась */
+td.write-error {
+    background-color: rgba(255, 60, 60, 0.65) !important;
+    box-shadow: inset 0 0 0 1px rgba(200, 0, 0, 0.6);
+    transition: background-color 0.2s ease;
 }
 
 /* Гарантируем, что текст внутри div/span/select тоже наследует цвет */
