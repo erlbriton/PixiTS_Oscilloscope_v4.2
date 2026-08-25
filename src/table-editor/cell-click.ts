@@ -4,7 +4,7 @@
 // чтобы при портировании на нативное приложение достаточно было подменить UI-модуль.
 
 import { showCopyBaseConfirm, showCopyControllerConfirm } from '../ui/confirm-dialog.js';
-import { copyControllerToBase } from './copy-ops.js';
+import { copyControllerToBase, copyBaseToController } from './copy-ops.js';
 
 /**
  * Вызывается при одиночном клике по групповому заголовку "БАЗА" или "КОНТРОЛЛЕР".
@@ -23,10 +23,13 @@ export function handleGroupHeaderClick(
         th.style.backgroundColor = '';
     }, 600);
 
-    // Клик по БАЗЕ: окно подтверждения. Реальное копирование — на следующем шаге.
+    // Клик по БАЗЕ: окно подтверждения, при Yes — реальная запись База→Контроллер по Modbus.
     if (groupName === 'base') {
-        showCopyBaseConfirm().then((ok) => {
+        showCopyBaseConfirm().then(async (ok) => {
             console.log(`[BASE COPY] Пользователь выбрал: ${ok ? 'Yes' : 'No'}`);
+            if (ok) {
+                await copyBaseToController();
+            }
         });
     }
 

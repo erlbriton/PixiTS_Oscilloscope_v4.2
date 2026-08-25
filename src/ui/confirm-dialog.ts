@@ -124,3 +124,73 @@ export function showCopyBaseConfirm(): Promise<boolean> {
 export function showCopyControllerConfirm(): Promise<boolean> {
     return showConfirmDialog('Копировать параметры контроллера в базу?');
 }
+
+/**
+ * Окно со списком параметров, которые не записались в контроллер.
+ * Если список длинный — включается скроллинг. Одна кнопка OK.
+ */
+export function showFailedParamsList(items: { id: string; name: string }[]): void {
+    const overlay = document.createElement('div');
+    overlay.style.position = 'fixed';
+    overlay.style.inset = '0';
+    overlay.style.background = 'rgba(0, 0, 0, 0.35)';
+    overlay.style.display = 'flex';
+    overlay.style.alignItems = 'center';
+    overlay.style.justifyContent = 'center';
+    overlay.style.zIndex = '10000';
+
+    const dialog = document.createElement('div');
+    dialog.style.background = '#f0f0f0';
+    dialog.style.border = '1px solid #888';
+    dialog.style.boxShadow = '0 4px 16px rgba(0,0,0,0.4)';
+    dialog.style.width = '440px';
+    dialog.style.fontFamily = 'Segoe UI, Arial, sans-serif';
+    dialog.style.color = '#000';
+
+    const titleBar = document.createElement('div');
+    titleBar.textContent = 'Не записались параметры';
+    titleBar.style.padding = '6px 10px';
+    titleBar.style.background = '#fff';
+    titleBar.style.borderBottom = '1px solid #ddd';
+    titleBar.style.fontWeight = '600';
+
+    // Скроллируемый список
+    const list = document.createElement('div');
+    list.style.margin = '14px 12px';
+    list.style.maxHeight = '240px';
+    list.style.overflowY = 'auto';
+    list.style.background = '#fff';
+    list.style.border = '1px solid #ccc';
+    list.style.padding = '8px 10px';
+    list.style.fontSize = '13px';
+    list.style.lineHeight = '1.6';
+
+    for (const item of items) {
+        const row = document.createElement('div');
+        row.textContent = `${item.id}  ${item.name}`;
+        row.style.whiteSpace = 'nowrap';
+        list.appendChild(row);
+    }
+
+    const buttons = document.createElement('div');
+    buttons.style.display = 'flex';
+    buttons.style.justifyContent = 'center';
+    buttons.style.padding = '0 16px 16px';
+    const okBtn = document.createElement('button');
+    okBtn.textContent = 'OK';
+    okBtn.style.minWidth = '80px';
+    okBtn.style.padding = '5px 12px';
+    buttons.appendChild(okBtn);
+
+    dialog.appendChild(titleBar);
+    dialog.appendChild(list);
+    dialog.appendChild(buttons);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    const close = (): void => overlay.remove();
+    okBtn.addEventListener('click', close);
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) close();
+    });
+}

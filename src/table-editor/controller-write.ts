@@ -27,42 +27,49 @@ export function updateCellDisplay(td: Element | null, val: string): void {
 }
 
 /**
- * Пересчитывает класс row-mismatch (красная подсветка расхождения База/Контроллер).
+ * Возвращает true, если значение Базы (колонка 4) отличается от Контроллера (колонка 6).
  * Для TPrmList сравнивает текст опции, для остальных типов — хекс как число.
  */
-export function updateMismatchClass(tr: HTMLTableRowElement, dataType: string): void {
+export function baseControllerMismatch(tr: HTMLTableRowElement, dataType: string): boolean {
     const tds = tr.querySelectorAll('td');
-    let mismatch = false;
 
     if (dataType === 'TPRMLIST') {
-        const getDisplayText = (td: Element): string => {
+        const getDisplayText = (td: Element | undefined): string => {
+            if (!td) return '';
             const display = td.querySelector('.prm-val-display');
             if (display) return (display.textContent || '').trim();
             return (td.textContent || '').trim();
         };
-        const baseText = tds[4] ? getDisplayText(tds[4]) : '';
-        const liveText = tds[6] ? getDisplayText(tds[6]) : '';
-        mismatch = baseText !== '—' && liveText !== '—' && baseText !== '' && liveText !== '' && baseText !== liveText;
-    } else {
-        const parseHexValue = (hexStr: string): number | null => {
-            if (!hexStr) return null;
-            const clean = hexStr.trim().toUpperCase().replace(/^X/, '');
-            if (!clean || !/^[0-9A-F]+$/.test(clean)) return null;
-            const n = parseInt(clean, 16);
-            return isNaN(n) ? null : n;
-        };
-        const hexBaseRaw = tds[4] ? (tds[4].textContent || '').trim() : '';
-        const hexLiveRaw = tds[6] ? (tds[6].textContent || '').trim() : '';
-        const valBase = parseHexValue(hexBaseRaw);
-        const valLive = parseHexValue(hexLiveRaw);
-        mismatch =
-            hexBaseRaw !== '—' &&
-            hexLiveRaw !== '—' &&
-            valBase !== null &&
-            valLive !== null &&
-            valBase !== valLive;
+        const baseText = getDisplayText(tds[4]);
+        const liveText = getDisplayText(tds[6]);
+        return baseText !== '—' && liveText !== '—' && baseText !== '' && liveText !== '' && baseText !== liveText;
     }
-    tr.classList.toggle('row-mismatch', mismatch);
+
+    const parseHexValue = (hexStr: string): number | null => {
+        if (!hexStr) return null;
+        const clean = hexStr.trim().toUpperCase().replace(/^X/, '');
+        if (!clean || !/^[0-9A-F]+$/.test(clean)) return null;
+        const n = parseInt(clean, 16);
+        return isNaN(n) ? null : n;
+    };
+    const hexBaseRaw = tds[4] ? (tds[4].textContent || '').trim() : '';
+    const hexLiveRaw = tds[6] ? (tds[6].textContent || '').trim() : '';
+    const valBase = parseHexValue(hexBaseRaw);
+    const valLive = parseHexValue(hexLiveRaw);
+    return (
+        hexBaseRaw !== '—' &&
+        hexLiveRaw !== '—' &&
+        valBase !== null &&
+        valLive !== null &&
+        valBase !== valLive
+    );
+}
+
+/**
+ * Пересчитывает класс row-mismatch (красная подсветка расхождения База/Контроллер).
+ */
+export function updateMismatchClass(tr: HTMLTableRowElement, dataType: string): void {
+    tr.classList.toggle('row-mismatch', baseControllerMismatch(tr, dataType));
 }
 
 /** Главная функция записи в Контроллер с ветвлением по kind плана. */

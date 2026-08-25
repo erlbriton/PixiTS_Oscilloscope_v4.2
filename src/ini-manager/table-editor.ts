@@ -86,8 +86,16 @@ export function initPhysicalCellEditor(
     });
 }
 
+let editorState: TableEditorState | null = null;
+
+/** Возвращает состояние приложения, сохранённое при инициализации редактора. */
+export function getTableEditorState(): TableEditorState | null {
+    return editorState;
+}
+
 /** Инициализация слушателей инлайн-редактирования. */
 export function initTableEditor(containerOrTableId: string | HTMLElement, stateObj: TableEditorState): void {
+    editorState = stateObj;
     try {
         const container = typeof containerOrTableId === 'string'
             ? document.getElementById(containerOrTableId)
