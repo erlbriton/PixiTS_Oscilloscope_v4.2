@@ -1,4 +1,5 @@
 // src/ini-manager/tree-core.ts
+
 import type { IniConfig } from '../core/ini/index.js';
 
 /** Тип сырого INI-конфига (совместим с AppState.currentDeviceConfig) */
@@ -115,7 +116,43 @@ export function addDeviceToRegistry(iniConfig: IniConfig): boolean {
   }
   return false;
 }
+/**
+ * Обновляет существующее устройство в реестре (на месте, без перестройки списка).
+ * Используется при перечитывании изменённых INI-файлов с диска.
+ */
+export function updateDeviceInRegistry(
+    location: string,
+    id: string,
+    iniConfig: IniConfig,
+    fullConfig: RawIniConfig,
+): boolean {
+    const group = deviceRegistry[location];
+    if (!Array.isArray(group)) return false;
+    const idx = group.findIndex(item => item.id === id);
+    if (idx === -1) return false;
 
+    const dev = iniConfig.device;
+    const displayComponents = [id, dev?.version, dev?.date].filter(Boolean);
+    group[idx].iniConfig = iniConfig;
+    group[idx].fullConfig = fullConfig;
+    group[idx].displayText = displayComponents.join(' ');
+    return true;
+}
+/**
+ * Удаляет устройство из реестра по location и id.
+ * Используется, когда INI-файл был удалён или перемещён на диске.
+ */
+export function removeDeviceFromRegistry(location: string, id: string): boolean {
+    const group = deviceRegistry[location];
+    if (!Array.isArray(group)) return false;
+    const idx = group.findIndex(item => item.id === id);
+    if (idx === -1) return false;
+    group.splice(idx, 1);
+    if (group.length === 0) {
+        delete deviceRegistry[location];
+    }
+    return true;
+}
 /**
  * План записи значения Контроллера.
  * Чистая логика без DOM — переносима в нативные проекты.

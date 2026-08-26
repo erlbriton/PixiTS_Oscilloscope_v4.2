@@ -1,6 +1,7 @@
 // src/ini-manager/file-loader.ts
+
 import { showIdModal, populateDeviceForm } from '../ui/ui.js';
-import { addDeviceToRegistry, deviceRegistry, setCurrentIniConfig } from './tree-core.js';
+import { addDeviceToRegistry, deviceRegistry, setCurrentIniConfig, updateDeviceInRegistry, removeDeviceFromRegistry } from './tree-core.js';
 import type { RawIniConfig, DeviceRegistryItem } from './tree-core.js';
 import { renderDeviceTree } from './tree-ui.js';
 import { renderModbusTable } from '../ui/tree.js';
@@ -14,6 +15,22 @@ import type { AppState } from '../core/app-state.js';
 /** Хэндлы открытых INI-файлов (имя файла → хэндл) для записи обратно */
 const iniFileHandles = new Map<string, FileSystemFileHandle>();
 let currentIniFileName: string | null = null;
+
+/**
+ * Хранилище File-объектов для перечитывания INI-файлов с диска.
+ * Ключ: `${location}::${id}` — совпадает с уникальностью в deviceRegistry.
+ * Браузер не следит за файлами сам, но пока жива ссылка на File,
+ * file.text() возвращает актуальное содержимое с диска.
+ */
+interface StoredFileEntry {
+    file: File;
+    handle?: FileSystemFileHandle;
+    location: string;
+    id: string;
+    content: string;
+    lastModified: number;
+}
+const fileStore: Map<string, StoredFileEntry> = new Map();
 
 /** Возвращает хэндл файла, с которым сейчас работает аджастер */
 export function getCurrentIniFileHandle(): FileSystemFileHandle | null {
@@ -37,7 +54,7 @@ export async function openIniFile(appState: AppState): Promise<void> {
       const file = await fileHandle.getFile();
       const content = await readFileAsText(file);
       iniFileHandles.set(file.name, fileHandle);
-      await processSingleFileContent(content, file.name, appState);
+      await processSingleFileContent(content, file.name, appState, file, fileHandle);
     }
   } catch (err: unknown) {
     if (err instanceof Error && err.name === 'AbortError') {
@@ -61,7 +78,13 @@ interface OscIniFile {
 
 // setupFileHandling больше не используется — вместо неё openIniFile с File System Access API
 
-async function processSingleFileContent(content: string, fileName: string, appState: AppState): Promise<void> {
+async function processSingleFileContent(
+    content: string,
+    fileName: string,
+    appState: AppState,
+    sourceFile?: File,
+    sourceHandle?: FileSystemFileHandle,
+): Promise<void> {
   currentIniFileName = fileName;
   try {
     if (!content) {
@@ -86,6 +109,22 @@ async function processSingleFileContent(content: string, fileName: string, appSt
 
     const isAdded = addDeviceToRegistry(iniConfig);
     setCurrentIniConfig(iniConfig);
+
+    // Сохраняем File-объект, чтобы позже перечитать файл с диска
+    console.log('[file-loader] save check:', { isAdded, hasFile: !!sourceFile, hasDevice: !!iniConfig.device });
+    if (isAdded && sourceFile && iniConfig.device) {
+        const loc = iniConfig.device.location || 'Неизвестное место';
+        const id = iniConfig.device.id || 'Без ID';
+        const key = `${loc}::${id}`;
+        fileStore.set(key, {
+            file: sourceFile,
+            handle: sourceHandle,
+            location: loc,
+            id: String(id),
+            content,
+            lastModified: Date.now(),
+        });
+    }
 
     if (isAdded) {
       renderDeviceTree();
@@ -152,6 +191,81 @@ function readFileAsText(file: File): Promise<string> {
     };
     reader.readAsText(file, 'windows-1251');
   });
+}
+
+/**
+ * Перечитывает все загруженные INI-файлы с диска.
+ * - Файл изменён: обновляет запись в реестре и памяти.
+ * - Файл удалён/перемещён: удаляет устройство из реестра.
+ * - Файл не менялся: пропускает.
+ */
+export async function reloadIniFilesFromDisk(): Promise<{
+    updated: number;
+    removed: number;
+    unchanged: number;
+    errors: string[];
+}> {
+    const results = { updated: 0, removed: 0, unchanged: 0, errors: [] as string[] };
+    const keys = Array.from(fileStore.keys());
+
+    if (keys.length === 0) {
+        console.log('[file-loader] reloadIniFilesFromDisk: нет файлов для перечитывания');
+        return results;
+    }
+
+    for (const key of keys) {
+        const entry = fileStore.get(key);
+        if (!entry) continue;
+
+        try {
+            // Если есть хэндл — берём свежий File с диска, иначе старый снимок
+            const fileToRead = entry.handle ? await entry.handle.getFile() : entry.file;
+            const newContent = await readFileAsText(fileToRead);
+
+            if (newContent === entry.content) {
+                results.unchanged++;
+                continue;
+            }
+
+            // Файл изменился — парсим и обновляем реестр на месте
+            try {
+                const coreParser = new CoreIniParser();
+                const parseResult = coreParser.parse(newContent);
+                const newIniConfig = new IniConfig(parseResult);
+                const newConfig = parseResult.rawSections as RawIniConfig;
+
+                if (updateDeviceInRegistry(entry.location, entry.id, newIniConfig, newConfig)) {
+                    entry.content = newContent;
+                    entry.lastModified = Date.now();
+                    results.updated++;
+                    console.log(`[file-loader] Файл обновлён: ${entry.file.name}`);
+                } else {
+                    fileStore.delete(key);
+                    results.errors.push(`${entry.file.name}: устройство не найдено в реестре`);
+                }
+            } catch (parseErr) {
+                const msg = parseErr instanceof Error ? parseErr.message : String(parseErr);
+                results.errors.push(`${entry.file.name}: ошибка парсинга — ${msg}`);
+                console.error(`[file-loader] Parse error for ${entry.file.name}:`, parseErr);
+            }
+        } catch (readErr) {
+            // Файл удалён или перемещён
+            removeDeviceFromRegistry(entry.location, entry.id);
+            fileStore.delete(key);
+            results.removed++;
+            console.log(`[file-loader] Файл удалён/недоступен: ${entry.file.name}`);
+        }
+    }
+
+    if (results.updated > 0 || results.removed > 0) {
+        renderDeviceTree();
+        syncFilesToOscilloscope();
+        console.log(
+            `[file-loader] reload: updated=${results.updated}, removed=${results.removed}, unchanged=${results.unchanged}`,
+        );
+    }
+
+    return results;
 }
 
 function syncFilesToOscilloscope(): void {
@@ -233,7 +347,6 @@ function serializeConfig(config: RawIniConfig): string {
   }
   return out;
 }
-
 /**
  * Старый способ открытия файла через <input type="file">.
  * Временно оставляем для совместимости, пока не переключимся на openIniFile.
@@ -251,7 +364,7 @@ export function setupFileHandling(fileInput: HTMLInputElement, appState: AppStat
       processingQueue = processingQueue
         .then(async () => {
           const content = await readFileAsText(file);
-          await processSingleFileContent(content, file.name, appState);
+          await processSingleFileContent(content, file.name, appState, file);
         })
         .catch((err: unknown) => {
           console.error('[file-loader] Unhandled file processing error:', err);

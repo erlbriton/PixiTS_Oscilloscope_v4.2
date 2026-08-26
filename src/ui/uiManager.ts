@@ -1,4 +1,5 @@
 // src/ui/uiManager.ts
+
 import { initTableEditor } from '../ini-manager/table-editor.js';
 import { setupSaveButton } from '../ini-manager/save-ini.js';
 import { openIniFile } from '../ini-manager/file-loader.js';
@@ -10,6 +11,8 @@ import { IniParser as CoreIniParser, IniConfig } from '../core/ini/index.js';
 //import { RecFileReader } from '../oscilloscope/core/RecFileReader.js';
 //import { updateIdBanner } from './ui.js';
 import { updateIdBanner, showCompactError } from './ui.js';
+import { reloadIniFilesFromDisk } from '../ini-manager/file-loader.js';
+import { isLinux } from '../core/platform.js';
 import { showAddressDialog } from './confirm-dialog.js';
 
 /** Буфер данных канала (типизирован явно, без any) */
@@ -297,9 +300,20 @@ export function initUI(deps: UiManagerDeps): void {
   if (deviceListActionBtn) {
     deviceListActionBtn.addEventListener('click', async () => {
       // Следующим этапом здесь появятся функции всех пунктов меню.
-      // Пока реализована только функция по умолчанию — "Обновить".
+      // Пока реализована только функция по умолчанию — "Обновить список устройств".
       if (deviceListMode === 'refresh') {
-        await performRefresh(true);
+        const results = await reloadIniFilesFromDisk();
+        if (results.updated === 0 && results.removed === 0 && results.errors.length === 0) {
+          showCompactError('Изменений в INI-файлах не обнаружено.');
+        } else {
+          const parts: string[] = [];
+          if (results.updated > 0) parts.push(`обновлено: ${results.updated}`);
+          if (results.removed > 0) parts.push(`удалено из списка: ${results.removed}`);
+          showCompactError(`Список устройств обновлён. ${parts.join(', ')}.`);
+        }
+        if (results.errors.length > 0) {
+          console.warn('[UI] reloadIniFilesFromDisk — ошибки:', results.errors);
+        }
       } else {
         console.log(`[UI] Функция "${deviceListMode}" будет реализована следующим этапом.`);
       }
@@ -382,6 +396,20 @@ export function initUI(deps: UiManagerDeps): void {
     folderDropdown?.classList.remove('show');
   });
   if (menuOpenFolder) menuOpenFolder.addEventListener('click', () => { folderPicker?.click(); folderDropdown?.classList.remove('show'); });
+
+  // Windows: открытие папки недоступно — физически скрываем стрелочку,
+  // разделитель и пункт "Открыть папку". Кнопка становится обычной
+  // одиночной "Открыть файл". В Linux всё остаётся как есть.
+  if (!isLinux()) {
+    if (menuOpenFolder) menuOpenFolder.style.display = 'none';
+    if (folderArrowBtn) {
+      folderArrowBtn.style.display = 'none';
+      const divider = folderArrowBtn.previousElementSibling as HTMLElement | null;
+      if (divider && divider.classList.contains('split-btn-divider')) {
+        divider.style.display = 'none';
+      }
+    }
+  }
   if (folderArrowBtn) folderArrowBtn.addEventListener('click', (e) => { e.stopPropagation(); folderDropdown?.classList.toggle('show'); });
     document.addEventListener('click', () => {
     folderDropdown?.classList.remove('show');
