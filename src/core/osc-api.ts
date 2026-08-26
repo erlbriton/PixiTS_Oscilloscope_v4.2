@@ -45,4 +45,6 @@ export interface IOscilloscopeApi {
   setSerialPort(port: unknown): void;
   setSlaveAddress(addr: number): void;
   destroy(): void;
+   showFrozenState(message: string): void;
+  resumeFromFrozen(): void;
 }

@@ -34,6 +34,92 @@ export function showIdModal(text: string): void {
 }
 
 /**
+ * Компактное окно ошибки в цветах таблицы.
+ * Показывается при проблемах связи независимо от осциллографа.
+ */
+export function showCompactError(text: string): void {
+    const existing = document.querySelector('.compact-error-overlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.className = 'compact-error-overlay';
+    overlay.style.position = 'fixed';
+    overlay.style.inset = '0';
+    overlay.style.background = 'rgba(0, 0, 0, 0.25)';
+    overlay.style.display = 'flex';
+    overlay.style.alignItems = 'center';
+    overlay.style.justifyContent = 'center';
+    overlay.style.zIndex = '9999';
+
+    const modal = document.createElement('div');
+    modal.style.background = '#ffffff';
+    modal.style.border = '2px solid #888';           // Усиленная рамка
+    modal.style.boxShadow = '0 4px 12px rgba(0,0,0,0.25)';  // Более выраженная тень
+    modal.style.width = 'auto';      // Ширина подстраивается под сообщение в одну строку
+    modal.style.fontFamily = 'Segoe UI, Arial, sans-serif';
+    modal.style.fontSize = '13px';
+    modal.style.color = '#333';
+    modal.style.borderRadius = '5px';
+    modal.style.overflow = 'hidden';
+
+    // Серая полоса-заголовок (как у таблицы)
+    const header = document.createElement('div');
+    header.style.background = 'linear-gradient(to bottom, #f0f0f0, #e0e0e0)';
+    header.style.borderBottom = '1px solid #999';
+    header.style.padding = '8px 12px';
+    header.style.display = 'flex';
+    header.style.alignItems = 'center';
+    header.style.gap = '6px';
+    header.style.fontWeight = '600';
+    header.style.color = '#555';
+
+    const icon = document.createElement('span');
+    icon.textContent = '⚠️';
+    icon.style.fontSize = '14px';
+
+    const title = document.createElement('span');
+    title.textContent = 'Внимание';
+
+    header.appendChild(icon);
+    header.appendChild(title);
+
+    const content = document.createElement('div');
+    content.style.padding = '14px 16px';
+    content.style.textAlign = 'center';
+
+    const msg = document.createElement('div');
+    msg.textContent = text;
+    msg.style.marginBottom = '12px';
+    msg.style.lineHeight = '1.4';
+    msg.style.whiteSpace = 'nowrap'; // Сообщение всегда в одну строку
+
+    const btn = document.createElement('button');
+    btn.textContent = 'OK';
+    btn.style.padding = '4px 20px';
+    btn.style.fontSize = '12px';
+    btn.style.fontWeight = '500';
+    btn.style.cursor = 'pointer';
+    btn.style.background = '#f0f0f0';
+    btn.style.border = '1px solid #999';
+    btn.style.borderRadius = '3px';
+
+    const close = (): void => overlay.remove();
+    btn.addEventListener('click', close);
+    overlay.addEventListener('click', (e: MouseEvent) => {
+        if (e.target === overlay) close();
+    });
+
+    content.appendChild(msg);
+    content.appendChild(btn);
+
+    modal.appendChild(header);
+    modal.appendChild(content);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    btn.focus();
+}
+
+/**
  * Обновляет текст в верхнем баннере ID
  */
 export function updateIdBanner(idText: string): void {

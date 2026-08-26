@@ -26,6 +26,9 @@ export async function updateDeviceRegisters(
   // FIX 2: гарантируем инициализацию менеджера порта
   serialManager.init(serial);
 
+  // Флаг успеха: true — все батчи прочитаны, false — хотя бы один не ответил
+  let success = true;
+
   const iniConfig: IniConfig | undefined = appState?.currentIniConfig ?? undefined;
 
   const wasPolling = appState ? appState.isPolling : false;
@@ -128,12 +131,13 @@ export async function updateDeviceRegisters(
           return false;
         };
 
-        const reply: Uint8Array | null = await serialManager.executeTransaction(
+                const reply: Uint8Array | null = await serialManager.executeTransaction(
           finalPacket,
           checkComplete,
           300,
         );
 
+        // Проверяем результат транзакции
         if (reply && reply.length >= 3 && reply[1] === 0x03) {
           const byteCount = reply[2];
           const expectedTotal = 3 + byteCount + 2;
@@ -235,12 +239,12 @@ export async function updateDeviceRegisters(
                         parts[6] = scaleStr;
                       }
                       tr.dataset.parts = JSON.stringify(parts);
-                                            updateRowValues(
+                      updateRowValues(
                         tr, parts, dataType, scale, hIdx,
                         originalHexLen, prmListOptions,
                         hexToFloat32, float32ToHex, 6,
                       );
-                      tr.classList.add("updated");///////////////////////////////////////
+                      tr.classList.add("updated");
 
                       // Подсветка расхождения База/Контроллер:
                       // Даем время на обновление DOM перед сравнением
@@ -285,10 +289,20 @@ export async function updateDeviceRegisters(
                 }
               }
             }
+          } else {
+            // Ответ получен, но он слишком короткий — считаем ошибкой
+            console.warn(`[UpdateDevice] Неполный ответ от батча ${batch.start}`);
+            success = false;
           }
+        } else {
+          // Таймаут (reply === null) или некорректный ответ (например, ошибка Modbus 0x83)
+          console.warn(`[UpdateDevice] Нет ответа от батча ${batch.start} (reply=${reply ? 'error' : 'null'})`);
+          success = false;
         }
       } catch (err) {
         console.error(`Batch error:`, err);
+        // При исключительной ошибке связи — считаем операцию неудачной
+        success = false;
       }
     }
   } finally {
@@ -296,7 +310,8 @@ export async function updateDeviceRegisters(
     document.body.classList.remove("loading-state");
   }
 
-  return wasPolling;
+  // Возвращаем флаг успеха, а не wasPolling
+  return success;
 }
 
 export function resetUpdateState(): void {

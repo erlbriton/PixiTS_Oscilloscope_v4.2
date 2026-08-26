@@ -215,10 +215,19 @@ export async function executeDeviceIdentification(serial: ISerialPort, comSelect
         stateObj.isIdentifying = false;
     }
 }
+///////////////////////////////////\\
 export async function readLoop(serial: ISerialPort, _parser: unknown, view: IOscilloscopeApi | null, buffers: ChannelBuffer[] | Record<string, ChannelBuffer> | Map<string, ChannelBuffer> | null, stateObj: AppState): Promise<void> {
     if (stateObj.isLoopRunning) return;
     stateObj.isLoopRunning = true;
     console.log("DEBUG: Единый батчевый readLoop запущен");
+
+    // Счётчик подряд идущих таймаутов для уведомления "Контроллер не отвечает".
+    // Бизнес-логика НЕ вызывает showIdModal — только диспетчерит событие,
+    // чтобы модуль был готов к Tauri (UI-реакция настраивается в uiManager).
+    let consecutiveTimeouts = 0;
+    let errorEventSent = false;
+    const TIMEOUT_THRESHOLD = 3;
+
     try {
         while (serial && serial.isConnected && stateObj.isPolling) {
             // Явная проверка на случай, если флаг изменился во время await
@@ -261,18 +270,40 @@ export async function readLoop(serial: ISerialPort, _parser: unknown, view: IOsc
                 finalPacket[6] = crc & 0xFF;
                 finalPacket[7] = (crc >> 8) & 0xFF;
                 const checkComplete: CheckCompleteFn = (buf: Uint8Array) => buf.length >= 3 + (regCount * 2) + 2;
-                try {
+                                try {
                     const reply = await serialManager.executeTransaction(finalPacket, checkComplete, 500);
                     if (reply && reply.length >= 3 + (regCount * 2)) {
                         for (let i = 0; i < regCount; i++) {
                             const val = (reply[3 + i * 2] << 8) | reply[4 + i * 2];
                             mergedDataMap.set(startAddr + i, val);
                         }
+                        // Если ранее была серия ошибок — сообщаем UI о восстановлении связи
+                        if (errorEventSent) {
+                            window.dispatchEvent(new CustomEvent('app:controller-responding'));
+                        }
+                        // Успешный ответ — сбрасываем счётчик, разрешаем повторное событие
+                        consecutiveTimeouts = 0;
+                        errorEventSent = false;
+                    } else {
+                        // Таймаут или неполный ответ (executeTransaction вернул null без исключения)
+                        consecutiveTimeouts++;
                     }
                 } catch (err) {
                     console.error(`Read error for batch start ${startAddr}:`, err);
+                    consecutiveTimeouts++;
                 }
             }
+
+            // При серии подряд идущих ошибок диспетчерим событие для UI.
+            // Бизнес-логика не знает про DOM — готова к Tauri.
+            if (consecutiveTimeouts >= TIMEOUT_THRESHOLD && !errorEventSent) {
+                console.warn(`[readLoop] Контроллер не отвечает ${consecutiveTimeouts} раз подряд`);
+                window.dispatchEvent(new CustomEvent('app:controller-not-responding', {
+                    detail: { consecutiveTimeouts },
+                }));
+                errorEventSent = true;
+            }
+
             if (mergedDataMap.size > 0) {
                 // --- 3. СИНХРОНИЗАЦИЯ С ОСЦИЛЛОГРАФОМ (через типизированные IniParameter) ---
                 const ramParams: IniParameter[] = iniConfig.getSection('RAM');
@@ -376,8 +407,8 @@ export async function readLoop(serial: ISerialPort, _parser: unknown, view: IOsc
     } finally {
         stateObj.isLoopRunning = false;
         console.log("DEBUG: Единый батчевый readLoop остановлен");
-    }//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////\
-}
+    }
+}//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////\
 // ── Вспомогательные функции декодирования Modbus-значений ──
 /**
  * Декодирует 32-битное значение из двух 16-битных слов Modbus.

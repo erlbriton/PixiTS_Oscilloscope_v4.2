@@ -7,8 +7,9 @@ import type { AppState } from '../core/app-state.js';
 import type { IOscilloscopeApi } from '../core/osc-api.js';
 import type { ModbusParser } from '../serial/modbus.js';
 import { IniParser as CoreIniParser, IniConfig } from '../core/ini/index.js';
-import { RecFileReader } from '../oscilloscope/core/RecFileReader.js';
-import { updateIdBanner } from './ui.js';
+//import { RecFileReader } from '../oscilloscope/core/RecFileReader.js';
+//import { updateIdBanner } from './ui.js';
+import { updateIdBanner, showCompactError } from './ui.js';
 import { showAddressDialog } from './confirm-dialog.js';
 
 /** Буфер данных канала (типизирован явно, без any) */
@@ -194,18 +195,27 @@ export function initUI(deps: UiManagerDeps): void {
     const wasPolling = appState.isPolling;
 
     try {
-      // Выполняем обновление таблицы
-      await updateDeviceRegisters(serial, appState.slaveAddress, appState);
+      // Выполняем обновление таблицы и проверяем результат
+      const success = await updateDeviceRegisters(serial, appState.slaveAddress, appState);
 
-      // Восстанавливаем опрос, если он был активен до обновления
-      if (wasPolling) {
-        console.log('[UI] Восстанавливаем опрос после обновления');
-        appState.isLoopRunning = false;
-        appState.isPolling = true;
-        readLoop(serial, parser, view, buffers, appState);
+      if (success) {
+        // Успешно: восстанавливаем опрос, если он был активен до обновления
+        if (wasPolling) {
+          console.log('[UI] Восстанавливаем опрос после обновления');
+          appState.isLoopRunning = false;
+          appState.isPolling = true;
+          readLoop(serial, parser, view, buffers, appState);
+        }
+      } else {
+        // Неудача (контроллер не отвечает или ошибки связи):
+        // показываем компактное окно ошибки независимо от осциллографа
+        console.warn('[UI] updateDeviceRegisters вернул false — связь не удалась');
+        showCompactError('Контроллер не отвечает. Проверьте адрес.');
       }
     } catch (err) {
       console.error("Ошибка при обновлении:", err);
+      // На случай исключительной ситуации тоже показываем окно
+      showCompactError('Ошибка при обновлении таблицы. Проверьте связь.');
     } finally {
       appState.isRefreshing = false;
       if (refreshBtn) refreshBtn.disabled = false;
@@ -342,5 +352,39 @@ export function initUI(deps: UiManagerDeps): void {
 
   initTableEditor('grid-data-rows', appState);
   setupSaveButton(appState);
+
+      // ============================================================================
+  // Обработчики событий бизнес-логики (готово к Tauri)
+  // В нативном приложении тело этих функций будет заменено на вызовы Tauri API.
+  // ============================================================================
+
+    // Событие: Контроллер перестал отвечать (серия таймаутов)
+  window.addEventListener('app:controller-not-responding', (e: Event) => {
+    const detail = (e as CustomEvent).detail as { consecutiveTimeouts?: number } | undefined;
+    const count = detail?.consecutiveTimeouts ?? 0;
+    console.log(`[UI] Получено событие "контроллер не отвечает" (подряд ошибок: ${count})`);
+
+    // 1. Показываем компактное окно ВСЕГДА (независимо от осциллографа)
+    showCompactError('Контроллер не отвечает. Проверьте адрес.');
+
+    // 2. Если осциллограф открыт — замораживаем его рендер (без своего окна)
+    const osc = window.osc;
+    if (osc && typeof (osc as any).showFrozenState === 'function') {
+      (osc as any).showFrozenState('');
+    }
+  });
+
+  // Событие: Контроллер снова начал отвечать
+  window.addEventListener('app:controller-responding', () => {
+    console.log('[UI] Получено событие "контроллер отвечает"');
+    const osc = window.osc;
+    if (osc && typeof (osc as any).resumeFromFrozen === 'function') {
+      (osc as any).resumeFromFrozen();
+    }
+  });
+
+  // Конец обработчиков событий
+  // ============================================================================
+
   console.log("UI Manager: Интерфейс и обработчики инициализированы.");
 }

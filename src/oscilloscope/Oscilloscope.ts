@@ -37,7 +37,7 @@ import { Application } from 'pixi.js';
 import { SearchPanel } from './ui/SearchPanel';
 
 
-export class Oscilloscope {/////////////////////////////\
+export class Oscilloscope {
   private settings: Settings;
   private archive: Archive;
   private serial: Serial | null;
@@ -365,6 +365,7 @@ public setAppState(state: AppState): void {
       this.connectionModal.close();
       this.isRunning = true;
       this.lastFrameTime = performance.now();
+      // Возобновляем рендер-цикл, если он не запущен
       if (this.animFrameId === null) {
         this.animFrameId = requestAnimationFrame((t) => this.loop(t));
       }
@@ -377,6 +378,11 @@ public setAppState(state: AppState): void {
       if (this.connectionLost) return;
       this.connectionLost = true;
       this.isRunning = false;
+      // ПРИНУДИТЕЛЬНО останавливаем рендер-цикл: отменяем запланированный кадр
+      if (this.animFrameId !== null) {
+        cancelAnimationFrame(this.animFrameId);
+        this.animFrameId = null;
+      }
       this.connectionModal.show(message ?? "Связь с устройством потеряна.");
     }
   }
@@ -629,6 +635,40 @@ public setAppState(state: AppState): void {
       } catch (renderErr) {
         console.error(`Error rendering channel ${channel.id}:`, renderErr);
       }
+    }
+  }
+
+    /**
+   * Показывает состояние "заморозки" (ошибка связи, но опрос продолжается).
+   * Останавливает только рендер и показывает окно. Не трогает isPolling.
+   */
+  public showFrozenState(message: string): void {
+    if (this.isDestroyed) return;
+    // Только останавливаем рендер-цикл. Окно показывает UI-слой (uiManager).
+    this.isRunning = false;
+    if (this.animFrameId !== null) {
+      cancelAnimationFrame(this.animFrameId);
+      this.animFrameId = null;
+    }
+  }
+
+  /**
+   * Возобновляет работу после "заморозки".
+   * Запускает рендер-цикл и закрывает окно.
+   */
+  public resumeFromFrozen(): void {
+    if (this.isDestroyed) return;
+    
+    // Закрываем окно, если оно было открыто именно этим методом
+    if (this.connectionModal.isOpen) {
+      this.connectionModal.close();
+    }
+    
+    // Запускаем рендер-цикл
+    this.isRunning = true;
+    this.lastFrameTime = performance.now();
+    if (this.animFrameId === null) {
+      this.animFrameId = requestAnimationFrame((t) => this.loop(t));
     }
   }
 }
