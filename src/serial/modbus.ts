@@ -1,3 +1,5 @@
+// src/serial/modbus.ts
+
 export class ModbusParser {
     private buffer: Uint8Array;
 
@@ -13,10 +15,12 @@ export class ModbusParser {
         this.buffer = newBuffer;
     }
 
-    public parsePacket(): number[] | null {
+        public parsePacket(): number[] | null {
         const MIN_PACKET_LENGTH = 5;
         while (this.buffer.length >= MIN_PACKET_LENGTH) {
-            if (this.buffer[0] === 0x01 && this.buffer[1] === 0x03) {
+            // Проверяем только код функции (0x03 = Read Holding Registers),
+            // адрес устройства (buffer[0]) не проверяем — принимаем ответ от любого адреса (1–247)
+            if (this.buffer[1] === 0x03) {
                 const bytesOfData = this.buffer[2]; 
                 const fullPacketLength = 3 + bytesOfData + 2; 
                 if (this.buffer.length < fullPacketLength) return null;
@@ -29,13 +33,10 @@ export class ModbusParser {
                         results.push((packet[3 + i] << 8) | packet[4 + i]);
                     }
                     this.buffer = this.buffer.subarray(fullPacketLength);
-                    return results; 
-                } else {
-                    this.buffer = this.buffer.subarray(1);
+                    return results;
                 }
-            } else {
-                this.buffer = this.buffer.subarray(1);
             }
+            this.buffer = this.buffer.subarray(1);
         }
         return null;
     }

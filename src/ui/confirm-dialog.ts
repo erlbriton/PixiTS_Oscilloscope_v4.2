@@ -194,3 +194,150 @@ export function showFailedParamsList(items: { id: string; name: string }[]): voi
         if (e.target === overlay) close();
     });
 }
+
+/**
+ * Окно ввода нового адреса устройства в сети Modbus.
+ * Возвращает адрес (1–247) при "Применить"/Enter, null при отмене/закрытии.
+ * Принимает десятичную ("5") или шестнадцатеричную ("x05") форму.
+ */
+export function showAddressDialog(currentAddr: number): Promise<number | null> {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.style.position = 'fixed';
+        overlay.style.inset = '0';
+        overlay.style.background = 'rgba(0, 0, 0, 0.35)';
+        overlay.style.display = 'flex';
+        overlay.style.alignItems = 'center';
+        overlay.style.justifyContent = 'center';
+        overlay.style.zIndex = '10000';
+
+        const dialog = document.createElement('div');
+        dialog.style.background = '#f0f0f0';
+        dialog.style.border = '1px solid #888';
+        dialog.style.boxShadow = '0 4px 16px rgba(0,0,0,0.4)';
+        dialog.style.width = '340px';
+        dialog.style.fontFamily = 'Segoe UI, Arial, sans-serif';
+        dialog.style.color = '#000';
+
+        // Заголовок + крестик
+        const titleBar = document.createElement('div');
+        titleBar.style.display = 'flex';
+        titleBar.style.justifyContent = 'space-between';
+        titleBar.style.alignItems = 'center';
+        titleBar.style.padding = '6px 10px';
+        titleBar.style.background = '#fff';
+        titleBar.style.borderBottom = '1px solid #ddd';
+        const titleText = document.createElement('span');
+        titleText.textContent = 'Адрес устройства в сети Modbus';
+        titleText.style.fontWeight = '600';
+        const closeX = document.createElement('span');
+        closeX.textContent = '×';
+        closeX.style.cursor = 'pointer';
+        closeX.style.fontWeight = '700';
+        titleBar.appendChild(titleText);
+        titleBar.appendChild(closeX);
+
+        // Контент: подпись + поле ввода + строка ошибки
+        const content = document.createElement('div');
+        content.style.padding = '16px 16px 8px';
+        content.style.display = 'flex';
+        content.style.flexDirection = 'column';
+        content.style.gap = '8px';
+
+        const label = document.createElement('div');
+        label.textContent = 'Новый адрес (1–247, можно в формате x0A):';
+        label.style.fontSize = '13px';
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = 'x' + currentAddr.toString(16).toUpperCase().padStart(2, '0');
+        input.style.padding = '4px 8px';
+        input.style.fontSize = '14px';
+
+        const err = document.createElement('div');
+        err.style.fontSize = '12px';
+        err.style.color = '#c00000';
+        err.style.minHeight = '16px';
+
+        content.appendChild(label);
+        content.appendChild(input);
+        content.appendChild(err);
+
+        // Кнопки
+        const buttons = document.createElement('div');
+        buttons.style.display = 'flex';
+        buttons.style.justifyContent = 'center';
+        buttons.style.gap = '16px';
+        buttons.style.padding = '0 16px 16px';
+
+        const mkBtn = (lbl: string): HTMLButtonElement => {
+            const b = document.createElement('button');
+            b.textContent = lbl;
+            b.style.minWidth = '90px';
+            b.style.padding = '5px 12px';
+            b.style.fontSize = '14px';
+            return b;
+        };
+        const applyBtn = mkBtn('Применить');
+        const cancelBtn = mkBtn('Отмена');
+        buttons.appendChild(applyBtn);
+        buttons.appendChild(cancelBtn);
+
+        dialog.appendChild(titleBar);
+        dialog.appendChild(content);
+        dialog.appendChild(buttons);
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+
+        const close = (result: number | null): void => {
+            overlay.remove();
+            resolve(result);
+        };
+
+        const parseAddr = (raw: string): number | null => {
+            const s = raw.trim();
+            if (!s) return null;
+            let n: number;
+            if (/^x[0-9a-fA-F]+$/.test(s)) {
+                n = parseInt(s.substring(1), 16);
+            } else if (/^\d+$/.test(s)) {
+                n = parseInt(s, 10);
+            } else {
+                return null;
+            }
+            if (isNaN(n) || n < 1 || n > 247) return null;
+            return n;
+        };
+
+        const apply = (): void => {
+            const n = parseAddr(input.value);
+            if (n === null) {
+                err.textContent = 'Неверный адрес. Пример: 5 или x05 (диапазон 1–247).';
+                input.focus();
+                return;
+            }
+            close(n);
+        };
+
+        applyBtn.addEventListener('click', apply);
+        cancelBtn.addEventListener('click', () => close(null));
+        closeX.addEventListener('click', () => close(null));
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) close(null);
+        });
+        // Enter (в т.ч. на дополнительной клавиатуре) = Применить, Escape = Отмена
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                apply();
+            } else if (e.key === 'Escape') {
+                close(null);
+            }
+        });
+
+        setTimeout(() => {
+            input.focus();
+            input.select();
+        }, 0);
+    });
+}

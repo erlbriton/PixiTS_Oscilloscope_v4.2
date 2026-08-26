@@ -1,4 +1,5 @@
 // src/serial/serial.ts
+
 import type { ISerialPort, SerialPortInfo } from './ISerialPort.js';
 import type { WebSerialPort } from './web-serial-types.js';
 

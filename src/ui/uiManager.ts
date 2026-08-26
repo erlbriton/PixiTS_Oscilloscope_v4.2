@@ -9,6 +9,7 @@ import type { ModbusParser } from '../serial/modbus.js';
 import { IniParser as CoreIniParser, IniConfig } from '../core/ini/index.js';
 import { RecFileReader } from '../oscilloscope/core/RecFileReader.js';
 import { updateIdBanner } from './ui.js';
+import { showAddressDialog } from './confirm-dialog.js';
 
 /** Буфер данных канала (типизирован явно, без any) */
 export interface ChannelBuffer {
@@ -63,6 +64,7 @@ export function initUI(deps: UiManagerDeps): void {
   const connectBtn = document.getElementById("connectBtn") as HTMLButtonElement | null;
   const comSelect = document.getElementById("comSelect") as HTMLSelectElement | null;
   const baudSelect = document.getElementById("baudSelect") as HTMLSelectElement | null;
+  const addrBtn = document.getElementById("addrBtn") as HTMLButtonElement | null;
   const toggleOscMainBtn = document.getElementById('toggleOscMainBtn') as HTMLButtonElement | null;
   const toggleOscArrowBtn = document.getElementById('toggleOscArrowBtn') as HTMLButtonElement | null;
   const toggleOscDropdown = document.getElementById('toggleOscDropdown') as HTMLElement | null;
@@ -311,6 +313,29 @@ export function initUI(deps: UiManagerDeps): void {
         // showIdModal(`Скорость изменена на ${newBaudRate}. Нажмите "Подключить", чтобы применить.`);
       } else {
         console.log(`[UI] Скорость установлена на ${newBaudRate} (будет использована при подключении).`);
+      }
+    });
+  }
+
+  // Кнопка адреса Modbus: окно ввода, новый адрес применяется ко всему обмену
+  if (addrBtn) {
+    const updateAddrLabel = (): void => {
+      addrBtn.textContent = 'Адрес: x' + appState.slaveAddress.toString(16).toUpperCase().padStart(2, '0');
+    };
+    updateAddrLabel();
+    addrBtn.addEventListener('click', async () => {
+      const newAddr = await showAddressDialog(appState.slaveAddress);
+      if (newAddr !== null && newAddr !== appState.slaveAddress) {
+        appState.slaveAddress = newAddr;
+        updateAddrLabel();
+        console.log(`[UI] Адрес Modbus изменён на ${newAddr} (0x${newAddr.toString(16).toUpperCase().padStart(2, '0')})`);
+        
+        // Уведомляем осциллограф о смене адреса
+        const osc = window.osc;
+        if (osc && typeof osc.setSlaveAddress === 'function') {
+          osc.setSlaveAddress(newAddr);
+          console.log(`[UI] Осциллограф уведомлён о новом адресе: ${newAddr}`);
+        }
       }
     });
   }

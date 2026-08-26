@@ -251,3 +251,12 @@ td.cell-active select,
 td.cell-active div {
     color: inherit !important;
 }
+/* Кнопка адреса Modbus */
+.addr-btn {
+    min-width: 90px; /* Чтобы влезало "Адрес: xFF" */
+    text-align: center;
+    font-family: inherit;
+    font-size: 14px;
+    cursor: pointer;
+    /* Наследуем стили от .inline-btn, если нужно переопределить цвета - сделайте это здесь */
+}

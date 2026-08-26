@@ -43,5 +43,6 @@ export interface IOscilloscopeApi {
   setActiveIni(id: string, loadContent?: boolean): void;
   setConnectionStatus(connected: boolean, message?: string): void;
   setSerialPort(port: unknown): void;
+  setSlaveAddress(addr: number): void;
   destroy(): void;
 }

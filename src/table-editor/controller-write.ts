@@ -1,4 +1,5 @@
 // src/table-editor/controller-write.ts
+
 // Запись значений в Контроллер (Modbus FC16 + обратное чтение FC03 + проверка).
 
 import { planControllerWrite } from '../ini-manager/tree-core.js';

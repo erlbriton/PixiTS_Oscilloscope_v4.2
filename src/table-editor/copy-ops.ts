@@ -1,6 +1,6 @@
 // src/table-editor/copy-ops.ts
+
 // Операции массового копирования значений между Базой и Контроллером.
-// Шаг 1: копирование в памяти браузера (без Modbus и без записи в INI).
 
 import { updateMismatchClass, baseControllerMismatch } from './controller-write.js';
 import { planControllerWrite } from '../ini-manager/tree-core.js';
