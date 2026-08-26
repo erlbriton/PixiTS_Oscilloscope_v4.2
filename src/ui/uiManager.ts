@@ -228,6 +228,84 @@ export function initUI(deps: UiManagerDeps): void {
     });
   }
 
+  // ==========================================================================
+  // Первая кнопка шапки: список устройств (основная кнопка + выпадающий список)
+  // ==========================================================================
+  const deviceListActionBtn = document.getElementById('deviceListActionBtn') as HTMLButtonElement | null;
+  const deviceListArrowBtn = document.getElementById('deviceListArrowBtn') as HTMLButtonElement | null;
+  const deviceListDropdown = document.getElementById('deviceListDropdown') as HTMLElement | null;
+
+  // Текущий режим кнопки (по умолчанию — "Обновить")
+  let deviceListMode = 'refresh';
+
+  const deviceListMenu: Array<{ id: string; mode: string }> = [
+    { id: 'menuDeviceRefresh', mode: 'refresh' },
+    { id: 'menuDeviceSerials', mode: 'serials' },
+    { id: 'menuDevicePlace', mode: 'place' },
+    { id: 'menuDeviceMechType', mode: 'mechType' },
+    { id: 'menuDeviceServiceDate', mode: 'serviceDate' },
+    { id: 'menuDeviceType', mode: 'deviceType' },
+  ];
+
+  // Пометка выбранного пункта маркером "•" (как на скриншоте), без правки CSS
+  const markSelectedDeviceItem = (): void => {
+    for (const item of deviceListMenu) {
+      const el = document.getElementById(item.id);
+      if (!el) continue;
+      const label = el.dataset.label ?? (el.textContent || '').replace(/^•\s*/, '');
+      el.dataset.label = label;
+      el.textContent = item.mode === deviceListMode ? '• ' + label : label;
+    }
+  };
+
+  if (deviceListArrowBtn && deviceListDropdown) {
+    // Раскрытие/закрытие списка по клику на треугольничек
+    deviceListArrowBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = deviceListDropdown.style.display === 'block';
+      deviceListDropdown.style.display = isOpen ? 'none' : 'block';
+      if (!isOpen) markSelectedDeviceItem();
+    });
+
+    // Закрытие по клику вне списка
+    document.addEventListener('click', (e) => {
+      if (!deviceListDropdown.contains(e.target as Node) && e.target !== deviceListArrowBtn) {
+        deviceListDropdown.style.display = 'none';
+      }
+    });
+
+    // Закрытие по Escape
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') deviceListDropdown.style.display = 'none';
+    });
+
+    // Выбор пункта меню: запоминаем режим для основной кнопки
+    for (const item of deviceListMenu) {
+      const el = document.getElementById(item.id);
+      if (el) {
+        el.addEventListener('click', () => {
+          deviceListMode = item.mode;
+          deviceListDropdown.style.display = 'none';
+          markSelectedDeviceItem();
+          console.log(`[UI] Выбрана функция кнопки списка устройств: ${item.mode}`);
+        });
+      }
+    }
+  }
+
+  // Основная кнопка: выполняет текущую выбранную функцию
+  if (deviceListActionBtn) {
+    deviceListActionBtn.addEventListener('click', async () => {
+      // Следующим этапом здесь появятся функции всех пунктов меню.
+      // Пока реализована только функция по умолчанию — "Обновить".
+      if (deviceListMode === 'refresh') {
+        await performRefresh(true);
+      } else {
+        console.log(`[UI] Функция "${deviceListMode}" будет реализована следующим этапом.`);
+      }
+    });
+  }
+
   // Автообновление после загрузки/смены INI-файла: тихо, только если порт открыт
   window.addEventListener('app:ini-file-loaded', () => {
     void performRefresh(false);

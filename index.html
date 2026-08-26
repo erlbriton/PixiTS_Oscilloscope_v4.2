@@ -12,7 +12,19 @@
 
       <div class="panel-right">
         <div class="top-main-toolbar">
-          <button class="tool-btn">🔧 ▾</button>
+          <div class="split-btn-group">
+            <button id="deviceListActionBtn" class="split-btn-main" title="Обновить список устройств">🔧</button>
+            <div class="split-btn-divider"></div>
+            <button id="deviceListArrowBtn" class="split-btn-arrow">▼</button>
+            <div id="deviceListDropdown" class="split-dropdown-menu">
+              <div class="split-dropdown-item" id="menuDeviceRefresh">Обновить</div>
+              <div class="split-dropdown-item" id="menuDeviceSerials">Серийные номера</div>
+              <div class="split-dropdown-item" id="menuDevicePlace">Место установки</div>
+              <div class="split-dropdown-item" id="menuDeviceMechType">Тип механизма</div>
+              <div class="split-dropdown-item" id="menuDeviceServiceDate">Дата последнего обслуживания</div>
+              <div class="split-dropdown-item" id="menuDeviceType">Тип устройства</div>
+            </div>
+          </div>
           <button class="tool-btn">🔍</button>
           <button class="tool-btn">📋</button>
           <div class="split-btn-group">
