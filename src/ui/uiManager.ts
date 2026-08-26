@@ -13,6 +13,9 @@ import { IniParser as CoreIniParser, IniConfig } from '../core/ini/index.js';
 import { updateIdBanner, showCompactError } from './ui.js';
 import { reloadIniFilesFromDisk } from '../ini-manager/file-loader.js';
 import { isLinux } from '../core/platform.js';
+import { setTreeGroupMode } from '../ini-manager/tree-core.js';
+import { renderDeviceTree } from '../ini-manager/tree-ui.js';
+import type { TreeGroupMode } from '../ini-manager/tree-core.js';
 import { showAddressDialog } from './confirm-dialog.js';
 
 /** Буфер данных канала (типизирован явно, без any) */
@@ -241,6 +244,16 @@ export function initUI(deps: UiManagerDeps): void {
   // Текущий режим кнопки (по умолчанию — "Обновить")
   let deviceListMode = 'refresh';
 
+  // Соответствие режимов кнопки — режимам группировки дерева
+  const treeModeByButtonMode: Record<string, TreeGroupMode> = {
+    refresh: 'location',
+    serials: 'serial',
+    place: 'location',
+    mechType: 'mechType',
+    serviceDate: 'serviceDate',
+    deviceType: 'deviceType',
+  };
+
   const deviceListMenu: Array<{ id: string; mode: string }> = [
     { id: 'menuDeviceRefresh', mode: 'refresh' },
     { id: 'menuDeviceSerials', mode: 'serials' },
@@ -282,7 +295,7 @@ export function initUI(deps: UiManagerDeps): void {
       if (e.key === 'Escape') deviceListDropdown.style.display = 'none';
     });
 
-    // Выбор пункта меню: запоминаем режим для основной кнопки
+    // Выбор пункта меню: запоминаем режим и сразу перестраиваем дерево
     for (const item of deviceListMenu) {
       const el = document.getElementById(item.id);
       if (el) {
@@ -290,6 +303,8 @@ export function initUI(deps: UiManagerDeps): void {
           deviceListMode = item.mode;
           deviceListDropdown.style.display = 'none';
           markSelectedDeviceItem();
+          setTreeGroupMode(treeModeByButtonMode[item.mode] ?? 'location');
+          renderDeviceTree();
           console.log(`[UI] Выбрана функция кнопки списка устройств: ${item.mode}`);
         });
       }
@@ -315,7 +330,9 @@ export function initUI(deps: UiManagerDeps): void {
           console.warn('[UI] reloadIniFilesFromDisk — ошибки:', results.errors);
         }
       } else {
-        console.log(`[UI] Функция "${deviceListMode}" будет реализована следующим этапом.`);
+        // Режимы группировки: основная кнопка перестраивает дерево
+        setTreeGroupMode(treeModeByButtonMode[deviceListMode] ?? 'location');
+        renderDeviceTree();
       }
     });
   }

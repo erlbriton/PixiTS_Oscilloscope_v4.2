@@ -2,7 +2,49 @@
 
 import { populateDeviceForm } from '../ui/ui.js';
 import { renderModbusTable } from '../ui/tree.js';
-import { deviceRegistry, setCurrentIniConfig, hexToFloat32, float32ToHex } from './tree-core.js';
+import {
+    deviceRegistry,
+    setCurrentIniConfig,
+    hexToFloat32,
+    float32ToHex,
+    getTreeGroupMode,
+    getDeviceGroupKey,
+    getDeviceLeafText,
+    getAllDevices,
+} from './tree-core.js';
+import type { TreeGroupMode, DeviceRegistryItem } from './tree-core.js';
+
+// ============================================================================
+// Контекстное меню дерева устройств
+// ============================================================================
+
+/** Устройство, на строке которого открыто контекстное меню */
+let contextTarget: DeviceRegistryItem | null = null;
+
+/** Показать контекстное меню в позиции курсора */
+function showTreeContextMenu(x: number, y: number): void {
+    const menu = document.getElementById('treeContextMenu');
+    if (!menu) return;
+    menu.classList.remove('hidden');
+    // Не выпускаем меню за пределы экрана
+    const rect = menu.getBoundingClientRect();
+    const maxX = window.innerWidth - rect.width - 4;
+    const maxY = window.innerHeight - rect.height - 4;
+    menu.style.left = `${Math.min(x, Math.max(0, maxX))}px`;
+    menu.style.top = `${Math.min(y, Math.max(0, maxY))}px`;
+}
+
+/** Скрыть контекстное меню */
+function hideTreeContextMenu(): void {
+    const menu = document.getElementById('treeContextMenu');
+    if (menu) menu.classList.add('hidden');
+}
+
+// Скрытие меню по левому клику в любом месте и по Escape
+document.addEventListener('click', hideTreeContextMenu);
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') hideTreeContextMenu();
+});
 
 export function renderDeviceTree(): void {
     const container = document.querySelector('.sidebar-tree-container');
@@ -10,40 +52,97 @@ export function renderDeviceTree(): void {
 
     container.innerHTML = '';
 
-    for (const location in deviceRegistry) {
+    const mode: TreeGroupMode = getTreeGroupMode();
+    const all = getAllDevices();
+    console.log('[tree-ui] renderDeviceTree: mode =', mode, 'devices =', all.length);
+
+    // Стиль строки-листа: одна строка, не влезла — обрезается,
+    // полная версия показывается в подсказке при наведении
+    const makeLeaf = (device: DeviceRegistryItem): HTMLLIElement => {
+        const liElement = document.createElement('li');
+        liElement.className = 'tree-id-item is-leaf';
+        const text = getDeviceLeafText(device, mode);
+        liElement.textContent = text;
+        liElement.title = text;
+        liElement.style.whiteSpace = 'nowrap';
+        liElement.style.overflow = 'hidden';
+        liElement.style.textOverflow = 'ellipsis';
+
+        liElement.addEventListener('click', () => {
+            document.querySelectorAll('.tree-id-item.is-selected').forEach(el => el.classList.remove('is-selected'));
+            liElement.classList.add('is-selected');
+            setCurrentIniConfig(device.iniConfig);
+            populateDeviceForm(device.fullConfig['DEVICE']);
+            renderModbusTable(device.iniConfig);
+
+            // SYNC WITH OSCILLOSCOPE
+            if (window.osc) {
+                window.osc.setActiveIni(device.id);
+            }
+
+            // Автоопрос контроллера при смене устройства (как после первой загрузки файла)
+            window.dispatchEvent(new CustomEvent('app:ini-file-loaded'));
+        });
+
+        // Правый клик — контекстное меню (пока только показ, действия — следующим шагом)
+        liElement.addEventListener('contextmenu', (e: MouseEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            contextTarget = device;
+            showTreeContextMenu(e.clientX, e.clientY);
+        });
+
+        return liElement;
+    };
+
+    // Плоские режимы: "Серийные номера" и "Дата последнего обслуживания" — без заголовков
+    if (mode === 'serial' || mode === 'serviceDate') {
+        const ulElement = document.createElement('ul');
+        ulElement.className = 'tree-id-list';
+
+        let list = all;
+        if (mode === 'serial') {
+            // По возрастанию номера (число-осознающее сравнение)
+            list = [...all].sort((a, b) =>
+                getDeviceGroupKey(a, mode).localeCompare(getDeviceGroupKey(b, mode), undefined, { numeric: true }),
+            );
+        }
+        // serviceDate — порядок загрузки, как в старом аджастере
+
+        list.forEach(device => {
+            ulElement.appendChild(makeLeaf(device));
+        });
+        container.appendChild(ulElement);
+        return;
+    }
+
+    // Режимы с группировкой: заголовки всегда, группы в порядке загрузки
+    const groups: Array<{ key: string; items: DeviceRegistryItem[] }> = [];
+    for (const device of all) {
+        const key = getDeviceGroupKey(device, mode);
+        let group = groups.find(g => g.key === key);
+        if (!group) {
+            group = { key, items: [] };
+            groups.push(group);
+        }
+        group.items.push(device);
+    }
+
+    for (const group of groups) {
         const detailsElement = document.createElement('details');
         detailsElement.className = 'tree-location';
         detailsElement.open = true;
 
         const summaryElement = document.createElement('summary');
         summaryElement.className = 'tree-location-title';
-        summaryElement.textContent = location;
+        summaryElement.textContent = group.key;
+        summaryElement.title = group.key;
 
         const ulElement = document.createElement('ul');
         ulElement.className = 'tree-id-list';
 
-        deviceRegistry[location].forEach(device => {
-            const liElement = document.createElement('li');
-            liElement.className = 'tree-id-item is-leaf';
-            liElement.textContent = device.displayText;
-
-            liElement.addEventListener('click', () => {
-                document.querySelectorAll('.tree-id-item.is-selected').forEach(el => el.classList.remove('is-selected'));
-                liElement.classList.add('is-selected');
-                setCurrentIniConfig(device.iniConfig);
-                populateDeviceForm(device.fullConfig['DEVICE']);
-                renderModbusTable(device.iniConfig);
-
-                // SYNC WITH OSCILLOSCOPE
-                if (window.osc) {
-                    window.osc.setActiveIni(device.id);
-                }
-
-                // Автоопрос контроллера при смене устройства (как после первой загрузки файла)
-                window.dispatchEvent(new CustomEvent('app:ini-file-loaded'));
-            });
-
-            ulElement.appendChild(liElement);
+        group.items.forEach(device => {
+            ulElement.appendChild(makeLeaf(device));
         });
 
         detailsElement.appendChild(summaryElement);
