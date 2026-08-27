@@ -68,6 +68,75 @@ export async function openIniFile(appState: AppState): Promise<void> {
   }
 }
 
+/**
+ * Открывает папку и загружает все INI-файлы из неё (и вложенных папок).
+ * Доступно только в Linux через showDirectoryPicker API.
+ * Работает через тот же конвейер, что и openIniFile: processSingleFileContent.
+ */
+/** Хэндл директории с методом обхода (File System Access API) */
+/** Часть window-API для выбора папки */
+interface DirectoryPickerWindow {
+    showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>;
+}
+
+/** Интерфейс только для метода обхода (без наследования от FileSystemDirectoryHandle) */
+interface DirectoryIterator {
+    values(): AsyncIterableIterator<FileSystemHandle>;
+}
+
+/**
+ * Открывает папку и загружает все INI-файлы из неё (и вложенных папок).
+ * Доступно только в Linux через showDirectoryPicker API.
+ * Работает через тот же конвейер, что и openIniFile: processSingleFileContent.
+ */
+export async function openIniFolder(appState: AppState): Promise<void> {
+    const picker = (window as DirectoryPickerWindow).showDirectoryPicker;
+    if (!picker) {
+        showIdModal('Выбор папки не поддерживается в этом браузере.');
+        return;
+    }
+
+    try {
+        const dirHandle = await picker();
+
+        // Рекурсивный обход всех вложенных папок
+        const stack: FileSystemDirectoryHandle[] = [dirHandle];
+
+        while (stack.length > 0) {
+            const currentDir = stack.pop()!;
+
+            for await (const entry of (currentDir as unknown as DirectoryIterator).values()) {
+                if (entry.kind === 'directory') {
+                    stack.push(entry as FileSystemDirectoryHandle);
+                } else if (entry.kind === 'file') {
+                    // Фильтр по расширению
+                    const name = entry.name.toLowerCase();
+                    if (name.endsWith('.ini') || name.endsWith('.txt')) {
+                        const fileHandle = entry as FileSystemFileHandle;
+                        try {
+                            const file = await fileHandle.getFile();
+                            const content = await readFileAsText(file);
+                            iniFileHandles.set(file.name, fileHandle);
+                            await processSingleFileContent(content, file.name, appState, file, fileHandle);
+                        } catch (fileErr) {
+                            // Ошибка чтения одного файла не прерывает всю папку
+                            console.warn(`[file-loader] Пропуск файла ${entry.name}:`, fileErr);
+                        }
+                    }
+                }
+            }
+        }
+    } catch (err: unknown) {
+        if (err instanceof Error && err.name === 'AbortError') {
+            // Пользователь отменил выбор папки
+            return;
+        }
+        const msg = err instanceof Error ? err.message : String(err);
+        showIdModal('Ошибка открытия папки: ' + msg);
+        console.error('[file-loader] openIniFolder error:', err);
+    }
+}
+
 /** Элемент списка INI-файлов для синхронизации с осциллографом */
 interface OscIniFile {
   id: string;
