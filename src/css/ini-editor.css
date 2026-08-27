@@ -1,0 +1,80 @@
+/* Встроенный редактор INI-файла */
+.ini-editor-overlay {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 11000 !important;
+    background: rgba(0, 0, 0, 0.45) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+.ini-editor-overlay.hidden {
+    display: none !important;
+}
+
+.ini-editor-window {
+    width: 80% !important;
+    max-width: 900px !important;
+    height: 80% !important;
+    background: #f0f0f0 !important;
+    border: 1px solid #888 !important;
+    border-radius: 4px !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    color: #333333 !important;
+}
+
+.ini-editor-header {
+    padding: 8px 12px !important;
+    background: #d8d8d8 !important;
+    border-bottom: 1px solid #bbb !important;
+    font-family: 'Segoe UI', Arial, sans-serif !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    color: #333333 !important;
+    margin: 0 !important;
+}
+
+.ini-editor-text {
+    flex: 1 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 8px !important;
+    border: none !important;
+    outline: none !important;
+    resize: none !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-family: Consolas, 'Courier New', monospace !important;
+    font-size: 13px !important;
+    line-height: 1.4 !important;
+    box-sizing: border-box !important;
+}
+
+.ini-editor-buttons {
+    padding: 8px 12px !important;
+    text-align: right !important;
+    border-top: 1px solid #bbb !important;
+    background: #e4e4e4 !important;
+    margin: 0 !important;
+}
+
+.ini-editor-buttons button {
+    margin-left: 8px !important;
+    padding: 5px 16px !important;
+    font-family: 'Segoe UI', Arial, sans-serif !important;
+    font-size: 13px !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    border: 1px solid #999 !important;
+    border-radius: 3px !important;
+    cursor: pointer !important;
+}
+
+.ini-editor-buttons button:hover {
+    background: #e8e8e8 !important;
+}

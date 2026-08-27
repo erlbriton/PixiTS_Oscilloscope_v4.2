@@ -127,7 +127,19 @@
           </div>
         </div>
       </div>
-            <!-- Контекстное меню дерева устройств -->
+            <!-- Встроенный редактор INI-файла -->
+      <div id="iniEditorOverlay" class="ini-editor-overlay hidden">
+        <div class="ini-editor-window">
+          <div class="ini-editor-header" id="iniEditorTitle">Редактирование файла</div>
+          <textarea id="iniEditorText" class="ini-editor-text" spellcheck="false"></textarea>
+          <div class="ini-editor-buttons">
+            <button id="iniEditorSave" type="button">Сохранить</button>
+            <button id="iniEditorCancel" type="button">Отмена</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Контекстное меню дерева устройств -->
       <div id="treeContextMenu" class="context-menu hidden">
         <div class="context-menu-item" id="ctxDelete">Удалить</div>
         <div class="context-menu-item" id="ctxOpenFile">Открыть файл для редактирования</div>

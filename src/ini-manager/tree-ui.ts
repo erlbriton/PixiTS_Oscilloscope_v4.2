@@ -122,6 +122,20 @@ if (!isNativeApp()) {
     if (ctxOpenFolderEl) ctxOpenFolderEl.classList.add('ctx-hidden');
 }
 
+// Пункт "Открыть файл для редактирования": запрашиваем редактор событием
+const ctxOpenFileEl = document.getElementById('ctxOpenFile');
+if (ctxOpenFileEl) {
+    ctxOpenFileEl.addEventListener('click', () => {
+        if (contextTarget) {
+            window.dispatchEvent(new CustomEvent('app:edit-device-requested', {
+                detail: { id: String(contextTarget.id) },
+            }));
+        }
+        contextTarget = null;
+        hideTreeContextMenu();
+    });
+}
+
 export function renderDeviceTree(): void {
     const container = document.querySelector('.sidebar-tree-container');
     if (!container) return;

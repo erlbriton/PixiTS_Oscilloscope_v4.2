@@ -1,6 +1,7 @@
 // src/ini-manager/file-loader.ts
 
-import { showIdModal, populateDeviceForm } from '../ui/ui.js';
+import { showIdModal, populateDeviceForm, showCompactError, openIniEditor } from '../ui/ui.js';
+import { encodeWindows1251 } from '../core/encoding.js';
 import { addDeviceToRegistry, deviceRegistry, setCurrentIniConfig, updateDeviceInRegistry, removeDeviceFromRegistry } from './tree-core.js';
 import type { RawIniConfig, DeviceRegistryItem } from './tree-core.js';
 import { renderDeviceTree } from './tree-ui.js';
@@ -268,6 +269,13 @@ export async function reloadIniFilesFromDisk(): Promise<{
     return results;
 }
 
+// Пункт "Открыть файл для редактирования" контекстного меню дерева
+window.addEventListener('app:edit-device-requested', (e: Event) => {
+    const detail = (e as CustomEvent<{ id?: string }>).detail;
+    if (!detail || detail.id == null) return;
+    void editDeviceIniFile(String(detail.id));
+});
+
 // Пункт "Удалить" контекстного меню дерева: убираем файл из хранилища
 // и синхронизируем список с осциллографом
 window.addEventListener('app:device-removed', (e: Event) => {
@@ -282,6 +290,67 @@ window.addEventListener('app:device-removed', (e: Event) => {
     }
     syncFilesToOscilloscope();
 });
+
+/**
+ * Открывает встроенный редактор для INI-файла, соответствующего устройству с заданным id.
+ * После сохранения пишет файл в windows-1251 через FileSystemFileHandle,
+ * обновляет файл в хранилище и в реестре, перерисовывает дерево и осциллограф.
+ */
+export async function editDeviceIniFile(deviceId: string): Promise<void> {
+    let entry: StoredFileEntry | undefined;
+    for (const key of Array.from(fileStore.keys())) {
+        const e = fileStore.get(key);
+        if (e && e.id === deviceId) {
+            entry = e;
+            break;
+        }
+    }
+
+    if (!entry) {
+        showCompactError(`Файл устройства ${deviceId} не найден в хранилище.`);
+        return;
+    }
+
+    if (!entry.handle) {
+        showCompactError('Редактирование доступно только для файлов, открытых через File System Access API.');
+        return;
+    }
+
+    const newContent = await openIniEditor(entry.content, `Редактирование: ${entry.file.name}`);
+    if (newContent === null) return; // Отмена / Escape
+
+    try {
+        // Записываем на диск в windows-1251
+        const bytes = encodeWindows1251(newContent);
+        const writable = await entry.handle.createWritable();
+        await writable.write(bytes);
+        await writable.close();
+
+        // Перечитываем (чтобы гарантированно взять то, что на диске)
+        const freshFile = await entry.handle.getFile();
+        const freshContent = await readFileAsText(freshFile);
+        entry.file = freshFile;
+        entry.content = freshContent;
+        entry.lastModified = Date.now();
+
+        // Обновляем реестр устройства
+        const coreParser = new CoreIniParser();
+        const parseResult = coreParser.parse(freshContent);
+        const newIniConfig = new IniConfig(parseResult);
+        const newConfig = parseResult.rawSections as RawIniConfig;
+
+        if (!updateDeviceInRegistry(entry.location, entry.id, newIniConfig, newConfig)) {
+            showCompactError(`Не удалось обновить устройство ${entry.id} в реестре.`);
+        }
+
+        renderDeviceTree();
+        syncFilesToOscilloscope();
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        showCompactError(`Ошибка сохранения: ${msg}`);
+        console.error('[file-loader] editDeviceIniFile error:', err);
+    }
+}
 
 function syncFilesToOscilloscope(): void {
   const osc = window.osc;
