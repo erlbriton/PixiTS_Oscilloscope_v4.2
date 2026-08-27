@@ -22,6 +22,9 @@ import type { TreeGroupMode, DeviceRegistryItem } from './tree-core.js';
 /** Устройство, на строке которого открыто контекстное меню */
 let contextTarget: DeviceRegistryItem | null = null;
 
+/** Устройства группы, на заголовке которой открыто контекстное меню */
+let contextGroupTarget: DeviceRegistryItem[] | null = null;
+
 /** Показать контекстное меню в позиции курсора */
 function showTreeContextMenu(x: number, y: number): void {
     const menu = document.getElementById('treeContextMenu');
@@ -41,11 +44,56 @@ function hideTreeContextMenu(): void {
     if (menu) menu.classList.add('hidden');
 }
 
-// Скрытие меню по левому клику в любом месте и по Escape
-document.addEventListener('click', hideTreeContextMenu);
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') hideTreeContextMenu();
+/** Показать контекстное меню группы в позиции курсора */
+function showTreeGroupContextMenu(x: number, y: number): void {
+    const menu = document.getElementById('treeGroupContextMenu');
+    if (!menu) return;
+    menu.classList.remove('hidden');
+    const rect = menu.getBoundingClientRect();
+    const maxX = window.innerWidth - rect.width - 4;
+    const maxY = window.innerHeight - rect.height - 4;
+    menu.style.left = `${Math.min(x, Math.max(0, maxX))}px`;
+    menu.style.top = `${Math.min(y, Math.max(0, maxY))}px`;
+}
+
+/** Скрыть контекстное меню группы */
+function hideTreeGroupContextMenu(): void {
+    const menu = document.getElementById('treeGroupContextMenu');
+    if (menu) menu.classList.add('hidden');
+}
+
+// Скрытие обоих меню по левому клику в любом месте и по Escape
+document.addEventListener('click', () => {
+    hideTreeContextMenu();
+    hideTreeGroupContextMenu();
 });
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        hideTreeContextMenu();
+        hideTreeGroupContextMenu();
+    }
+});
+
+// Пункт меню "Удалить" для группы: убирает все устройства группы
+const ctxGroupDeleteEl = document.getElementById('ctxGroupDelete');
+if (ctxGroupDeleteEl) {
+    ctxGroupDeleteEl.addEventListener('click', () => {
+        if (contextGroupTarget && contextGroupTarget.length > 0) {
+            const ids: string[] = [];
+            for (const item of [...contextGroupTarget]) {
+                if (removeDeviceItemFromRegistry(item)) {
+                    ids.push(String(item.id));
+                }
+            }
+            for (const id of ids) {
+                window.dispatchEvent(new CustomEvent('app:device-removed', { detail: { id } }));
+            }
+            renderDeviceTree();
+        }
+        contextGroupTarget = null;
+        hideTreeGroupContextMenu();
+    });
+}
 
 // Пункт меню "Удалить": убирает устройство из списка загруженных
 const ctxDeleteEl = document.getElementById('ctxDelete');
@@ -157,6 +205,14 @@ export function renderDeviceTree(): void {
         summaryElement.className = 'tree-location-title';
         summaryElement.textContent = group.key;
         summaryElement.title = group.key;
+
+        // Правый клик на заголовке группы — меню удаления всей группы
+        summaryElement.addEventListener('contextmenu', (e: MouseEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            contextGroupTarget = group.items;
+            showTreeGroupContextMenu(e.clientX, e.clientY);
+        });
 
         const ulElement = document.createElement('ul');
         ulElement.className = 'tree-id-list';
