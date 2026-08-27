@@ -11,6 +11,7 @@ import {
     getDeviceGroupKey,
     getDeviceLeafText,
     getAllDevices,
+    removeDeviceItemFromRegistry,
 } from './tree-core.js';
 import type { TreeGroupMode, DeviceRegistryItem } from './tree-core.js';
 
@@ -45,6 +46,25 @@ document.addEventListener('click', hideTreeContextMenu);
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') hideTreeContextMenu();
 });
+
+// Пункт меню "Удалить": убирает устройство из списка загруженных
+const ctxDeleteEl = document.getElementById('ctxDelete');
+if (ctxDeleteEl) {
+    ctxDeleteEl.addEventListener('click', () => {
+        if (!contextTarget) return;
+        const removed = removeDeviceItemFromRegistry(contextTarget);
+        if (removed) {
+            // file-loader по этому событию уберёт файл из хранилища
+            // и синхронизирует список с осциллографом
+            window.dispatchEvent(new CustomEvent('app:device-removed', {
+                detail: { id: String(contextTarget.id) },
+            }));
+            renderDeviceTree();
+        }
+        contextTarget = null;
+        hideTreeContextMenu();
+    });
+}
 
 export function renderDeviceTree(): void {
     const container = document.querySelector('.sidebar-tree-container');

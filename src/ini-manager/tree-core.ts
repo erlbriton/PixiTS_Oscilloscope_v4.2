@@ -154,6 +154,23 @@ export function removeDeviceFromRegistry(location: string, id: string): boolean 
     return true;
 }
 
+/** Удаляет устройство из реестра по ссылке на его запись (для контекстного меню) */
+export function removeDeviceItemFromRegistry(item: DeviceRegistryItem): boolean {
+    for (const location in deviceRegistry) {
+        const group = deviceRegistry[location];
+        if (!Array.isArray(group)) continue;
+        const idx = group.indexOf(item);
+        if (idx !== -1) {
+            group.splice(idx, 1);
+            if (group.length === 0) {
+                delete deviceRegistry[location];
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
 // ============================================================================
 // Группировка левого дерева устройств
 // ============================================================================

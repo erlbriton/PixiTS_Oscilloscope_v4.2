@@ -268,6 +268,21 @@ export async function reloadIniFilesFromDisk(): Promise<{
     return results;
 }
 
+// Пункт "Удалить" контекстного меню дерева: убираем файл из хранилища
+// и синхронизируем список с осциллографом
+window.addEventListener('app:device-removed', (e: Event) => {
+    const detail = (e as CustomEvent<{ id?: string }>).detail;
+    if (!detail || detail.id == null) return;
+    const idStr = String(detail.id);
+    for (const key of Array.from(fileStore.keys())) {
+        const entry = fileStore.get(key);
+        if (entry && entry.id === idStr) {
+            fileStore.delete(key);
+        }
+    }
+    syncFilesToOscilloscope();
+});
+
 function syncFilesToOscilloscope(): void {
   const osc = window.osc;
   if (!osc || typeof osc.setIniFiles !== 'function') return;

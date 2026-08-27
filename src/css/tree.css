@@ -120,34 +120,49 @@
 
 /* Контекстное меню дерева устройств */
 .context-menu {
-    position: fixed;
-    z-index: 10000;
-    background: #f0f0f0;   /* цвет фона меню — меняйте здесь */
-    color: #333333;
-    border: 1px solid #bbb;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-    border-radius: 3px;
-    min-width: 220px;
-    padding: 4px 0;
-    font-family: 'Segoe UI', Arial, sans-serif;
-    font-size: 13px;
+    position: fixed !important;
+    z-index: 10000 !important;
+    background: #f0f0f0 !important;
+    border: 1px solid #bbb !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
+    border-radius: 3px !important;
+    width: 260px !important;
+    padding: 4px 0 !important;
+    margin: 0 !important;
+    font-family: 'Segoe UI', Arial, sans-serif !important;
+    font-size: 13px !important;
+    color: #333333 !important;
+    overflow: hidden !important;
 }
 
 .context-menu.hidden {
-    display: none;
+    display: none !important;
 }
 
-.context-menu-item {
-    padding: 6px 14px;
-    cursor: pointer;
-    user-select: none;
-    white-space: nowrap;
+.context-menu .context-menu-item {
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 6px 14px !important;
+    margin: 0 !important;
+    border: none !important;
+    outline: none !important;
+    background: transparent !important;
+    color: #333333 !important;
+    line-height: 1.4 !important;
+    cursor: pointer !important;
+    user-select: none !important;
+    white-space: nowrap !important;
+    box-sizing: border-box !important;
 }
 
-.context-menu-item:hover {
-    background: #e8e8e8;
+.context-menu .context-menu-item:hover {
+    background: #f8f67f !important;
+    color: #000000 !important;
 }
 
-.context-menu-item:active {
-    background: #d0d0d0;
+.context-menu .context-menu-item:active {
+    background: #d0d0d0 !important;
+    color: #000000 !important;
 }
