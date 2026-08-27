@@ -14,6 +14,7 @@ import {
     removeDeviceItemFromRegistry,
 } from './tree-core.js';
 import type { TreeGroupMode, DeviceRegistryItem } from './tree-core.js';
+import { isNativeApp } from '../core/platform.js';
 
 // ============================================================================
 // Контекстное меню дерева устройств
@@ -112,6 +113,13 @@ if (ctxDeleteEl) {
         contextTarget = null;
         hideTreeContextMenu();
     });
+}
+
+// "Открыть папку с файлом" недоступно в браузере — скрываем пункт.
+// В нативной версии (Tauri) пункт появится автоматически.
+if (!isNativeApp()) {
+    const ctxOpenFolderEl = document.getElementById('ctxOpenFolder');
+    if (ctxOpenFolderEl) ctxOpenFolderEl.classList.add('ctx-hidden');
 }
 
 export function renderDeviceTree(): void {

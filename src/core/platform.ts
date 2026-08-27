@@ -1,3 +1,5 @@
+// src/core/platform.ts
+
 /**
  * Определение платформы для UI-решений (например, доступности открытия папки).
  *
@@ -12,7 +14,10 @@ export function isLinux(): boolean {
 }
 
 export function supportsDirectoryPicker(): boolean {
-    // showDirectoryPicker работает только в Chromium-браузерах,
-    // но мы включаем его только для Linux, чтобы избежать сюрпризов в Windows.
     return isLinux() && typeof (window as unknown as { showDirectoryPicker?: unknown }).showDirectoryPicker === 'function';
+}
+
+/** Работаем ли мы внутри нативной оболочки (Tauri) */
+export function isNativeApp(): boolean {
+    return typeof (window as unknown as { __TAURI__?: unknown }).__TAURI__ !== 'undefined';
 }

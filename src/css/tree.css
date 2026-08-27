@@ -166,3 +166,8 @@
     background: #d0d0d0 !important;
     color: #000000 !important;
 }
+
+/* Скрытие пункта меню (браузерная версия) */
+.context-menu .context-menu-item.ctx-hidden {
+    display: none !important;
+}
