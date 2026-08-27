@@ -21,7 +21,7 @@ import { IniConfig } from '../core/ini/index.js';
 import { IniDataType, type IniParameter } from '../core/ini/index.js';
 let currentLoopId = 0;
 type ChunkHandler = (chunk: Uint8Array) => void;
-type CheckCompleteFn = (buffer: Uint8Array) => boolean;
+export type CheckCompleteFn = (buffer: Uint8Array) => boolean;
 export interface RegisterBatch {
     start: number;
     count: number;
@@ -215,7 +215,7 @@ export async function executeDeviceIdentification(serial: ISerialPort, comSelect
         stateObj.isIdentifying = false;
     }
 }
-///////////////////////////////////\\
+
 export async function readLoop(serial: ISerialPort, _parser: unknown, view: IOscilloscopeApi | null, buffers: ChannelBuffer[] | Record<string, ChannelBuffer> | Map<string, ChannelBuffer> | null, stateObj: AppState): Promise<void> {
     if (stateObj.isLoopRunning) return;
     stateObj.isLoopRunning = true;

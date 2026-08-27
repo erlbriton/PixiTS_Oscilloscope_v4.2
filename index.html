@@ -25,7 +25,7 @@
               <div class="split-dropdown-item" id="menuDeviceType">Тип устройства</div>
             </div>
           </div>
-          <button class="tool-btn">🔍</button>
+          <button class="tool-btn" id="modbusScanBtn" title="Поиск устройств в сети Modbus">🔍</button>
           <button class="tool-btn">📋</button>
           <div class="split-btn-group">
             <button id="toggleOscMainBtn" class="split-btn-main" title="Осциллограф">📈</button>
@@ -127,7 +127,26 @@
           </div>
         </div>
       </div>
-            <!-- Встроенный редактор INI-файла -->
+            <!-- Модальное окно поиска устройств в сети Modbus -->
+      <div id="modbusScanOverlay" class="scan-overlay hidden">
+        <div class="scan-window">
+          <div class="scan-header">Поиск устройств в сети Modbus</div>
+          <div class="scan-controls">
+            <label class="scan-label">Таймаут, мс:
+              <input id="scanTimeoutInput" type="number" min="50" max="5000" step="50" value="300" />
+            </label>
+            <button id="scanStartBtn" type="button">Начать поиск</button>
+            <button id="scanStopBtn" type="button" disabled>Стоп</button>
+          </div>
+          <div id="scanProgress" class="scan-progress">Готов к поиску. Диапазон адресов: 1–247.</div>
+          <div id="scanResults" class="scan-results"></div>
+          <div class="scan-footer">
+            <button id="scanCloseBtn" type="button">Закрыть</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Встроенный редактор INI-файла -->
       <div id="iniEditorOverlay" class="ini-editor-overlay hidden">
         <div class="ini-editor-window">
           <div class="ini-editor-header" id="iniEditorTitle">Редактирование файла</div>

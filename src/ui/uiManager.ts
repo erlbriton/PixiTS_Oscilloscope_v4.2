@@ -13,6 +13,7 @@ import { IniParser as CoreIniParser, IniConfig } from '../core/ini/index.js';
 import { updateIdBanner, showCompactError } from './ui.js';
 import { reloadIniFilesFromDisk } from '../ini-manager/file-loader.js';
 import { isLinux } from '../core/platform.js';
+import { initModbusScanUI } from './modbus-scan-ui.js';
 import { setTreeGroupMode } from '../ini-manager/tree-core.js';
 import { renderDeviceTree } from '../ini-manager/tree-ui.js';
 import type { TreeGroupMode } from '../ini-manager/tree-core.js';
@@ -340,6 +341,32 @@ export function initUI(deps: UiManagerDeps): void {
   // Автообновление после загрузки/смены INI-файла: тихо, только если порт открыт
   window.addEventListener('app:ini-file-loaded', () => {
     void performRefresh(false);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Поиск устройств в сети Modbus (кнопка 🔍)
+  // ---------------------------------------------------------------------------
+  let scanWasPolling = false;
+
+  initModbusScanUI({
+    isPortOpen: () => serial.isConnected,
+    pausePolling: () => {
+      // Запоминаем, шёл ли опрос, и останавливаем его на время поиска
+      scanWasPolling = appState.isPolling;
+      appState.isPolling = false;
+    },
+    resumePolling: () => {
+      // Возобновляем опрос только если он шёл до поиска
+      if (scanWasPolling) {
+        appState.isPolling = true;
+        void readLoop(serial, parser, window.osc ?? null, buffers, appState);
+      }
+    },
+    connectToDevice: (addr: number) => {
+      // Переключаем адрес опроса — readLoop подхватит его на следующем запросе
+      appState.slaveAddress = addr;
+      console.log(`[UI] Опрос переключён на адрес ${addr}`);
+    },
   });
 
       // Функция переключения видимости осциллографа
