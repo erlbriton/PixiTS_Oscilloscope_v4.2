@@ -46,8 +46,9 @@
           <button class="tool-btn">💾</button>
           <button class="tool-btn">📦 ▾</button>
 
-          <input type="file" id="filePicker" multiple accept=".ini,.txt" style="display: none" />
+          <input type="file" id="filePicker" multiple accept=".ini" style="display: none" />
           <input type="file" id="folderPicker" webkitdirectory directory style="display: none" />
+          <input type="file" id="templatePicker" multiple style="display: none" />
 
           <div class="split-btn-group">
             <button id="folderActionBtn" class="split-btn-main" title="Открыть файл">📁</button>
@@ -134,7 +135,51 @@
           </div>
         </div>
       </div>
-            <!-- Окно командной строки -->
+            <!-- Окно "Новое устройство" (если родной INI не найден) -->
+      <div id="newDeviceOverlay" class="new-device-overlay hidden">
+        <div class="new-device-window">
+          <div class="new-device-header">
+            <span class="new-device-header-title">Новое устройство</span>
+            <button id="newDeviceCloseBtn" class="new-device-close-btn" type="button" title="Закрыть">✕</button>
+          </div>
+          <div class="new-device-body">
+            <div class="new-device-row">
+              <span class="new-device-label">ID</span>
+              <input id="newDeviceIdInput" class="new-device-input" type="text" readonly />
+            </div>
+            <div class="new-device-row">
+              <span class="new-device-label">Тип</span>
+              <input id="newDeviceTypeInput" class="new-device-input" type="text" readonly />
+            </div>
+            <div class="new-device-info">
+              <div>Версия устройства: <span id="newDeviceVerDevice">—</span></div>
+              <div>Версия прошивки: <span id="newDeviceVerFw">—</span></div>
+              <div>Дата прошивки: <span id="newDeviceFwDate">—</span></div>
+            </div>
+            <div class="new-device-row">
+              <span class="new-device-label">* Механизм</span>
+              <input id="newDeviceMechInput" class="new-device-input" type="text" />
+            </div>
+            <div class="new-device-row">
+              <span class="new-device-label">* Расположение</span>
+              <input id="newDeviceLocInput" class="new-device-input" type="text" />
+            </div>
+            <div class="new-device-row">
+              <span class="new-device-label">Шаблон</span>
+              <select id="newDeviceTemplateSelect" class="new-device-select"></select>
+              <button id="newDeviceAddTemplateBtn" class="new-device-btn" type="button">Добавить шаблон</button>
+            </div>
+            <div class="new-device-note">* Эти поля можно заполнить позже</div>
+            <button id="newDeviceBackupBtn" class="new-device-btn new-device-wide-btn" type="button">📄 Создать резерв для устройства</button>
+            <div class="new-device-actions">
+              <button id="newDeviceAddBtn" class="new-device-btn" type="button">Добавить устройство в базу</button>
+              <button id="newDeviceCancelBtn" class="new-device-btn" type="button">Отмена</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Окно командной строки -->
       <div id="cmdlineOverlay" class="cmdline-overlay hidden">
         <div class="cmdline-window">
           <div class="cmdline-header">

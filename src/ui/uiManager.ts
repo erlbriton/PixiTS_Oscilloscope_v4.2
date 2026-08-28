@@ -8,15 +8,13 @@ import type { AppState } from '../core/app-state.js';
 import type { IOscilloscopeApi } from '../core/osc-api.js';
 import type { ModbusParser } from '../serial/modbus.js';
 import { IniParser as CoreIniParser, IniConfig } from '../core/ini/index.js';
-//import { RecFileReader } from '../oscilloscope/core/RecFileReader.js';
-//import { updateIdBanner } from './ui.js';
 import { updateIdBanner, showCompactError } from './ui.js';
 import { reloadIniFilesFromDisk } from '../ini-manager/file-loader.js';
 import { isLinux } from '../core/platform.js';
 import { initModbusScanUI } from './modbus-scan-ui.js';
 import { initReportUI } from './report-ui.js';
 import { initCmdlineUI } from './cmdline-ui.js';
-import { getFileStore } from '../ini-manager/file-loader.js';
+import { getFileStore, processSingleFileContent } from '../ini-manager/file-loader.js';
 import { parseDeviceIdString } from '../core/report-data.js';
 import { getAllDevices } from '../ini-manager/tree-core.js';
 import { setTreeGroupMode } from '../ini-manager/tree-core.js';
@@ -24,6 +22,7 @@ import { renderDeviceTree } from '../ini-manager/tree-ui.js';
 import type { TreeGroupMode } from '../ini-manager/tree-core.js';
 import { showAddressDialog } from './confirm-dialog.js';
 import { PortCancelledError } from '../serial/serial.js';
+import { initNewDeviceUI, showNewDeviceModal, setNewDeviceAddToLoaded } from './new-device-ui.js';
 
 /** Буфер данных канала (типизирован явно, без any) */
 export interface ChannelBuffer {
@@ -203,8 +202,9 @@ export function initUI(deps: UiManagerDeps): void {
           console.warn(`[Connect] Родной INI найден (${matchedId}), но узел дерева не отрендерен.`);
         }
       } else {
-        // TODO (следующий шаг): открыть модальное окно выбора файла.
+        // Родной INI не найден — открываем окно "Новое устройство".
         console.log('[Connect] Родной INI не найден среди загруженных файлов.');
+        showNewDeviceModal(idText);
       }
     });
   }
@@ -398,6 +398,12 @@ export function initUI(deps: UiManagerDeps): void {
   // Командная строка (кнопка терминала)
   // ---------------------------------------------------------------------------
   initCmdlineUI();
+
+  // ---------------------------------------------------------------------------
+  // Окно "Новое устройство" (если родной INI не найден)
+  // ---------------------------------------------------------------------------
+  initNewDeviceUI();
+  setNewDeviceAddToLoaded((content, fileName, file) => processSingleFileContent(content, fileName, appState, file));
 
   // ---------------------------------------------------------------------------
   // Отчёты (кнопка 📋)

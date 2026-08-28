@@ -152,7 +152,7 @@ interface OscIniFile {
 
 // setupFileHandling больше не используется — вместо неё openIniFile с File System Access API
 
-async function processSingleFileContent(
+export async function processSingleFileContent(
     content: string,
     fileName: string,
     appState: AppState,
@@ -163,6 +163,11 @@ async function processSingleFileContent(
   try {
     if (!content) {
       throw new Error('Файл пуст');
+    }
+    // Убираем BOM (Byte Order Mark), если он есть в начале файла
+    // (мы добавляем его при сохранении для корректной кириллицы в Windows)
+    if (content.charCodeAt(0) === 0xFEFF) {
+      content = content.substring(1);
     }
 
     // ЕДИНЫЙ парсинг через core/ini
