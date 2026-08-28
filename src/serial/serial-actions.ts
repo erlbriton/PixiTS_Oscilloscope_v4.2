@@ -65,7 +65,7 @@ class SerialManager {
             console.log("[SerialManager] Центральный единый ридер остановлен.");
         })();
     }
-    public async executeTransaction(
+     public async executeTransaction(
         packet: Uint8Array,
         checkCompleteFn: CheckCompleteFn,
         timeoutMs: number = 1000
@@ -501,6 +501,7 @@ export async function writeRegistersFC16(
             console.error(`[MODBUS FC16] Исключение от устройства, код: 0x${reply[2].toString(16)}`);
             return false;
         }
+        console.warn(`[MODBUS FC16] Нераспознанный ответ: len=${reply.length}, байты=${Array.from(reply).map((b) => b.toString(16).padStart(2, '0')).join(' ')} (ожидается: адрес + 0x10 + эхо)`);
         return false;
     } catch (err) {
         console.error('[MODBUS FC16] Ошибка транзакции:', err);

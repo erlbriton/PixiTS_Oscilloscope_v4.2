@@ -7,6 +7,7 @@ import { planControllerWrite } from '../ini-manager/tree-core.js';
 import { writeRegistersFC16, readHoldingRegistersFC03 } from '../serial/serial-actions.js';
 import { getTableEditorState } from '../ini-manager/table-editor.js';
 import { showFailedParamsList } from '../ui/confirm-dialog.js';
+import { serialManager } from '../serial/serial-actions.js';
 
 /**
  * Копирует значения Контроллера (колонки 6,7) в Базу (колонки 4,5)
@@ -105,12 +106,27 @@ async function writeBaseRowToController(
     if (isNaN(reg)) return false;
 
     // ── Запись + обратное чтение + сравнение ──
+    const rowId = tr.getAttribute('data-key') || '';
     if (plan.kind === 'words') {
         const writeOk = await writeRegistersFC16(slaveAddr, reg, plan.words);
-        if (!writeOk) return false;
-        const readWords = await readHoldingRegistersFC03(slaveAddr, reg, plan.words.length);
-        if (!readWords) return false;
+        if (!writeOk) {
+            // Устройство могло выполнить кадр молча (окно сохранения в память).
+            // Таймаут FC16 не считаем отказом: факт записи подтвердит чтение.
+            console.warn(`[BASE→CONTROLLER] ${rowId}: нет ответа на FC16 (reg=${reg.toString(16)}), проверяю чтением`);
+            await new Promise((r) => setTimeout(r, 500));
+        }
+        let readWords = await readHoldingRegistersFC03(slaveAddr, reg, plan.words.length);
+        if (!readWords) {
+            // Чтение могло попасть в окно молчания — пауза и ещё одна попытка.
+            await new Promise((r) => setTimeout(r, 500));
+            readWords = await readHoldingRegistersFC03(slaveAddr, reg, plan.words.length);
+        }
+        if (!readWords) {
+            console.warn(`[BASE→CONTROLLER] ${rowId}: отказ обратного чтения FC03 (reg=${reg.toString(16)})`);
+            return false;
+        }
         if (!(readWords.length === plan.words.length && plan.words.every((w, i) => readWords[i] === w))) {
+            console.warn(`[BASE→CONTROLLER] ${rowId}: НЕСОВПАДЕНИЕ при проверке: записано ${plan.words.map((w) => w.toString(16)).join(',')}, прочитано ${readWords.map((w) => w.toString(16)).join(',')}`);
             return false;
         }
     } else if (plan.kind === 'byte') {
@@ -182,6 +198,7 @@ export async function copyBaseToController(): Promise<void> {
 
     // Отбираем строки: есть регистр И База ≠ Контроллер
     const targets: HTMLTableRowElement[] = [];
+    
     for (const tr of rows) {
         const addrStr = tr.getAttribute('data-reg');
         if (!addrStr || isNaN(parseInt(addrStr, 16))) continue;
@@ -207,7 +224,15 @@ export async function copyBaseToController(): Promise<void> {
 
     try {
         for (const tr of targets) {
-            const ok = await writeBaseRowToController(tr, slaveAddr);
+            let ok = await writeBaseRowToController(tr, slaveAddr);
+            if (!ok) {
+                // Устройство могло выполнить запись, но не ответить
+                // (пауза на сохранение в энергонезависимую память после первых изменений).
+                // Даём ему 500 мс и повторяем цикл: запись идемпотентна,
+                // а обратное чтение внутри writeBaseRowToController подтвердит факт записи.
+                await new Promise((resolve) => setTimeout(resolve, 500));
+                ok = await writeBaseRowToController(tr, slaveAddr);
+            }
             if (!ok) {
                 const tds = tr.querySelectorAll('td');
                 failed.push({
