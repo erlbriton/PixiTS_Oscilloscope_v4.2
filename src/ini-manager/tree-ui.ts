@@ -151,6 +151,7 @@ export function renderDeviceTree(): void {
     const makeLeaf = (device: DeviceRegistryItem): HTMLLIElement => {
         const liElement = document.createElement('li');
         liElement.className = 'tree-id-item is-leaf';
+        liElement.dataset.deviceId = device.id;
         const text = getDeviceLeafText(device, mode);
         liElement.textContent = text;
         liElement.title = text;

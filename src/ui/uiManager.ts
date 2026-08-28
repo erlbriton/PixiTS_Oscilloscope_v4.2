@@ -17,10 +17,13 @@ import { initModbusScanUI } from './modbus-scan-ui.js';
 import { initReportUI } from './report-ui.js';
 import { initCmdlineUI } from './cmdline-ui.js';
 import { getFileStore } from '../ini-manager/file-loader.js';
+import { parseDeviceIdString } from '../core/report-data.js';
+import { getAllDevices } from '../ini-manager/tree-core.js';
 import { setTreeGroupMode } from '../ini-manager/tree-core.js';
 import { renderDeviceTree } from '../ini-manager/tree-ui.js';
 import type { TreeGroupMode } from '../ini-manager/tree-core.js';
 import { showAddressDialog } from './confirm-dialog.js';
+import { PortCancelledError } from '../serial/serial.js';
 
 /** Буфер данных канала (типизирован явно, без any) */
 export interface ChannelBuffer {
@@ -133,30 +136,75 @@ export function initUI(deps: UiManagerDeps): void {
 
     if (connectBtn) {
     connectBtn.addEventListener("click", async () => {
-      if (serial.isConnected) { 
-          showIdModal("Порт уже открыт!"); 
-          return; 
-      }
-      
-      // Берем скорость из селектора
-      const baudRate = baudSelect ? parseInt(baudSelect.value, 10) || 115200 : 115200;
-      
-      try {
-        await serial.connect(baudRate);
-        console.log(`[DEBUG] Подключено на скорости: ${baudRate}`);
-        
-        const chipName = updateComInterfaceName(serial, comSelect);
-        console.log(`Успешно подключено к: ${chipName}`);
-        
-        const osc = window.osc;
-        if (osc && typeof osc.setSerialPort === 'function') {
-            osc.setSerialPort(serial);
+      // Кнопка "Подключить":
+      //  - если порт уже открыт (кнопкой ID или предыдущим "Подключить") —
+      //    просто читаем ID из баннера, не посылая 0x11 повторно;
+      //  - если порт закрыт — открываем его и читаем ID через
+      //    executeDeviceIdentification (она сама откроет, отправит 0x11,
+      //    запишет в баннер и корректно обработает отмену выбора порта).
+      // Этап поиска "родного" INI — следующий шаг.
+
+      let idText: string;
+
+      if (serial.isConnected) {
+        const banner = document.querySelector('.id-banner span');
+        idText = (banner?.textContent ?? '').trim();
+      } else {
+        try {
+          await executeDeviceIdentification(serial, comSelect, appState, baudSelect);
+        } catch (err: unknown) {
+          // Отмена выбора порта уже обработана внутри executeDeviceIdentification
+          // (через PortCancelledError), но для надёжности перехватываем и здесь.
+          if (err instanceof PortCancelledError) {
+            return;
+          }
+          const msg = err instanceof Error ? err.message : String(err);
+          showIdModal("Ошибка: " + msg);
+          return;
         }
-        
-        restoreConnection();
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        showIdModal("Ошибка: " + msg);
+
+        const banner = document.querySelector('.id-banner span');
+        idText = (banner?.textContent ?? '').trim();
+      }
+
+      // Поиск "родного" INI среди загруженных файлов.
+      // Критерий совпадения: серийный номер + тип устройства (без версии).
+      if (!idText) {
+        console.log('[Connect] Строка ID пустая — поиск пропущен.');
+        return;
+      }
+
+      const target = parseDeviceIdString(idText);
+      let matchedId: string | null = null;
+
+      for (const device of getAllDevices()) {
+        const candidate = device.iniConfig?.device?.id;
+        if (!candidate) continue;
+        const parsed = parseDeviceIdString(candidate);
+        if (parsed.serial === target.serial && parsed.deviceType === target.deviceType && parsed.version === target.version) {
+          matchedId = device.id;
+          break;
+        }
+      }
+
+      if (matchedId !== null) {
+        // Программный клик по узлу дерева:
+        // - подсветка .is-selected переедет на него;
+        // - setCurrentIniConfig / populateDeviceForm / renderModbusTable
+        //   будут вызваны в обработчике клика самого <li>;
+        // - osциллограф получит новое активное устройство через app:ini-file-loaded.
+        const leaf = document.querySelector<HTMLLIElement>(
+          `.tree-id-item.is-leaf[data-device-id="${CSS.escape(matchedId)}"]`,
+        );
+        if (leaf) {
+          leaf.click();
+          console.log(`[Connect] Родной INI найден и выбран: ${matchedId}`);
+        } else {
+          console.warn(`[Connect] Родной INI найден (${matchedId}), но узел дерева не отрендерен.`);
+        }
+      } else {
+        // TODO (следующий шаг): открыть модальное окно выбора файла.
+        console.log('[Connect] Родной INI не найден среди загруженных файлов.');
       }
     });
   }

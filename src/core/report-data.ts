@@ -183,7 +183,7 @@ function formatScale(v: number | undefined): string {
  *   "ID: 00444444 DExS.SMFCB v1.10.6.1 18.07.2022 www.intmash.ru"
  *   "00000396 DExS.SMFCB v1.10 30.08.2018 www.intmash.ru"
  */
-function parseDeviceIdString(raw: string): { serial: string; deviceType: string; version: string } {
+export function parseDeviceIdString(raw: string): { serial: string; deviceType: string; version: string } {
     let s = (raw ?? '').trim();
     
     // Убираем префикс "ID:" если есть

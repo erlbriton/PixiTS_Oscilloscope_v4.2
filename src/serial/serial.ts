@@ -3,6 +3,17 @@
 import type { ISerialPort, SerialPortInfo } from './ISerialPort.js';
 import type { WebSerialPort } from './web-serial-types.js';
 
+/**
+ * Бросается, когда пользователь закрыл окно выбора COM-порта,
+ * не выбрав ни одного порта. Это штатная ситуация, а не ошибка.
+ */
+export class PortCancelledError extends Error {
+    constructor() {
+        super('Выбор порта отменён пользователем.');
+        this.name = 'PortCancelledError';
+    }
+}
+
 export class SerialConnection implements ISerialPort {
   public port: WebSerialPort | null;
   public reader: ReadableStreamDefaultReader<Uint8Array> | null;
@@ -68,6 +79,11 @@ export class SerialConnection implements ISerialPort {
       this.port = null;
       this.reader = null;
       this.readableStream = null;
+      // Пользователь закрыл окно выбора порта, не выбрав порт —
+      // это не ошибка подключения.
+      if (error instanceof DOMException && error.name === 'NotFoundError') {
+        throw new PortCancelledError();
+      }
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(`Ошибка подключения к порту: ${message}`);
     }
