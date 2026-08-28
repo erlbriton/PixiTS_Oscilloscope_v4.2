@@ -134,7 +134,51 @@
           </div>
         </div>
       </div>
-            <!-- Окно создания отчёта -->
+            <!-- Окно командной строки -->
+      <div id="cmdlineOverlay" class="cmdline-overlay hidden">
+        <div class="cmdline-window">
+          <div class="cmdline-header">
+            <span class="cmdline-header-title">Командная строка</span>
+            <button id="cmdlineCloseBtn" class="cmdline-close-btn" type="button" title="Закрыть">✕</button>
+          </div>
+          <div class="cmdline-controls">
+            <span class="cmdline-label">BUS</span>
+            <select id="cmdlineBusSelect" class="cmdline-select">
+              <option value="RTU">MODBUS RTU</option>
+              <option value="TSP">MODBUS TCP</option>
+            </select>
+            <span class="cmdline-label">BPS</span>
+            <select id="cmdlineBpsSelect" class="cmdline-select">
+              <option value="1200">1200</option>
+              <option value="2400">2400</option>
+              <option value="4800">4800</option>
+              <option value="9600">9600</option>
+              <option value="19200">19200</option>
+              <option value="38400">38400</option>
+              <option value="57600">57600</option>
+              <option value="115200" selected>115200</option>
+              <option value="230400">230400</option>
+              <option value="460800">460800</option>
+              <option value="921600">921600</option>
+            </select>
+            <span class="cmdline-label">FE</span>
+            <input id="cmdlineFeInput" class="cmdline-fe-input" type="text" value="20" />
+            <span class="cmdline-label">MODE</span>
+            <select id="cmdlineModeSelect" class="cmdline-select">
+              <option value="HEX">HEX</option>
+              <option value="ASCII">ASCII</option>
+              <option value="ASCII_FILTER">ASCII Filter</option>
+            </select>
+            <button id="cmdlineClearBtn" class="cmdline-clear-btn" type="button">Clear</button>
+          </div>
+          <div id="cmdlineOutput" class="cmdline-output"></div>
+          <div class="cmdline-input-row">
+            <input id="cmdlineInput" class="cmdline-input" type="text" spellcheck="false"/>
+          </div>
+        </div>
+      </div>
+
+      <!-- Окно создания отчёта -->
       <div id="reportCreateOverlay" class="report-create-overlay hidden">
         <div class="report-create-window">
           <div class="report-create-header">Создать отчёт</div>

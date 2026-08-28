@@ -15,6 +15,7 @@ import { reloadIniFilesFromDisk } from '../ini-manager/file-loader.js';
 import { isLinux } from '../core/platform.js';
 import { initModbusScanUI } from './modbus-scan-ui.js';
 import { initReportUI } from './report-ui.js';
+import { initCmdlineUI } from './cmdline-ui.js';
 import { getFileStore } from '../ini-manager/file-loader.js';
 import { setTreeGroupMode } from '../ini-manager/tree-core.js';
 import { renderDeviceTree } from '../ini-manager/tree-ui.js';
@@ -344,6 +345,11 @@ export function initUI(deps: UiManagerDeps): void {
   window.addEventListener('app:ini-file-loaded', () => {
     void performRefresh(false);
   });
+
+  // ---------------------------------------------------------------------------
+  // Командная строка (кнопка терминала)
+  // ---------------------------------------------------------------------------
+  initCmdlineUI();
 
   // ---------------------------------------------------------------------------
   // Отчёты (кнопка 📋)

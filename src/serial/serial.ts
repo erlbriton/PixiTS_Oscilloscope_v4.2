@@ -244,6 +244,26 @@ export class SerialConnection implements ISerialPort {
         return crc;
     }
   /**
+   * Смена скорости уже открытого порта без переоткрытия.
+   * Используется командной строкой для автономного выбора BPS.
+   * Если порт не открыт — игнорируем (скорость подставится при connect).
+   */
+  public async updateBaudRate(baudRate: number): Promise<void> {
+    const port = this.port;
+    if (!this.isConnected || !port) {
+      return;
+    }
+    try {
+      // Web Serial API: port.update() меняет параметры на лету
+      await (port as unknown as { update: (opts: { baudRate: number }) => Promise<void> }).update({ baudRate });
+      console.log(`[Serial] Скорость порта изменена на ${baudRate} бод.`);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("[Serial] Не удалось сменить скорость порта:", message);
+    }
+  }
+
+  /**
    * Отправка массива байт в устройство.
    */
   public async write(data: Uint8Array): Promise<void> {
