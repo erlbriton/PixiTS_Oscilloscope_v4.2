@@ -206,39 +206,6 @@ export function renderModbusTable(config?: IniConfig, appState?: TableEditorStat
                     7             // Индекс колонки Контроллера Physical
                 );
             }
-            // 2. Редакторы для КОНТРОЛЛЕРА (колонки 6 и 7)
-            // Теперь эти ячейки также полностью функциональны для редактирования
-            // if (tds[6] && tds[7]) {
-            //     initHexCellEditor(
-            //         tds[6], 
-            //         tr, 
-            //         param.rawParts, 
-            //         hexIndex,
-            //         updateRowValues, 
-            //         param.dataType, 
-            //         param.scale,
-            //         originalHexLen, 
-            //         prmListOptions,
-            //         currentState, // Явная передача состояния
-            //         6             // Явный индекс колонки
-            //     );
-                
-            //     initPhysicalCellEditor(
-            //         tds[7], 
-            //         tr, 
-            //         param.rawParts, 
-            //         param.dataType,
-            //         param.scale, 
-            //         hexIndex, 
-            //         originalHexLen,
-            //         prmListOptions, 
-            //         updateRowValues,
-            //         hexToFloat32, 
-            //         float32ToHex,
-            //         currentState, // Явная передача состояния
-            //         7             // Явный индекс колонки
-            //     );
-            // }
 
             // --- ЛОГИКА ВЫДЕЛЕНИЯ СТРОКИ (ДЛЯ КЛИКОВ СЛЕВА) ---
             tr.addEventListener('click', (event: MouseEvent) => {
@@ -294,7 +261,7 @@ export function renderModbusTable(config?: IniConfig, appState?: TableEditorStat
     if (typeof window.initTableResizers === 'function') {
         window.initTableResizers();
     }
-}
+}/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 document.addEventListener('DOMContentLoaded', () => {
     const modeSelect = document.querySelector<HTMLSelectElement>('.toolbar-device-mode-select');

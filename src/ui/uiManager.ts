@@ -14,6 +14,8 @@ import { updateIdBanner, showCompactError } from './ui.js';
 import { reloadIniFilesFromDisk } from '../ini-manager/file-loader.js';
 import { isLinux } from '../core/platform.js';
 import { initModbusScanUI } from './modbus-scan-ui.js';
+import { initReportUI } from './report-ui.js';
+import { getFileStore } from '../ini-manager/file-loader.js';
 import { setTreeGroupMode } from '../ini-manager/tree-core.js';
 import { renderDeviceTree } from '../ini-manager/tree-ui.js';
 import type { TreeGroupMode } from '../ini-manager/tree-core.js';
@@ -341,6 +343,14 @@ export function initUI(deps: UiManagerDeps): void {
   // Автообновление после загрузки/смены INI-файла: тихо, только если порт открыт
   window.addEventListener('app:ini-file-loaded', () => {
     void performRefresh(false);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Отчёты (кнопка 📋)
+  // ---------------------------------------------------------------------------
+  initReportUI({
+    getAppState: () => appState,
+    getFileStore: () => getFileStore(),
   });
 
   // ---------------------------------------------------------------------------

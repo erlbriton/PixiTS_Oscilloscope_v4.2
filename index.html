@@ -26,7 +26,7 @@
             </div>
           </div>
           <button class="tool-btn" id="modbusScanBtn" title="Поиск устройств в сети Modbus">🔍</button>
-          <button class="tool-btn">📋</button>
+          <button class="tool-btn" id="clipboardBtn" title="Создать отчёт">📋</button>
           <div class="split-btn-group">
             <button id="toggleOscMainBtn" class="split-btn-main" title="Осциллограф">📈</button>
             <div class="split-btn-divider"></div>
@@ -127,7 +127,47 @@
           </div>
         </div>
       </div>
-            <!-- Модальное окно поиска устройств в сети Modbus -->
+            <!-- Окно создания отчёта -->
+      <div id="reportCreateOverlay" class="report-create-overlay hidden">
+        <div class="report-create-window">
+          <div class="report-create-header">Создать отчёт</div>
+          <div class="report-create-body">
+            <label class="report-field">
+              <span class="report-field-label">ОРГАНИЗАЦИЯ</span>
+              <input id="reportOrgInput" type="text" value="ООО Интеллектуальные машины" />
+            </label>
+            <div class="report-field">
+              <span class="report-field-label">НОМЕР ОТЧЁТА</span>
+              <input id="reportNumInput" type="number" min="1" value="1" />
+              <label class="report-checkbox">
+                <input id="reportAutoIncCheck" type="checkbox" /> автоинкремент
+              </label>
+            </div>
+            <button id="reportCreateBtn" type="button">Создать отчёт</button>
+            <div id="reportStatus" class="report-status"></div>
+            <div class="report-progress">
+              <div id="reportProgressBar" class="report-progress-bar"></div>
+            </div>
+          </div>
+          <div class="report-create-footer">
+            <button id="reportCreateCloseBtn" type="button">Закрыть</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Окно предпросмотра отчёта -->
+      <div id="reportPreviewOverlay" class="report-preview-overlay hidden">
+        <div class="report-preview-window">
+          <div class="report-preview-header">Предпросмотр отчёта</div>
+          <div id="reportPreviewBody" class="report-preview-body"></div>
+          <div class="report-preview-footer">
+            <button id="reportSaveBtn" type="button">Сохранить…</button>
+            <button id="reportPreviewCloseBtn" type="button">Закрыть</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Модальное окно поиска устройств в сети Modbus -->
       <div id="modbusScanOverlay" class="scan-overlay hidden">
         <div class="scan-window">
           <div class="scan-header">Поиск устройств в сети Modbus</div>

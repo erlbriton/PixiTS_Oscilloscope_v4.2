@@ -8,6 +8,10 @@ import { renderDeviceTree } from './tree-ui.js';
 import { renderModbusTable } from '../ui/tree.js';
 import { IniParser as CoreIniParser, IniConfig, iniParamsToChannelConfigs } from '../core/ini/index.js';
 import type { AppState } from '../core/app-state.js';
+/** Геттер хранилища файлов (используется генератором отчётов) */
+export function getFileStore(): Map<string, StoredFileEntry> {
+    return fileStore;
+}
 
 /**
  * Открывает INI-файл через File System Access API.
@@ -23,7 +27,7 @@ let currentIniFileName: string | null = null;
  * Браузер не следит за файлами сам, но пока жива ссылка на File,
  * file.text() возвращает актуальное содержимое с диска.
  */
-interface StoredFileEntry {
+export interface StoredFileEntry {
     file: File;
     handle?: FileSystemFileHandle;
     location: string;
