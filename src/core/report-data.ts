@@ -138,14 +138,15 @@ export async function collectReportData(src: ReportDataSource): Promise<ReportDa
         });
     }
 
-    // Коэффициенты AINK и CINScale из [vars]
+    // Все коэффициенты из [vars]
     const coefficients: ReportCoefficient[] = [];
     const vars = config.vars ?? {};
-    if ('AINK' in vars) {
-        coefficients.push({ name: 'AINK', value: formatScale(vars.AINK) });
-    }
-    if ('CINScale' in vars) {
-        coefficients.push({ name: 'CINScale', value: formatScale(vars.CINScale) });
+    for (const name of Object.keys(vars)) {
+        const raw = vars[name];
+        // Если значение — число, форматируем (точка → запятая);
+        // если строка (например "500A|75mV / 0,1640625") — оставляем как есть.
+        const value = typeof raw === 'number' ? formatScale(raw) : String(raw ?? '');
+        coefficients.push({ name, value });
     }
 
     return {
