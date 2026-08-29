@@ -403,7 +403,8 @@ export function initUI(deps: UiManagerDeps): void {
   // Окно "Новое устройство" (если родной INI не найден)
   // ---------------------------------------------------------------------------
   initNewDeviceUI();
-  setNewDeviceAddToLoaded((content, fileName, file) => processSingleFileContent(content, fileName, appState, file));
+    setNewDeviceAddToLoaded((content, fileName, file, handle) =>
+      processSingleFileContent(content, fileName, appState, file, handle));
 
   // ---------------------------------------------------------------------------
   // Отчёты (кнопка 📋)

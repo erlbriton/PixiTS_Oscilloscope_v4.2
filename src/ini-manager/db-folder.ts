@@ -9,12 +9,9 @@
 interface DbDirectoryHandleLike {
     queryPermission(desc: { mode: string }): Promise<string>;
     requestPermission(desc: { mode: string }): Promise<string>;
-    getFileHandle(name: string, options?: { create?: boolean }): Promise<DbFileHandleLike>;
+    getFileHandle(name: string, options?: { create?: boolean }): Promise<FileSystemFileHandle>;
 }
 
-interface DbFileHandleLike {
-    createWritable(): Promise<{ write(data: string): Promise<void>; close(): Promise<void> }>;
-}
 
 interface WindowWithPicker {
     showDirectoryPicker?(opts: { mode: string }): Promise<DbDirectoryHandleLike>;
@@ -101,32 +98,29 @@ export async function ensureDbFolder(): Promise<DbDirectoryHandleLike | null> {
 export async function saveFileToDbFolder(
     handle: DbDirectoryHandleLike,
     name: string,
-    content: string,
-): Promise<'saved' | 'exists' | 'error'> {
+    content: Uint8Array<ArrayBuffer>,
+): Promise<{ status: 'saved' | 'exists' | 'error'; fileHandle: FileSystemFileHandle | null }> {
     try {
-        let fileHandle: DbFileHandleLike;
+        let fileHandle: FileSystemFileHandle;
         try {
-            await handle.getFileHandle(name, { create: false });
-            return 'exists';
+            fileHandle = await handle.getFileHandle(name, { create: false });
+            return { status: 'exists', fileHandle };
         } catch {
             fileHandle = await handle.getFileHandle(name, { create: true });
         }
         const writable = await fileHandle.createWritable();
-        // Добавляем BOM (Byte Order Mark) для корректного отображения
-        // кириллицы в Windows (Блокнот, старые программы).
-        await writable.write('\uFEFF' + content);
+        await writable.write(content);
         await writable.close();
-        return 'saved';
+        return { status: 'saved', fileHandle };
     } catch (err) {
         console.error('[db-folder] Ошибка сохранения в папку базы:', err);
-        return 'error';
+        return { status: 'error', fileHandle: null };
     }
 }
 
 /** Fallback: скачать файл в "Загрузки". */
-export function downloadFallback(name: string, content: string): void {
-    // Добавляем BOM и явно указываем charset=utf-8
-    const blob = new Blob(['\uFEFF' + content], { type: 'text/plain;charset=utf-8' });
+export function downloadFallback(name: string, content: Uint8Array<ArrayBuffer>): void {
+    const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -135,4 +129,29 @@ export function downloadFallback(name: string, content: string): void {
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+/**
+ * Принудительно спрашивает новую папку базы и запоминает её.
+ * Вызывать только внутри пользовательского клика (диалог открытия).
+ */
+export async function changeDbFolder(): Promise<DbDirectoryHandleLike | null> {
+    const picker = (window as WindowWithPicker).showDirectoryPicker;
+    if (typeof picker !== 'function') return null;
+    try {
+        const handle = await picker.call(window, { mode: 'readwrite' });
+        if (!handle) return null;
+        await idbSet(HANDLE_KEY, handle);
+        return handle;
+    } catch {
+        // пользователь отменил выбор
+        return null;
+    }
+}
+
+/**
+ * Сохраняет ручку папки как общую папку базы.
+ * Вызывается из openIniFolder после успешного выбора (на Linux).
+ */
+export async function saveDbFolderHandle(handle: FileSystemDirectoryHandle): Promise<void> {
+    await idbSet(HANDLE_KEY, handle);
 }

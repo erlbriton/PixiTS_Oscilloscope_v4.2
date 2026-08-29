@@ -9,13 +9,19 @@
 import { parseDeviceIdString } from '../core/report-data.js';
 import { getAllDevices } from '../ini-manager/tree-core.js';
 import { showIdModal } from './ui.js';
-import { ensureDbFolder, saveFileToDbFolder, downloadFallback } from '../ini-manager/db-folder.js';
+import { ensureDbFolder, saveFileToDbFolder, downloadFallback, changeDbFolder } from '../ini-manager/db-folder.js';
+import { readFileWithEncoding, encodeToWindows1251 } from '../core/encoding.js';
 
 /** Выбранные шаблоны: имя → File */
 const templateFiles = new Map<string, File>();
 
 /** Функция-связка с конвейером загрузки (вставляет uiManager, у него есть appState) */
-type AddToLoadedFn = (content: string, fileName: string, file: File) => Promise<void>;
+type AddToLoadedFn = (
+    content: string,
+    fileName: string,
+    file: File,
+    handle?: FileSystemFileHandle,
+) => Promise<void>;
 let addToLoadedFn: AddToLoadedFn | null = null;
 
 export function setNewDeviceAddToLoaded(fn: AddToLoadedFn): void {
@@ -35,9 +41,29 @@ export function initNewDeviceUI(): void {
         hideNewDeviceModal();
     });
 
-    // Заглушки до следующих шагов:
+        // Заглушка до следующих шагов:
     document.getElementById('newDeviceBackupBtn')?.addEventListener('click', () => {
         console.log('[new-device] TODO: создать резерв для устройства');
+    });    // Заглушка до следующих шагов:
+    document.getElementById('newDeviceBackupBtn')?.addEventListener('click', () => {
+        console.log('[new-device] TODO: создать резерв для устройства');
+    });
+
+    // "Сменить папку базы…": принудительно выбрать и запомнить новую папку.
+    // Ближайшее нажатие "Добавить устройство в базу" запишет уже в неё.
+    document.getElementById('newDeviceChangeFolderBtn')?.addEventListener('click', () => {
+        void (async () => {
+            const handle = await changeDbFolder();
+            setNewDeviceStatus(handle ? 'Папка базы изменена.' : 'Папка не изменена (выбор отменён).');
+        })();
+    });
+    // "Сменить папку базы…": принудительно выбрать и запомнить новую папку.
+    // Ближайшее нажатие "Добавить устройство в базу" запишет уже в неё.
+    document.getElementById('newDeviceChangeFolderBtn')?.addEventListener('click', () => {
+        void (async () => {
+            const handle = await changeDbFolder();
+            setNewDeviceStatus(handle ? 'Папка базы изменена.' : 'Папка не изменена (выбор отменён).');
+        })();
     });
     document.getElementById('newDeviceAddBtn')?.addEventListener('click', () => {
         void handleAddToBase();
@@ -147,7 +173,7 @@ async function handleAddToBase(): Promise<void> {
 
     let templateText = '';
     try {
-        templateText = await templateFile.text();
+        templateText = await readFileWithEncoding(templateFile);
     } catch (err) {
         console.error('[new-device] Не удалось прочитать шаблон:', err);
         setNewDeviceStatus('Не удалось прочитать файл шаблона.');
@@ -156,37 +182,54 @@ async function handleAddToBase(): Promise<void> {
 
     const content = buildDeviceIniContent(templateText, idText, location, description);
     const fileName = templateName + '.ini';
+    // Пишем в Windows-1251 — как вся база и как старый аджастер:
+    // новый файл неотличим от старых.
+    const bytes = encodeToWindows1251(content);
     // File-объект обязателен: без него конвейер пропустит fileStore.set(),
     // и файл будет "не найден в хранилище" при редактировании/сохранении.
-    const file = new File([content], fileName, { type: 'text/plain' });
+    const file = new File([bytes], fileName, { type: 'text/plain' });
 
-    // 1) Добавляем к загруженным и выделяем в дереве.
+    // 1) Сохраняем на диск; заодно получаем ручку файла —
+    //    с ней новый файл будет доступен для редактирования сразу.
+    const handle = await folderPromise;
+    let fileHandle: FileSystemFileHandle | undefined;
+    let existed = false;
+    let savedToDb = false;
+
+    if (handle) {
+        const res = await saveFileToDbFolder(handle, fileName, bytes);
+        if (res.status === 'saved') {
+            savedToDb = true;
+            fileHandle = res.fileHandle ?? undefined;
+            console.log(`[new-device] Файл ${fileName} сохранён в папку базы.`);
+        } else if (res.status === 'exists') {
+            savedToDb = true;
+            existed = true;
+            fileHandle = res.fileHandle ?? undefined;
+            console.warn(`[new-device] Файл ${fileName} уже есть в папке базы и НЕ перезаписан.`);
+        } else {
+            console.warn('[new-device] Сохранить в папку базы не удалось — скачиваю в "Загрузки".');
+        }
+    }
+
+    if (!savedToDb) {
+        downloadFallback(fileName, bytes);
+        console.log(`[new-device] Файл ${fileName} скачан в "Загрузки".`);
+    }
+
+    // 2) Добавляем к загруженным (передаём ручку — тогда редактирование
+    //    доступно) и выделяем в дереве.
     if (addToLoadedFn) {
-        await addToLoadedFn(content, fileName, file);
+        await addToLoadedFn(content, fileName, file, fileHandle);
         selectNewDeviceInTree(idText);
     } else {
         console.warn('[new-device] Связка с конвейером загрузки не установлена.');
     }
 
-    // 2) Сохраняем на диск.
-    const handle = await folderPromise;
-    if (handle) {
-        const result = await saveFileToDbFolder(handle, fileName, content);
-        if (result === 'saved') {
-            console.log(`[new-device] Файл ${fileName} сохранён в папку базы.`);
-            hideNewDeviceModal();
-            return;
-        }
-        if (result === 'exists') {
-            hideNewDeviceModal();
-            showIdModal(`Файл ${fileName} уже есть в папке базы и НЕ перезаписан.`);
-            return;
-        }
-        console.warn('[new-device] Сохранить в папку базы не удалось — скачиваю в "Загрузки".');
-    }
-    downloadFallback(fileName, content);
-    console.log(`[new-device] Файл ${fileName} скачан в "Загрузки".`);
     hideNewDeviceModal();
+    if (existed) {
+        showIdModal(`Файл ${fileName} уже есть в папке базы и НЕ перезаписан.`);
+    }
 }
 
 /**

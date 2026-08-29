@@ -1,7 +1,8 @@
 // src/ini-manager/file-loader.ts
 
 import { showIdModal, populateDeviceForm, showCompactError, openIniEditor } from '../ui/ui.js';
-import { encodeWindows1251 } from '../core/encoding.js';
+import { encodeToWindows1251 } from '../core/encoding.js';
+import { saveDbFolderHandle } from './db-folder.js';
 import { addDeviceToRegistry, deviceRegistry, setCurrentIniConfig, updateDeviceInRegistry, removeDeviceFromRegistry } from './tree-core.js';
 import type { RawIniConfig, DeviceRegistryItem } from './tree-core.js';
 import { renderDeviceTree } from './tree-ui.js';
@@ -102,6 +103,10 @@ export async function openIniFolder(appState: AppState): Promise<void> {
 
     try {
         const dirHandle = await picker();
+
+        // Запоминаем открытую папку как общую папку базы:
+        // новые файлы будут писаться в неё же (на Linux).
+        await saveDbFolderHandle(dirHandle);
 
         // Рекурсивный обход всех вложенных папок
         const stack: FileSystemDirectoryHandle[] = [dirHandle];
@@ -399,7 +404,7 @@ export async function editDeviceIniFile(deviceId: string): Promise<void> {
 
     try {
         // Записываем на диск в windows-1251
-        const bytes = encodeWindows1251(newContent);
+        const bytes = encodeToWindows1251(newContent);
         const writable = await entry.handle.createWritable();
         await writable.write(bytes);
         await writable.close();
