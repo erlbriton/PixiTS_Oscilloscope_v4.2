@@ -1,5 +1,6 @@
 // src/ui/tree.ts
 
+import { showParamPropertiesModal } from './param-properties-ui.js';
 import { populateDeviceForm } from './ui.js';
 import { currentIniConfig, hexToFloat32, float32ToHex } from '../ini-manager/tree-core.js';
 import {
@@ -207,6 +208,32 @@ export function renderModbusTable(config?: IniConfig, appState?: TableEditorStat
                 );
             }
 
+            // --- ДВОЙНОЙ КЛИК ПО СТРОКЕ → окно "Свойства параметра" ---
+            // Игнорируем двойной клик по 4-м правым ячейкам (там свои редакторы).
+            tr.addEventListener('dblclick', (event: MouseEvent) => {
+                const target = event.target as HTMLElement;
+                const clickedCell = target.closest('td');
+                if (clickedCell && (clickedCell === tds[4] || clickedCell === tds[5] || clickedCell === tds[6] || clickedCell === tds[7])) {
+                    return;
+                }
+                showParamPropertiesModal(
+                    {
+                        id: param.id,
+                        name: param.name,
+                        description: param.description,
+                        unit: param.unit,
+                        scale: param.scale,
+                    },
+                    params.map((p) => ({
+                        id: p.id,
+                        name: p.name,
+                        description: p.description,
+                        unit: p.unit,
+                        scale: p.scale,
+                    })),
+                );
+            });
+
             // --- ЛОГИКА ВЫДЕЛЕНИЯ СТРОКИ (ДЛЯ КЛИКОВ СЛЕВА) ---
             tr.addEventListener('click', (event: MouseEvent) => {
                 const target = event.target as HTMLElement;
@@ -261,7 +288,7 @@ export function renderModbusTable(config?: IniConfig, appState?: TableEditorStat
     if (typeof window.initTableResizers === 'function') {
         window.initTableResizers();
     }
-}/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+}
 
 document.addEventListener('DOMContentLoaded', () => {
     const modeSelect = document.querySelector<HTMLSelectElement>('.toolbar-device-mode-select');

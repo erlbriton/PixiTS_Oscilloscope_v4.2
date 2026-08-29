@@ -243,6 +243,64 @@
         </div>
       </div>
 
+      <!-- Окно "Свойства параметра" (открывается по двойному клику на строке таблицы) -->
+      <div id="paramPropsOverlay" class="param-props-overlay hidden">
+        <div class="param-props-window">
+          <div class="param-props-header">
+            <span class="param-props-title">Свойства параметра</span>
+            <button id="paramPropsCloseBtn" class="param-props-close-btn" type="button" title="Закрыть">✕</button>
+          </div>
+          <div class="param-props-body">
+            <fieldset class="param-props-section">
+              <legend>Основные</legend>
+              <div class="param-props-row">
+                <label class="param-props-label">Обозначение</label>
+                <input type="text" id="paramPropsName" class="param-props-input param-props-readonly" readonly />
+              </div>
+              <div class="param-props-row">
+                <label class="param-props-label">Описание</label>
+                <input type="text" id="paramPropsDescription" class="param-props-input param-props-readonly" readonly />
+              </div>
+              <div class="param-props-row">
+                <label class="param-props-label">Ед.изм.</label>
+                <input type="text" id="paramPropsUnit" class="param-props-input param-props-readonly" readonly />
+              </div>
+              <div class="param-props-row">
+                <label class="param-props-label">Шкала</label>
+                <select id="paramPropsScaleSelect" class="param-props-select">
+                  <option value="IntegerScale">IntegerScale</option>
+                  <option value="FracDecScale">FracDecScale</option>
+                  <option value="FracHundScale">FracHundScale</option>
+                  <option value="FracThousScale">FracThousScale</option>
+                  <option value="FracDecThousScale">FracDecThousScale</option>
+                </select>
+                <input type="text" id="paramPropsScaleValue" class="param-props-input param-props-scale-value param-props-readonly" readonly />
+              </div>
+              <div class="param-props-row">
+                <label class="param-props-label">Зависит от</label>
+                <select id="paramPropsDependsSelect" class="param-props-select">
+                  <option value="">—</option>
+                </select>
+                <input type="text" id="paramPropsDependsSide" class="param-props-input param-props-readonly" readonly />
+              </div>
+              <div class="param-props-row">
+                <label class="param-props-label">Коэффициент</label>
+                <input type="text" id="paramPropsCoefficient" class="param-props-input" />
+              </div>
+              <div class="param-props-subtitle">Коррекция сигнала датчика</div>
+              <div class="param-props-row">
+                <label class="param-props-label">Y/X</label>
+                <input type="text" id="paramPropsYX" class="param-props-input" />
+              </div>
+            </fieldset>
+          </div>
+          <div class="param-props-actions">
+            <button id="paramPropsApplyBtn" class="param-props-btn" type="button">Применить</button>
+            <button id="paramPropsCancelBtn" class="param-props-btn" type="button">Отмена</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Окно командной строки -->
       <div id="cmdlineOverlay" class="cmdline-overlay hidden">
         <div class="cmdline-window">

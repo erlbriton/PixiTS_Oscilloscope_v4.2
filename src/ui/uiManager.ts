@@ -24,6 +24,7 @@ import { showAddressDialog } from './confirm-dialog.js';
 import { PortCancelledError } from '../serial/serial.js';
 import { initNewDeviceUI, showNewDeviceModal, setNewDeviceAddToLoaded } from './new-device-ui.js';
 import { initBackupUI, setBackupLoadFn } from './backup-ui.js';
+import { initParamPropertiesUI } from './param-properties-ui.js';
 
 /** Буфер данных канала (типизирован явно, без any) */
 export interface ChannelBuffer {
@@ -410,6 +411,7 @@ export function initUI(deps: UiManagerDeps): void {
   // ---------------------------------------------------------------------------
   initNewDeviceUI();
   initBackupUI();
+  initParamPropertiesUI();
   setBackupLoadFn((content, fileName, file, handle) => processSingleFileContent(content, fileName, appState, file, handle));
 
   // ---------------------------------------------------------------------------
