@@ -170,11 +170,56 @@
               <button id="newDeviceAddTemplateBtn" class="new-device-btn" type="button">Добавить шаблон</button>
             </div>
             <div class="new-device-note">* Эти поля можно заполнить позже</div>
-            <button id="newDeviceBackupBtn" class="new-device-btn new-device-wide-btn" type="button">📄 Создать резерв для устройства</button>
+            <button id="newDeviceBackupBtn" class="new-device-btn new-device-wide-btn" type="button">📄 Создать резерв для блока</button>
             <button id="newDeviceChangeFolderBtn" class="new-device-btn new-device-wide-btn" type="button">Сменить папку базы…</button>
             <div class="new-device-actions">
               <button id="newDeviceAddBtn" class="new-device-btn" type="button">Добавить устройство в базу</button>
               <button id="newDeviceCancelBtn" class="new-device-btn" type="button">Отмена</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Окно "Создать резерв для устройства..." -->
+      <div id="backupOverlay" class="backup-overlay hidden">
+        <div class="backup-window">
+          <div class="backup-header">
+            <span class="backup-header-title">Создать резерв для устройства…</span>
+            <button id="backupCloseBtn" class="backup-close-btn" type="button" title="Закрыть">✕</button>
+          </div>
+          <div class="backup-body">
+            <fieldset class="backup-group">
+              <legend>Устройство</legend>
+              <div id="backupDeviceInfo" class="backup-device-info"></div>
+            </fieldset>
+            <fieldset class="backup-group">
+              <legend>Настроить как…</legend>
+              <div class="backup-row">
+                <span class="backup-label">Устройство типа</span>
+                <select id="backupTypeSelect" class="backup-select"></select>
+              </div>
+              <div class="backup-table-wrap">
+                <table class="backup-table">
+                  <thead>
+                    <tr>
+                      <th>Место установки</th>
+                      <th>Механизм</th>
+                      <th>Серийный номер</th>
+                      <th>Файл</th>
+                    </tr>
+                  </thead>
+                  <tbody id="backupTableBody"></tbody>
+                </table>
+              </div>
+            </fieldset>
+            <fieldset class="backup-group">
+              <legend>Использовать данные</legend>
+              <label class="backup-check"><input type="checkbox" id="backupUseLocation" /> Место установки</label>
+              <label class="backup-check"><input type="checkbox" id="backupUseMech" /> Название механизма</label>
+            </fieldset>
+            <div class="backup-actions">
+              <button id="backupApplyBtn" class="backup-btn" type="button">Применить</button>
+              <button id="backupCancelBtn" class="backup-btn" type="button">Отмена</button>
             </div>
           </div>
         </div>

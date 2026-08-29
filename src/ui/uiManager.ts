@@ -23,6 +23,7 @@ import type { TreeGroupMode } from '../ini-manager/tree-core.js';
 import { showAddressDialog } from './confirm-dialog.js';
 import { PortCancelledError } from '../serial/serial.js';
 import { initNewDeviceUI, showNewDeviceModal, setNewDeviceAddToLoaded } from './new-device-ui.js';
+import { initBackupUI, setBackupLoadFn } from './backup-ui.js';
 
 /** Буфер данных канала (типизирован явно, без any) */
 export interface ChannelBuffer {
@@ -403,8 +404,10 @@ export function initUI(deps: UiManagerDeps): void {
   // Окно "Новое устройство" (если родной INI не найден)
   // ---------------------------------------------------------------------------
   initNewDeviceUI();
-    setNewDeviceAddToLoaded((content, fileName, file, handle) =>
-      processSingleFileContent(content, fileName, appState, file, handle));
+  initBackupUI();
+  setBackupLoadFn((content, fileName, file, handle) => processSingleFileContent(content, fileName, appState, file, handle));
+  setNewDeviceAddToLoaded((content, fileName, file, handle) =>
+    processSingleFileContent(content, fileName, appState, file, handle));
 
   // ---------------------------------------------------------------------------
   // Отчёты (кнопка 📋)

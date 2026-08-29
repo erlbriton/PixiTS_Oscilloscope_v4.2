@@ -11,6 +11,7 @@ import { getAllDevices } from '../ini-manager/tree-core.js';
 import { showIdModal } from './ui.js';
 import { ensureDbFolder, saveFileToDbFolder, downloadFallback, changeDbFolder } from '../ini-manager/db-folder.js';
 import { readFileWithEncoding, encodeToWindows1251 } from '../core/encoding.js';
+import { showBackupWindow } from './backup-ui.js';
 
 /** Выбранные шаблоны: имя → File */
 const templateFiles = new Map<string, File>();
@@ -41,12 +42,9 @@ export function initNewDeviceUI(): void {
         hideNewDeviceModal();
     });
 
-        // Заглушка до следующих шагов:
+           // "Создать резерв для блока": открывает окно выбора устройства-шаблона.
     document.getElementById('newDeviceBackupBtn')?.addEventListener('click', () => {
-        console.log('[new-device] TODO: создать резерв для устройства');
-    });    // Заглушка до следующих шагов:
-    document.getElementById('newDeviceBackupBtn')?.addEventListener('click', () => {
-        console.log('[new-device] TODO: создать резерв для устройства');
+        showBackupWindow();
     });
 
     // "Сменить папку базы…": принудительно выбрать и запомнить новую папку.
