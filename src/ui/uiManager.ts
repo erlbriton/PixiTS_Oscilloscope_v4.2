@@ -197,6 +197,11 @@ export function initUI(deps: UiManagerDeps): void {
           `.tree-id-item.is-leaf[data-device-id="${CSS.escape(matchedId)}"]`,
         );
         if (leaf) {
+          // Раскрываем родительскую группу <details>, если она свёрнута
+          const details = leaf.closest('details.tree-location');
+          if (details) {
+            (details as HTMLDetailsElement).open = true;
+          }
           leaf.click();
           console.log(`[Connect] Родной INI найден и выбран: ${matchedId}`);
         } else {
@@ -406,6 +411,18 @@ export function initUI(deps: UiManagerDeps): void {
   initNewDeviceUI();
   initBackupUI();
   setBackupLoadFn((content, fileName, file, handle) => processSingleFileContent(content, fileName, appState, file, handle));
+
+  // ---------------------------------------------------------------------------
+  // Кнопка "Сегодня": текущая дата в поле даты (формат ДД.ММ.ГГГГ)
+  // ---------------------------------------------------------------------------
+  document.getElementById('todayBtn')?.addEventListener('click', () => {
+      const dateInput = document.querySelector('.date-input') as HTMLInputElement | null;
+      if (!dateInput) return;
+      const now = new Date();
+      const dd = String(now.getDate()).padStart(2, '0');
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      dateInput.value = `${dd}.${mm}.${now.getFullYear()}`;
+  });
   setNewDeviceAddToLoaded((content, fileName, file, handle) =>
     processSingleFileContent(content, fileName, appState, file, handle));
 

@@ -222,7 +222,7 @@ export function renderDeviceTree(): void {
     for (const group of groups) {
         const detailsElement = document.createElement('details');
         detailsElement.className = 'tree-location';
-        detailsElement.open = true;
+        detailsElement.open = false;
 
         const summaryElement = document.createElement('summary');
         summaryElement.className = 'tree-location-title';
