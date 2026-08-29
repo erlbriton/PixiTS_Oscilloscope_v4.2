@@ -204,3 +204,12 @@
     white-space: nowrap;      /* Запрещает перенос */
     overflow: hidden;         /* Обрезает текст без многоточия */
 }
+/* Кнопка поиска имени в списке устройств: жирный красный "?" у правого края */
+.tree-search-btn {
+    margin-left: auto !important;   /* прижимает кнопку к самому правому краю панели */
+    color: #d00000 !important;
+    font-weight: 900 !important;    /* максимально жирный */
+    font-size: 24px !important;     /* максимально высокий знак */
+    line-height: 1 !important;
+    min-width: 56px !important;     /* вдвое шире обычной кнопки, знак по центру */
+}

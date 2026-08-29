@@ -59,7 +59,6 @@
               <div class="split-dropdown-item" id="menuOpenFolder">Открыть папку</div>
             </div>
           </div>
-
           <select class="toolbar-device-mode-select">
             <option value="FLASH">FLASH</option>
             <option value="CD">CD</option>
@@ -68,6 +67,7 @@
 
           <button id="connectBtn" class="action-btn">подключиться</button>
           <button id="idBtn" class="action-btn">ID</button>
+          <button class="tool-btn tree-search-btn" id="treeSearchBtn" title="Поиск имени в списке устройств">?</button>
         </div>
 
         <div class="panel-content-wrapper">
@@ -221,6 +221,24 @@
               <button id="backupApplyBtn" class="backup-btn" type="button">Применить</button>
               <button id="backupCancelBtn" class="backup-btn" type="button">Отмена</button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Окно поиска имени в списке устройств -->
+      <div id="treeSearchOverlay" class="tree-search-overlay hidden">
+        <div class="tree-search-window">
+          <div class="tree-search-header">
+            <span class="tree-search-title">Поиск имени</span>
+            <button id="treeSearchCloseBtn" class="tree-search-close-btn" type="button">✕</button>
+          </div>
+          <div class="tree-search-body">
+            <input type="text" id="treeSearchInput" class="tree-search-input" placeholder="Введите название места..." />
+            <div id="treeSearchStatus" class="tree-search-status"></div>
+          </div>
+          <div class="tree-search-actions">
+            <button id="treeSearchFindBtn" class="tree-search-btn-primary" type="button">Найти</button>
+            <button id="treeSearchCancelBtn" class="tree-search-btn-secondary" type="button">Отмена</button>
           </div>
         </div>
       </div>

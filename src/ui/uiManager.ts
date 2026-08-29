@@ -10,13 +10,13 @@ import type { ModbusParser } from '../serial/modbus.js';
 import { IniParser as CoreIniParser, IniConfig } from '../core/ini/index.js';
 import { updateIdBanner, showCompactError } from './ui.js';
 import { reloadIniFilesFromDisk } from '../ini-manager/file-loader.js';
-import { isLinux } from '../core/platform.js';
+import { isLinux } from '../core/platform.js'; 
 import { initModbusScanUI } from './modbus-scan-ui.js';
 import { initReportUI } from './report-ui.js';
 import { initCmdlineUI } from './cmdline-ui.js';
 import { getFileStore, processSingleFileContent } from '../ini-manager/file-loader.js';
 import { parseDeviceIdString } from '../core/report-data.js';
-import { getAllDevices } from '../ini-manager/tree-core.js';
+import { getAllDevices, getDeviceGroupKey } from '../ini-manager/tree-core.js';
 import { setTreeGroupMode } from '../ini-manager/tree-core.js';
 import { renderDeviceTree } from '../ini-manager/tree-ui.js';
 import type { TreeGroupMode } from '../ini-manager/tree-core.js';
@@ -422,6 +422,78 @@ export function initUI(deps: UiManagerDeps): void {
       const dd = String(now.getDate()).padStart(2, '0');
       const mm = String(now.getMonth() + 1).padStart(2, '0');
       dateInput.value = `${dd}.${mm}.${now.getFullYear()}`;
+  });
+
+  // ---------------------------------------------------------------------------
+  // Кнопка "?" — поиск имени в списке устройств (по "Место установки")
+  // ---------------------------------------------------------------------------
+  const treeSearchOverlay = document.getElementById('treeSearchOverlay');
+  const treeSearchInput = document.getElementById('treeSearchInput') as HTMLInputElement | null;
+  const treeSearchStatus = document.getElementById('treeSearchStatus');
+
+  const hideTreeSearch = (): void => {
+      treeSearchOverlay?.classList.add('hidden');
+  };
+
+  const doTreeSearch = (): void => {
+      const query = (treeSearchInput?.value ?? '').trim();
+      if (!query) {
+          if (treeSearchStatus) treeSearchStatus.textContent = 'Введите название места.';
+          return;
+      }
+      const queryLower = query.toLowerCase();
+
+      // Уникальные имена групп ("Место установки") в порядке загрузки.
+      const all = getAllDevices();
+      const keys: string[] = [];
+      for (const d of all) {
+          const k = getDeviceGroupKey(d, 'location');
+          if (!keys.includes(k)) keys.push(k);
+      }
+
+      // Точный поиск: сначала полное совпадение, затем начало строки, затем вхождение.
+      const matchedKey =
+          keys.find((k) => k.toLowerCase() === queryLower) ??
+          keys.find((k) => k.toLowerCase().startsWith(queryLower)) ??
+          keys.find((k) => k.toLowerCase().includes(queryLower));
+
+      if (!matchedKey) {
+          if (treeSearchStatus) treeSearchStatus.textContent = `Не найдено: ${query}`;
+          return;
+      }
+
+      setTreeGroupMode('location');
+      renderDeviceTree();
+
+      // Раскрываем найденную группу и выделяем первый файл в ней.
+      const detailsList = document.querySelectorAll('details.tree-location');
+      for (const details of detailsList) {
+          const summary = details.querySelector('summary');
+          if ((summary?.textContent ?? '').trim() !== matchedKey) continue;
+          (details as HTMLDetailsElement).open = true;
+          const firstLeaf = details.querySelector<HTMLLIElement>('.tree-id-item.is-leaf');
+          if (firstLeaf) firstLeaf.click();
+          break;
+      }
+      hideTreeSearch();
+  };
+
+  document.getElementById('treeSearchBtn')?.addEventListener('click', () => {
+      if (!treeSearchOverlay) return;
+      if (treeSearchInput) treeSearchInput.value = '';
+      if (treeSearchStatus) treeSearchStatus.textContent = '';
+      treeSearchOverlay.classList.remove('hidden');
+      treeSearchInput?.focus();
+  });
+  document.getElementById('treeSearchCloseBtn')?.addEventListener('click', hideTreeSearch);
+  document.getElementById('treeSearchCancelBtn')?.addEventListener('click', hideTreeSearch);
+  document.getElementById('treeSearchFindBtn')?.addEventListener('click', doTreeSearch);
+  treeSearchOverlay?.addEventListener('click', (e: MouseEvent) => {
+      if (e.target === treeSearchOverlay) hideTreeSearch();
+  });
+  treeSearchInput?.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Enter') { e.preventDefault(); doTreeSearch(); }
+      if (e.key === 'Escape') { e.preventDefault(); hideTreeSearch(); }
   });
   setNewDeviceAddToLoaded((content, fileName, file, handle) =>
     processSingleFileContent(content, fileName, appState, file, handle));
