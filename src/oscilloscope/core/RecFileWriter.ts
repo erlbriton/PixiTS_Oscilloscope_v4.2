@@ -334,16 +334,22 @@ function buildTextSection(data: RecExportData, now: Date): Uint8Array {
 // 4. Бинарная часть
 // ════════════════════════════════════════════════════════════════
 
-function buildBinarySection(data: RecExportData): Uint8Array {
+function buildBinarySection(data: RecExportData, expectedSize: number): Uint8Array {
   const N = data.timestamps.length;
-  const parts: Uint8Array[] = [];
+  const buf = new Uint8Array(expectedSize);
+  let offset = 0;
+
+  const writeChunk = (chunk: Uint8Array): void => {
+    buf.set(chunk, offset);
+    offset += chunk.length;
+  };
 
   // Блок А: временные метки. Флаг 0x80 у ПЕРВОЙ и ПОСЛЕДНЕЙ записи (2 маркера).
   for (let i = 0; i < N; i++) {
     const flag: number = (i === 0 || i === N - 1) ? 0x80 : 0x00;
     const tDateTime = unixMsToDelphiDateTime(data.timestamps[i]);
-    parts.push(encodeUint8(flag));
-    parts.push(encodeFloat64LE(tDateTime));
+    writeChunk(encodeUint8(flag));
+    writeChunk(encodeFloat64LE(tDateTime));
   }
 
   // Блок Б: значения параметров
@@ -361,29 +367,32 @@ function buildBinarySection(data: RecExportData): Uint8Array {
       const v = values[i];
       switch (param.recType) {
         case 'TBit':
-          parts.push(encodeUint8(v !== 0 ? 1 : 0));
+          writeChunk(encodeUint8(v !== 0 ? 1 : 0));
           break;
         case 'TWORD':
-          parts.push(encodeUint16LE(Math.round(v) & 0xFFFF));
+          writeChunk(encodeUint16LE(Math.round(v) & 0xFFFF));
           break;
         case 'TInteger':
-          parts.push(encodeInt16LE(Math.round(v)));
+          writeChunk(encodeInt16LE(Math.round(v)));
           break;
         case 'TFloat':
-          parts.push(encodeFloat32LE(v));
+          writeChunk(encodeFloat32LE(v));
           break;
         case 'TIPAddr': {
           // 4 байта little-endian — совместимо с чтением в RecFileReader
           const u = Math.round(v) >>> 0;
-          parts.push(encodeUint16LE(u & 0xFFFF));
-          parts.push(encodeUint16LE((u >>> 16) & 0xFFFF));
+          writeChunk(encodeUint16LE(u & 0xFFFF));
+          writeChunk(encodeUint16LE((u >>> 16) & 0xFFFF));
           break;
         }
       }
     }
   }
 
-  return concatBytes(...parts);
+  if (offset !== expectedSize) {
+    throw new Error(`[RecFileWriter] записано ${offset} байт, ожидалось ${expectedSize}`);
+  }
+  return buf;
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -417,7 +426,7 @@ export class RecFileWriter {
     );
 
     const textSection = buildTextSection(data, now);
-    const binarySection = buildBinarySection(data);
+    const binarySection = buildBinarySection(data, expectedBinarySize);
 
     if (binarySection.length !== expectedBinarySize) {
       throw new Error(

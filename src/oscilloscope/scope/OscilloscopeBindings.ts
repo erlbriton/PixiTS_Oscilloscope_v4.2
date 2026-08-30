@@ -131,11 +131,12 @@ export function bindEvents(ctx: BindingsContext): void {
 
   ctx.toolbar.onAutoScale(() => {
     const channels = ctx.getChannels();
+    const allOn = channels.length > 0 && channels.every((ch) => ch.autoScale);
+    const next = !allOn;
     channels.forEach((ch) => {
-      ch.autoScale = true;
+      ch.autoScale = next;
     });
-    const allAutoScale = channels.every((ch) => ch.autoScale);
-    ctx.toolbar.setAutoScaleButtonState(allAutoScale);
+    ctx.toolbar.setAutoScaleButtonState(next);
   });
 
   ctx.toolbar.onToggleAmplitudeMode(() => {

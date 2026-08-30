@@ -159,3 +159,19 @@
     0%, 100% { opacity: 1; }
     50% { opacity: 0.5; }
 }
+/* Автомасштабирование: зелёная — включено, красная — выключено */
+.toolbar-btn.autoscale-on {
+    background-color: #16a34a !important;
+    border-color: #15803d !important;
+    color: #ffffff !important;
+}
+
+.toolbar-btn.autoscale-off {
+    background-color: #dc2626 !important;
+    border-color: #b91c1c !important;
+    color: #ffffff !important;
+}
+/* Принудительно показываем кнопку "Записать весь буфер" */
+.toolbar-group > button[title="Записать весь буфер"] {
+    display: inline-flex !important;
+}
