@@ -90,9 +90,9 @@ export function bindEvents(ctx: BindingsContext): void {
     ctx.loadIniContent(fileItem.content);
   });
 
-  window.addEventListener("oscilloscope-export-csv", () => {
-    ctx.recorder?.downloadCSV(ctx.getVisibleChannels());
-  });
+  // window.addEventListener("oscilloscope-export-csv", () => {
+  //   ctx.recorder?.downloadCSV(ctx.getVisibleChannels());
+  // });
 
   ctx.toolbar.onToggleTimeZoom((enabled) => {
     ctx.settings.timeZoomEnabled = enabled;

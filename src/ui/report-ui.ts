@@ -3,8 +3,9 @@
  * UI для отчётов: окно создания, предпросмотр, сохранение .xlsx.
  * Не зависит от serial — готово к Tauri.
  */
-import { collectReportData } from '../core/report-data.js';
+import { collectReportData, collectCsvData } from '../core/report-data.js';
 import { buildReportBlob } from '../core/excel-report.js';
+import { buildCsvBlob } from '../core/csv-export.js';
 import type { ReportData } from '../core/excel-report.js';
 
 const LS_KEY_ORG = 'report:organization';
@@ -17,6 +18,12 @@ interface ReportUIDeps {
     getAppState: () => { currentIniConfig: unknown };
     /** Возвращает fileStore (Map ключ -> {file, handle, ...}) */
     getFileStore: () => Map<string, { file: File; handle?: unknown }>;
+    /** Возвращает экземпляр осциллографа (или null) */
+    getOscilloscope?: () => {
+        settings: { amplitudeMarkerTime: number | null };
+        archive: { getRawAtTime: (id: string, t: number) => number | null; getValueAtTime: (id: string, t: number) => number | null };
+        allChannels: Array<{ id: string; modbusReg?: string }>;
+    } | null;
 }
 
 let deps: ReportUIDeps | null = null;
@@ -29,6 +36,11 @@ export function initReportUI(uiDeps: ReportUIDeps): void {
     // Кнопка 📋 (открыть окно создания отчёта)
     document.getElementById('clipboardBtn')?.addEventListener('click', () => {
         openCreateWindow();
+    });
+
+    // Кнопка 💾 в осциллографе → экспорт CSV (секция RAM, значения на момент маркера)
+    window.addEventListener('oscilloscope-export-csv', () => {
+        void exportCsv();
     });
 
     // Кнопка "Создать отчёт"
@@ -281,4 +293,93 @@ async function saveReport(): Promise<void> {
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     setStatus('Файл скачан.');
+}
+/**
+ * Экспорт CSV-отчёта: секция RAM, значения на момент стопа/маркера.
+ * Берёт те же organization и reportNumber, что и обычный отчёт (из localStorage).
+ */
+async function exportCsv(): Promise<void> {
+    if (!deps) return;
+
+    const org = localStorage.getItem(LS_KEY_ORG) ?? 'ООО Интеллектуальные машины';
+    const num = localStorage.getItem(LS_KEY_NUM) ?? '1';
+
+    const osc = deps.getOscilloscope?.() ?? null;
+    if (!osc) {
+        alert('Осциллограф не инициализирован.');
+        return;
+    }
+
+    const markerTime = osc.settings.amplitudeMarkerTime;
+    if (markerTime === null) {
+        alert('Сначала установите маркер измерения величины сигнала.');
+        return;
+    }
+
+    try {
+        const data = await collectCsvData(
+            {
+                appState: deps.getAppState() as never,
+                fileStore: deps.getFileStore(),
+                organization: org,
+                reportNumber: num,
+            },
+            markerTime,
+            osc.archive,
+            osc.allChannels,
+        );
+
+        const blob = buildCsvBlob(data);
+
+        // Имя файла по умолчанию: otchet_<серийный>_<дата_время>.csv
+        const now = new Date();
+        const pad = (n: number): string => String(n).padStart(2, '0');
+        const dateStr = `${pad(now.getDate())}-${pad(now.getMonth() + 1)}-${now.getFullYear()}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+        const serial = data.serialNumber || 'unknown';
+        const suggestedName = `otchet_${serial}_${dateStr}.csv`;
+
+        const picker = (window as { showSaveFilePicker?: (opts: unknown) => Promise<FileSystemFileHandle> }).showSaveFilePicker;
+
+        if (typeof picker === 'function') {
+            try {
+                const handle = await picker({
+                    suggestedName,
+                    types: [
+                        {
+                            description: 'CSV (разделитель ;)',
+                            accept: { 'text/csv': ['.csv'] },
+                        },
+                    ],
+                });
+                const writable = await handle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+                console.log('[report-ui] CSV сохранён:', suggestedName);
+                return;
+            } catch (err) {
+                if (err instanceof Error && err.name === 'AbortError') {
+                    return; // Пользователь отменил
+                }
+                // Ошибка (не отмена) — показываем и выходим, БЕЗ fallback
+                console.error('[report-ui] showSaveFilePicker failed:', err);
+                alert('Ошибка при сохранении файла: ' + (err instanceof Error ? err.message : String(err)));
+                return;
+            }
+        }
+
+        // Fallback — скачать через <a download>
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = suggestedName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+               console.log('[report-ui] CSV скачан:', suggestedName);
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error('[report-ui] exportCsv error:', msg);
+        alert('Ошибка при экспорте CSV: ' + msg);
+    }
 }

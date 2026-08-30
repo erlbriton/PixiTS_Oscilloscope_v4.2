@@ -78,12 +78,12 @@ function readRowValuesFromTable(param: IniParameter): { hex: string; physical: s
 /**
  * Собирает все данные для отчёта. Возвращает ReportData, готовый к передаче в buildReportBlob.
  */
-export async function collectReportData(src: ReportDataSource): Promise<ReportData> {
+export async function collectReportData(src: ReportDataSource, modeOverride?: string): Promise<ReportData> {
     const { appState, fileStore, organization, reportNumber } = src;
 
-    // Текущая секция
+    // Текущая секция (или принудительно заданная — для CSV это RAM)
     const modeSelect = document.querySelector<HTMLSelectElement>('.toolbar-device-mode-select');
-    const currentMode = (modeSelect && modeSelect.value ? modeSelect.value : 'FLASH').toUpperCase();
+    const currentMode = (modeOverride ?? (modeSelect && modeSelect.value ? modeSelect.value : 'FLASH')).toUpperCase();
 
     // Конфигурация устройства
     const config: IniConfig | null = appState.currentIniConfig ?? null;
@@ -201,4 +201,92 @@ export function parseDeviceIdString(raw: string): { serial: string; deviceType: 
     const version = versionRaw.replace(/^[vV]\s*/, '');  // 1.10.6.1
     
     return { serial, deviceType, version };
+}
+/**
+ * Собирает данные для CSV-экспорта: значения на момент маркера осциллографа.
+ * Вместо чтения из DOM таблицы берёт значения из архива каналов.
+ */
+export async function collectCsvData(
+    src: ReportDataSource,
+    markerTime: number,
+    archive: { getRawAtTime: (id: string, t: number) => number | null; getValueAtTime: (id: string, t: number) => number | null },
+    channels: Array<{ id: string; modbusReg?: string }>,
+): Promise<ReportData> {
+    const { appState, fileStore, organization, reportNumber } = src;
+
+    const config: IniConfig | null = appState.currentIniConfig ?? null;
+    if (!config || !config.isValid) {
+        throw new Error('Нет активной конфигу INI для формирования CSV.');
+    }
+
+    const device = config.device;
+    const params = config.getSection('RAM') ?? [];
+
+    const key = device ? `${device.location}::${device.id}` : '';
+    const entry = key ? fileStore.get(key) : undefined;
+    const baseChangeDate = await getBaseChangeDate(entry);
+    const baseFile = entry?.file?.name ?? '';
+
+    const idSource = ((): string => {
+        const banner = document.querySelector('.id-banner span');
+        const bannerText = (banner?.textContent ?? '').trim();
+        if (bannerText) return bannerText;
+        return device?.id ?? '';
+    })();
+    const parsedId = parseDeviceIdString(idSource);
+
+    const rows: ReportRow[] = [];
+    for (const p of params) {
+        // Ищем канал осциллографа с таким же id
+        const channel = channels.find((ch) => ch.id === p.id);
+        let hex = '';
+        let physical = '';
+        if (channel) {
+            const raw = archive.getRawAtTime(p.id, markerTime);
+            const val = archive.getValueAtTime(p.id, markerTime);
+            if (raw !== null) {
+                const isIpAddr = p.dataType?.toUpperCase() === 'TIPADDR';
+                const mask = isIpAddr ? 0xFFFFFFFF : 0xFFFF;
+                const padLen = isIpAddr ? 8 : 4;
+                hex = 'x' + (raw & mask).toString(16).toUpperCase().padStart(padLen, '0');
+            }
+            if (val !== null) {
+                physical = formatScale(val);
+            }
+        }
+        rows.push({
+            id: p.id,
+            name: p.name,
+            reg: p.modbusReg,
+            scale: formatScale(p.scale),
+            comment: p.description,
+            hex,
+            physical,
+            unit: p.isBit ? '.' : (p.unit === '*' ? '—' : p.unit),
+        });
+    }
+
+    const coefficients: ReportCoefficient[] = [];
+    const vars = config.vars ?? {};
+    for (const name of Object.keys(vars)) {
+        const raw = vars[name];
+        const value = typeof raw === 'number' ? formatScale(raw) : String(raw ?? '');
+        coefficients.push({ name, value });
+    }
+
+    return {
+        reportNumber,
+        reportDate: formatDateTime(Date.now()),
+        organization,
+        mechanism: device?.description ?? '',
+        installLocation: device?.location ?? '',
+        deviceType: device?.id ?? '',
+        serialNumber: parsedId.serial,
+        softwareVersion: parsedId.version,
+        memorySector: 'RAM',
+        baseFile,
+        baseChangeDate,
+        rows,
+        coefficients,
+    };
 }

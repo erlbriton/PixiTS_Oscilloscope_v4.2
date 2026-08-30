@@ -506,6 +506,11 @@ export function initUI(deps: UiManagerDeps): void {
   initReportUI({
     getAppState: () => appState,
     getFileStore: () => getFileStore(),
+    getOscilloscope: () => (window as { osc?: unknown }).osc as {
+        settings: { amplitudeMarkerTime: number | null };
+        archive: { getRawAtTime: (id: string, t: number) => number | null; getValueAtTime: (id: string, t: number) => number | null };
+        allChannels: Array<{ id: string; modbusReg?: string }>;
+    } | null,
   });
 
   // ---------------------------------------------------------------------------

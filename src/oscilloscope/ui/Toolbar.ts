@@ -269,7 +269,7 @@ export class Toolbar {
           this.onAutoScaleCallback();
         }
       },
-      "Автомасштабирование (Auto-Scale)",
+      "Автомасштабирование",
     );
     this.autoscaleBtn.style.width = "32px";
     this.autoscaleBtn.style.height = "32px";
