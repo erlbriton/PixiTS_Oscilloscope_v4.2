@@ -250,8 +250,16 @@ export function bindEvents(ctx: BindingsContext): void {
     const iniConfig = ctx.getCurrentIniConfig();
     const deviceInfo = iniConfig ? iniConfig.device : null;
 
+    const allChannels = ctx.getChannels();
+    const visibleChannels = ctx.getVisibleChannels();
+    console.log(`[Bindings] ОТЛАДКА onToggleRec:`);
+    console.log(`  - Всего каналов в ctx.getChannels(): ${allChannels.length}`);
+    console.log(`  - Видимых каналов: ${visibleChannels.length}`);
+    console.log(`  - Передаётся в exportREC: ${allChannels.length} каналов`);
+    console.log(`  - Первые 5 ID каналов:`, allChannels.slice(0, 5).map(ch => ch.id));
+
     void ctx.recorder
-      ?.exportREC(ctx.getVisibleChannels(), startTime, endTime, deviceInfo)
+      ?.exportREC(allChannels, startTime, endTime, deviceInfo)
       .then(() => {
         console.log("[Bindings] Запись выделенного участка .rec завершена успешно");
       })
@@ -268,9 +276,17 @@ export function bindEvents(ctx: BindingsContext): void {
     const iniConfig = ctx.getCurrentIniConfig();
     const deviceInfo = iniConfig ? iniConfig.device : null;
 
+    const allChannels = ctx.getChannels();
+    const visibleChannels = ctx.getVisibleChannels();
+    console.log(`[Bindings] ОТЛАДКА onRecordFullBuffer:`);
+    console.log(`  - Всего каналов в ctx.getChannels(): ${allChannels.length}`);
+    console.log(`  - Видимых каналов: ${visibleChannels.length}`);
+    console.log(`  - Передаётся в exportREC: ${allChannels.length} каналов`);
+    console.log(`  - Первые 5 ID каналов:`, allChannels.slice(0, 5).map(ch => ch.id));
+
     // null, null — означает запись всего буфера
     void ctx.recorder
-      ?.exportREC(ctx.getVisibleChannels(), null, null, deviceInfo)
+      ?.exportREC(allChannels, null, null, deviceInfo)
       .then(() => {
         console.log("[Bindings] Запись всего буфера .rec завершена успешно");
       })

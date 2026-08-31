@@ -90,6 +90,21 @@ export class Recorder {
       throw new Error('Нет параметров с типами TWORD/TFloat/TBit/TInteger для записи .rec');
     }
 
+    // ОТЛАДКА: сколько сэмплов у каждого канала в архиве
+    console.log(`[Recorder] ОТЛАДКА: передано ${channels.length} каналов, поддерживаемых: ${supported.length}`);
+    const sampleCounts: { id: string; count: number }[] = [];
+    for (const ch of supported) {
+      const samples = this.archive.getAllSamples(ch.id);
+      sampleCounts.push({ id: ch.id, count: samples.length });
+    }
+    const withData = sampleCounts.filter(s => s.count > 0);
+    const withoutData = sampleCounts.filter(s => s.count === 0);
+    console.log(`[Recorder] Каналов с данными: ${withData.length}`);
+    console.log(`[Recorder] Каналов БЕЗ данных: ${withoutData.length}`);
+    if (withoutData.length > 0) {
+      console.log(`[Recorder] Первые 10 каналов БЕЗ данных:`, withoutData.slice(0, 10).map(s => s.id));
+    }
+
     const base = supported[0];
     const allBase = this.archive.getAllSamples(base.id);
 

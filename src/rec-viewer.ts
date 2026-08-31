@@ -285,6 +285,23 @@ async function loadRecData(recData: any, fileBytes: Uint8Array): Promise<void> {
   console.log(`[RecViewer] frozenTime after setViewTime: ${oscilloscope.getArchive().getTimeRange().max.toFixed(0)}`);
 
   console.log(`[RecViewer] Загружено сэмплов: ${N}`);
+
+  // ОТЛАДКА: статистика по каждому каналу после загрузки файла
+  const arch = oscilloscope.getArchive();
+  let emptyCount = 0;
+  for (const ch of channels) {
+    const s = arch.getAllSamples(ch.id);
+    if (s.length === 0) {
+      emptyCount++;
+      console.log(`[RecViewer] КАНАЛ ПУСТ: ${ch.id}`);
+      continue;
+    }
+    console.log(
+      `[RecViewer] ${ch.id}: сэмплов=${s.length}, first=${s[0].time.toFixed(0)}, last=${s[s.length - 1].time.toFixed(0)}`,
+    );
+  }
+  console.log(`[RecViewer] Итого пустых каналов: ${emptyCount} из ${channels.length}`);
+  (window as unknown as { viewerOsc?: unknown }).viewerOsc = oscilloscope;
 }
 
 // При старте создаем просмотрщик с тулбаром (файл открываем по клику на 📂)
