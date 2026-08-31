@@ -78,6 +78,8 @@ export class Toolbar {
   /** Скрывает кнопки, не нужные в режиме просмотра .rec */
   public applyViewerMode(): void {
     this.recBtn.style.display = 'none';
+    this.recFullBtn.style.display = 'none';
+    this.exportBtn.style.display = 'none';
     this.pollingBtn.style.display = 'none';
     this.intervalBtn.style.display = 'none';
     this.statusBadge.style.display = 'none';

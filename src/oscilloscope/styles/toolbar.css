@@ -171,7 +171,3 @@
     border-color: #b91c1c !important;
     color: #ffffff !important;
 }
-/* Принудительно показываем кнопку "Записать весь буфер" */
-.toolbar-group > button[title="Записать весь буфер"] {
-    display: inline-flex !important;
-}

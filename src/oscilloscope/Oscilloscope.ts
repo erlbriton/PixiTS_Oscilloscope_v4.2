@@ -625,8 +625,13 @@ public setAppState(state: AppState): void {
       const row = this.table.getRow(channel.id);
       if (!row || !row.getIsVisible()) continue;
 
-      const rowRect = row.getElement().getBoundingClientRect();
-      if (rowRect.bottom < viewportTop || rowRect.top > viewportBottom) continue;
+      // В режиме просмотра .rec рисуем ВСЕ каналы, а не только те, что
+      // видны в области прокрутки: опроса нет, и "доскролленные" строки
+      // иначе остались бы пустыми до следующего изменения времени.
+      if (!this.viewerMode) {
+        const rowRect = row.getElement().getBoundingClientRect();
+        if (rowRect.bottom < viewportTop || rowRect.top > viewportBottom) continue;
+      }
 
       const view = this.pixiViews.get(channel.id);
       if (!view) continue;
