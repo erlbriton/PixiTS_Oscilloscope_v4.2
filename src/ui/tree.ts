@@ -87,7 +87,7 @@ export function renderModbusTable(config?: IniConfig, appState?: TableEditorStat
                     }
                 }
             }
-            tr.setAttribute('data-hex-index', hexIndex.toString());
+                        tr.setAttribute('data-hex-index', hexIndex.toString());
             tr.dataset.parts = JSON.stringify(param.rawParts);
 
             tr.innerHTML = `
@@ -244,12 +244,12 @@ export function renderModbusTable(config?: IniConfig, appState?: TableEditorStat
                     return; 
                 }
 
-                const prevSelectedRow = document.querySelector('#grid-data-rows tr.is-selected');
+                const prevSelectedRow = document.querySelector('#grid-data-rows tr.selected');
                 if (prevSelectedRow && prevSelectedRow !== tr) {
-                    prevSelectedRow.classList.remove('is-selected');
+                    prevSelectedRow.classList.remove('selected');
                     clearAnyActiveCellEditors();
                 }
-                tr.classList.add('is-selected');
+                tr.classList.add('selected');
                 
                 document.querySelectorAll('#grid-data-rows td.cell-active').forEach(el => el.classList.remove('cell-active'));
             });
@@ -267,13 +267,6 @@ export function renderModbusTable(config?: IniConfig, appState?: TableEditorStat
                     document.querySelectorAll('#grid-data-rows td.cell-active').forEach(el => {
                         el.classList.remove('cell-active');
                     });
-
-                    const prevSelectedRow = document.querySelector('#grid-data-rows tr.is-selected');
-                    if (prevSelectedRow && prevSelectedRow !== tr) {
-                        prevSelectedRow.classList.remove('is-selected');
-                        clearAnyActiveCellEditors();
-                    }
-                    tr.classList.add('is-selected');
 
                     cell.classList.add('cell-active');
                 });

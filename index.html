@@ -67,7 +67,15 @@
 
           <button id="connectBtn" class="action-btn">подключиться</button>
           <button id="idBtn" class="action-btn">ID</button>
-          <button class="tool-btn tree-search-btn" id="treeSearchBtn" title="Поиск имени в списке устройств">?</button>
+          <div class="split-btn-group" id="treeSearchSplit">
+    <button class="split-btn-main tree-search-btn" id="treeSearchMainBtn" title="Поиск места установки">?</button>
+    <div class="split-btn-divider"></div>
+    <button class="split-btn-arrow" id="treeSearchDropdownBtn" title="Действия поиска">▼</button>
+    <div class="split-dropdown-menu" id="treeSearchMenu">
+        <div class="split-dropdown-item" data-action="location">Поиск места установки</div>
+        <div class="split-dropdown-item" data-action="param">Поиск параметра</div>
+    </div>
+</div>
         </div>
 
         <div class="panel-content-wrapper">

@@ -162,9 +162,18 @@
 }
 
 /* Выделение строки */
-.table-wrapper .modbus-grid tbody tr.is-selected,
-.table-wrapper .modbus-grid tbody tr.is-selected td {
+.table-wrapper .modbus-grid tbody tr.selected,
+.table-wrapper .modbus-grid tbody tr.selected td {
     background-color: rgba(0, 255, 0, 0.2);
+}
+
+/* Выделение строки в таблице Modbus (клик или поиск параметра) */
+.table-wrapper .modbus-grid tbody tr.selected {
+    background-color: #00d2ff !important;
+}
+
+.table-wrapper .modbus-grid tbody tr.selected td {
+    color: #0f0f11 !important;
 }
 
 /* Глобальное состояние загрузки */

@@ -204,6 +204,7 @@
     white-space: nowrap;      /* Запрещает перенос */
     overflow: hidden;         /* Обрезает текст без многоточия */
 }
+
 /* Кнопка поиска имени в списке устройств: жирный красный "?" у правого края */
 .tree-search-btn {
     margin-left: auto !important;   /* прижимает кнопку к самому правому краю панели */
@@ -212,4 +213,19 @@
     font-size: 24px !important;     /* максимально высокий знак */
     line-height: 1 !important;
     min-width: 56px !important;     /* вдвое шире обычной кнопки, знак по центру */
+}
+
+/* Внутри сплит-кнопки знак вопроса не должен сдвигаться вправо */
+.split-btn-group .tree-search-btn {
+    margin-left: 0 !important;
+}
+/* Кнопка поиска в дереве — прижата к правому краю тулбара */
+#treeSearchSplit {
+    margin-left: auto;
+}
+
+/* Меню кнопки поиска открывается влево, чтобы не выходить за правый край экрана */
+#treeSearchSplit .split-dropdown-menu {
+    left: auto;
+    right: -1px;
 }

@@ -16,7 +16,7 @@ import { initReportUI } from './report-ui.js';
 import { initCmdlineUI } from './cmdline-ui.js';
 import { getFileStore, processSingleFileContent } from '../ini-manager/file-loader.js';
 import { parseDeviceIdString } from '../core/report-data.js';
-import { getAllDevices, getDeviceGroupKey } from '../ini-manager/tree-core.js';
+import { getAllDevices, getDeviceGroupKey, currentIniConfig } from '../ini-manager/tree-core.js';
 import { setTreeGroupMode } from '../ini-manager/tree-core.js';
 import { renderDeviceTree } from '../ini-manager/tree-ui.js';
 import type { TreeGroupMode } from '../ini-manager/tree-core.js';
@@ -25,6 +25,7 @@ import { PortCancelledError } from '../serial/serial.js';
 import { initNewDeviceUI, showNewDeviceModal, setNewDeviceAddToLoaded } from './new-device-ui.js';
 import { initBackupUI, setBackupLoadFn } from './backup-ui.js';
 import { initParamPropertiesUI } from './param-properties-ui.js';
+import { SearchPanel } from '../oscilloscope/ui/SearchPanel.js';
 
 /** Буфер данных канала (типизирован явно, без any) */
 export interface ChannelBuffer {
@@ -429,6 +430,29 @@ export function initUI(deps: UiManagerDeps): void {
   // ---------------------------------------------------------------------------
   // Кнопка "?" — поиск имени в списке устройств (по "Место установки")
   // ---------------------------------------------------------------------------
+  // === Панель поиска параметра в таблице Modbus ===
+  const searchPanel = new SearchPanel();
+  searchPanel.onSelect = (item) => {
+    console.log('[uiManager] searchPanel.onSelect: item.id =', item.id);
+    
+    // Убираем выделение со ВСЕХ строк в таблице Modbus
+    const allSelected = document.querySelectorAll('#grid-data-rows tr[data-key].selected');
+    console.log('[uiManager] Найдено строк с .selected:', allSelected.length);
+    allSelected.forEach((el) => {
+      el.classList.remove('selected');
+    });
+    
+    // Ищем строку по data-key и выделяем
+    const row = document.querySelector<HTMLTableRowElement>(`#grid-data-rows tr[data-key="${CSS.escape(item.id)}"]`);
+    if (row) {
+      row.classList.add('selected');
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      console.log('[uiManager] Строка выделена:', item.id);
+    } else {
+      console.warn('[uiManager] Строка не найдена:', item.id);
+    }
+  };
+
   const treeSearchOverlay = document.getElementById('treeSearchOverlay');
   const treeSearchInput = document.getElementById('treeSearchInput') as HTMLInputElement | null;
   const treeSearchStatus = document.getElementById('treeSearchStatus');
@@ -480,12 +504,60 @@ export function initUI(deps: UiManagerDeps): void {
       hideTreeSearch();
   };
 
-  document.getElementById('treeSearchBtn')?.addEventListener('click', () => {
+  const treeSearchSplit = document.getElementById('treeSearchSplit');
+  const treeSearchMainBtn = document.getElementById('treeSearchMainBtn');
+  const treeSearchDropdownBtn = document.getElementById('treeSearchDropdownBtn');
+  const treeSearchMenu = document.getElementById('treeSearchMenu');
+
+  const openTreeSearchOverlay = (): void => {
       if (!treeSearchOverlay) return;
       if (treeSearchInput) treeSearchInput.value = '';
       if (treeSearchStatus) treeSearchStatus.textContent = '';
       treeSearchOverlay.classList.remove('hidden');
       treeSearchInput?.focus();
+  };
+
+  // Клик по основной части (знак вопроса) — сразу "Поиск места установки"
+  treeSearchMainBtn?.addEventListener('click', openTreeSearchOverlay);
+
+  // Клик по треугольнику — показать/скрыть меню
+  treeSearchDropdownBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      treeSearchMenu?.classList.toggle('show');
+  });
+
+  // Клик по пункту меню
+  treeSearchMenu?.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      const action = target.getAttribute('data-action');
+      if (!action) return;
+
+      treeSearchMenu.classList.remove('show');
+
+      if (action === 'location') {
+          openTreeSearchOverlay();
+      } else if (action === 'param') {
+          // Собираем список параметров из текущей секции таблицы
+          const modeSelect = document.querySelector<HTMLSelectElement>('.toolbar-device-mode-select');
+          const selectedMode = modeSelect && modeSelect.value ? modeSelect.value : 'FLASH';
+          
+          if (currentIniConfig) {
+              const params = currentIniConfig.getSection(selectedMode);
+              const items = params.map((p) => ({ id: p.id, name: p.name }));
+              searchPanel.open(items);
+          } else {
+              console.warn('[uiManager] Нет загруженного INI для поиска параметра');
+          }
+      }
+  });
+
+  // Закрыть меню при клике вне его
+  document.addEventListener('click', (e) => {
+      if (treeSearchMenu && treeSearchMenu.classList.contains('show')) {
+          if (treeSearchSplit && !treeSearchSplit.contains(e.target as Node)) {
+              treeSearchMenu.classList.remove('show');
+          }
+      }
   });
   document.getElementById('treeSearchCloseBtn')?.addEventListener('click', hideTreeSearch);
   document.getElementById('treeSearchCancelBtn')?.addEventListener('click', hideTreeSearch);
