@@ -333,7 +333,7 @@ export class Toolbar {
     this.recFullBtn.style.height = "32px";
     this.recFullBtn.style.padding = "0";
     this.recFullBtn.style.marginLeft = "0";
-    this.recFullBtn.style.backgroundColor = "#e7e432";
+    //this.recFullBtn.style.backgroundColor = "#e7e432";
     this.recFullBtn.style.display = "inline-flex";
 
     // === Кнопка "Развертка" (добавляем прямо в groupLeft) ===

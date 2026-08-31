@@ -102,11 +102,34 @@
     background-color: #059669;
 }
 
+/* Кнопка "Экспорт CSV" */
+.toolbar-btn[title="Экспорт CSV"]:not(.active) {
+    background-color: #43b3aa;   /* ← ваш цвет фона */
+    color: #9aa0a6;              /* ← ваш цвет текста */
+}
+
+/* Кнопка "Поиск параметра" */
+.toolbar-btn[title="Поиск параметра"]:not(.active) {
+    background-color: #3a8827;   /* ← ваш цвет фона */
+    color: #9aa0a6;              /* ← ваш цвет текста */
+}
+
+/* Кнопка "Записать весь буфер" */
+.toolbar-btn[title="Записать весь буфер"]:not(.active) {
+    background-color: #f13564;   /* ← ваш цвет фона */
+    color: #9aa0a6;              /* ← ваш цвет текста */
+}
+
 .toolbar-btn.active {
     background-color: #00d2ff;
     border-color: #00d2ff;
     color: #000000;
     font-weight: 700;
+}
+/* Выключенная кнопка "Развертка" */
+.toolbar-btn[title="Развертка"]:not(.active) {
+    background-color: #8292a1;   /* ← ваш цвет фона */
+    color: #f04539;              /* ← ваш цвет текста */
 }
 
 .toolbar-select {
