@@ -264,6 +264,15 @@ export function renderModbusTable(config?: IniConfig, appState?: TableEditorStat
                 cell.addEventListener('click', (e) => {
                     e.stopPropagation();
 
+                    // 1. Синхронизация выделения строки (голубой фон)
+                    const prevSelectedRow = document.querySelector('#grid-data-rows tr.selected');
+                    if (prevSelectedRow && prevSelectedRow !== tr) {
+                        prevSelectedRow.classList.remove('selected');
+                        clearAnyActiveCellEditors();
+                    }
+                    tr.classList.add('selected');
+
+                    // 2. Подсветка активной ячейки (желтый фон)
                     document.querySelectorAll('#grid-data-rows td.cell-active').forEach(el => {
                         el.classList.remove('cell-active');
                     });
