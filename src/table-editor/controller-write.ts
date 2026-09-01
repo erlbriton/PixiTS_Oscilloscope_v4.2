@@ -211,6 +211,8 @@ export async function processControllerWrite(
             setTimeout(() => activeCell.classList.remove('write-success'), 1000);
         }
         console.log('[CONTROLLER] Значение успешно записано, подтверждено и синхронизировано.');
+                // Диспетчеризация события для перезапуска цикла опроса.
+        window.dispatchEvent(new CustomEvent('app:request-polling-restart'));
         return true;
     }
 

@@ -1,8 +1,13 @@
-// src/ui/ChannelRow.ts
+// src/oscilloscope/ui/ChannelRow.ts
 
 import { Channel } from '../core/Channel';
 import { ContextMenu } from './ContextMenu';
 import { ChannelPropertiesModal } from './ChannelPropertiesModal';
+import { CoefficientModal } from './CoefficientModal.js';
+import { getTableEditorState } from '../../ini-manager/table-editor.js';
+import { processValueWrite } from '../../table-editor/value-write.js';
+import { updateRowValues } from '../../ini-manager/tree-ui.js';
+import { hexToFloat32, float32ToHex } from '../../ini-manager/tree-core.js';
 
 export class ChannelRow {
     private readonly element: HTMLDivElement;
@@ -15,6 +20,7 @@ export class ChannelRow {
     private isVisible: boolean = true;
     private lastHex: string = "";
     private lastValue: string = "";
+    private coefficientModal: CoefficientModal | null = null;
 
     public onChannelUpdated?: (channel: Channel) => void;
     public onDelete?: (channel: Channel) => void;
@@ -106,18 +112,9 @@ export class ChannelRow {
             if (this.onSelect) {
                 this.onSelect(this.channel);
             }
-            ContextMenu.getInstance().show(e.clientX, e.clientY, [
-                {
-                    label: 'Удалить',
-                    danger: true,
-                    icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`,
-                    onClick: () => {
-                        this.setVisible(false);
-                        if (this.onDelete) {
-                            this.onDelete(this.channel);
-                        }
-                    }
-                },
+            const isAnalog = this.channel.type !== 'digital';
+
+            const menuItems: any[] = [
                 {
                     label: 'Свойства',
                     icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
@@ -125,7 +122,31 @@ export class ChannelRow {
                         this.openProperties();
                     }
                 }
-            ]);
+            ];
+
+            if (isAnalog) {
+                menuItems.push({
+                    label: 'Посчитать коэффициент',
+                    icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="8" y2="10.01"/><line x1="12" y1="10" x2="12" y2="10.01"/><line x1="16" y1="10" x2="16" y2="10.01"/><line x1="8" y1="14" x2="8" y2="14.01"/><line x1="12" y1="14" x2="12" y2="14.01"/><line x1="16" y1="14" x2="16" y2="14.01"/><line x1="8" y1="18" x2="8" y2="18.01"/><line x1="12" y1="18" x2="12" y2="18.01"/><line x1="16" y1="18" x2="16" y2="18.01"/></svg>`,
+                                       onClick: () => {
+                        this.calculateCoefficient();
+                    }
+                });
+            }
+
+            menuItems.push({
+                label: 'Удалить',
+                danger: true,
+                icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`,
+                onClick: () => {
+                    this.setVisible(false);
+                    if (this.onDelete) {
+                        this.onDelete(this.channel);
+                    }
+                }
+            });
+
+            ContextMenu.getInstance().show(e.clientX, e.clientY, menuItems);
         });
     }
 
@@ -140,6 +161,81 @@ export class ChannelRow {
         modal.open(this.isVisible);
     }
 
+        public calculateCoefficient(): void {
+        if (!this.coefficientModal) {
+            this.coefficientModal = new CoefficientModal();
+        }
+
+        this.coefficientModal.open((measuredValue: number) => {
+            this.runCoefficientCalculation(measuredValue);
+        });
+    }
+
+    private runCoefficientCalculation(measuredValue: number): void {
+        const osc = (window as any).osc;
+        if (!osc || typeof osc.getArchive !== 'function') {
+            console.error('[Коэффициент] Осциллограф недоступен');
+            return;
+        }
+
+        const selectedRow = document.querySelector('#grid-data-rows tr.selected') as HTMLTableRowElement | null;
+        if (!selectedRow) {
+            console.error('[Коэффициент] Не выделен параметр в таблице');
+            return;
+        }
+
+        const samples: number[] = [];
+        const intervalMs = 500;
+        const totalMeasurements = 10;
+        let count = 0;
+
+        const timer = setInterval(() => {
+            const archive = osc.getArchive();
+            const recent = archive.getRecentSamples(this.channel.id, 1000);
+            if (recent.length > 0) {
+                samples.push(recent[recent.length - 1].value);
+            }
+            count++;
+            if (count >= totalMeasurements) {
+                clearInterval(timer);
+                this.finishCoefficientCalculation(measuredValue, samples, selectedRow);
+            }
+        }, intervalMs);
+    }
+//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
+    private async finishCoefficientCalculation(measuredValue: number, samples: number[], row: HTMLTableRowElement): Promise<void> {
+        if (samples.length === 0) {
+            console.error('[Коэффициент] Нет данных для расчёта');
+            return;
+        }
+
+        const average = samples.reduce((a, b) => a + b, 0) / samples.length;
+        const ratio = measuredValue / average;
+
+        const tds = row.querySelectorAll('td');
+        const currentValue = parseFloat((tds[7]?.textContent || '0').trim());
+
+        const newValue = ratio * currentValue;
+
+        console.log('[Коэффициент] Среднее:', average, '| Частное:', ratio, '| Текущее в таблице:', currentValue, '| Новое:', newValue);
+
+        const stateObj = getTableEditorState();
+        if (!stateObj) {
+            console.error('[Коэффициент] Редактор таблицы недоступен');
+            return;
+        }
+
+        const newValueStr = newValue.toFixed(4);
+        const success = await processValueWrite(row, 'physical', newValueStr, stateObj, 7);
+
+        if (success) {
+            console.log('[Коэффициент] Значение успешно записано в контроллер');
+        } else {
+            console.error('[Коэффициент] Ошибка записи значения в контроллер');
+        }
+    }
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+                      
     public updateHeaderUI(): void {
         this.colorIndicator.style.backgroundColor = this.channel.color;
         const titleSpan = this.nameElement.querySelector('.channel-title');

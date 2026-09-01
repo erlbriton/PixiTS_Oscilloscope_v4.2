@@ -7,7 +7,7 @@
 #osc-container {
     display: flex;
     flex-direction: column;
-    flex: 1; /* Занимает доступное место рядом с таблицей */
+    flex: none; /* Ширина управляется ресайзером */
     background: #000;
     min-height: 200px;
 }

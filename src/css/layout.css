@@ -135,3 +135,20 @@ body.is-resizing {
 .id-modal-btn:active {
     background-color: #004494;
 }
+/* Вертикальный ресайзер между осциллографом и таблицей */
+.osc-resizer {
+    width: 4px;
+    background-color: #7b7b7b;
+    cursor: col-resize;
+    flex-shrink: 0;
+    user-select: none;
+}
+
+.osc-resizer:hover,
+.osc-resizer.resizing {
+    background-color: #0055ff;
+}
+
+.osc-resizer.hidden {
+    display: none;
+}

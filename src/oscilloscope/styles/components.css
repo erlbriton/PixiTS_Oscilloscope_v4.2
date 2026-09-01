@@ -370,3 +370,76 @@ input[type="number"].form-input {
     color: #e0e0e0;
     font-size: 13px;
 }
+/* --- Модальное окно "Посчитать коэффициент" --- */
+.coef-modal-content {
+    max-width: 420px;
+    width: 100%;
+}
+
+.coef-modal-header {
+    background: linear-gradient(to right, #2a2a2c, #353538);
+    border-bottom: 1px solid #444;
+    padding: 16px 20px;
+}
+
+.coef-modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 24px;
+    background: #222225;
+}
+
+.coef-label {
+    color: #aaa;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+    display: block;
+}
+
+.coef-input {
+    background: #1a1a1d;
+    border-color: #3a3a3d;
+    color: #e0e0e0;
+}
+
+.coef-error {
+    display: none;
+    color: #ff6b6b;
+    font-size: 12px;
+    margin-top: 6px;
+}
+
+.coef-buttons {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.coef-btn-calculate {
+    background: #2563eb;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 16px;
+    cursor: pointer;
+}
+
+.coef-btn-calculate:hover {
+    background: #1d4ed8;
+}
+
+.coef-btn-cancel {
+    background: #3a3a3d;
+    color: #e0e0e0;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 16px;
+    cursor: pointer;
+}
+
+.coef-btn-cancel:hover {
+    background: #4a4a4d;
+}

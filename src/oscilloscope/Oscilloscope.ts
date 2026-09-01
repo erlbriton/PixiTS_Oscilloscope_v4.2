@@ -289,7 +289,7 @@ public setAppState(state: AppState): void {
     this.canvasOverlay.style.height = `${Math.round(rowsRect.height)}px`;
   }
 
-  private syncCanvasLayout(): void {
+  public syncCanvasLayout(): void {
     if (!this.pixiApp) return;
     this.updateCanvasPosition();
     const metrics = this.getGraphColumnMetrics();

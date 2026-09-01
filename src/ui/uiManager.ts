@@ -673,6 +673,67 @@ export function initUI(deps: UiManagerDeps): void {
     });
   }
 
+  // --- Ресайзер осциллографа ---
+  const oscResizer = document.getElementById('oscResizer') as HTMLElement | null;
+  const oscContainerForResize = document.getElementById('osc-container') as HTMLElement | null;
+
+  if (oscResizer && oscContainerForResize) {
+      let isResizing = false;
+      let startX = 0;
+      let startWidth = 0;
+
+      oscResizer.addEventListener('mousedown', (e) => {
+          isResizing = true;
+          startX = e.clientX;
+          startWidth = oscContainerForResize.offsetWidth;
+          oscResizer.classList.add('resizing');
+          document.body.style.cursor = 'col-resize';
+          document.body.style.userSelect = 'none';
+      });
+
+      document.addEventListener('mousemove', (e) => {
+          if (!isResizing) return;
+          // Не меняем ширину в реальном времени — только запоминаем позицию
+      });
+
+      document.addEventListener('mouseup', (e) => {
+          if (!isResizing) return;
+          isResizing = false;
+          oscResizer.classList.remove('resizing');
+          document.body.style.cursor = '';
+          document.body.style.userSelect = '';
+
+          // Применяем новую ширину "скачком"
+          const deltaX = e.clientX - startX;
+          const newWidth = Math.max(200, startWidth + deltaX); // Минимум 200px
+          oscContainerForResize.style.width = `${newWidth}px`;
+
+          // Перерисовываем графики осциллографа под новую ширину
+          // (requestAnimationFrame — чтобы браузер успел пересчитать layout)
+          const oscInstance = window.osc;
+          if (oscInstance && typeof oscInstance.syncCanvasLayout === 'function') {
+              requestAnimationFrame(() => {
+                  oscInstance.syncCanvasLayout();
+              });
+          }
+      });
+
+      // Скрывать ресайзер, когда осциллограф скрыт
+      const updateResizerVisibility = () => {
+          if (oscContainerForResize.classList.contains('hidden')) {
+              oscResizer.classList.add('hidden');
+          } else {
+              oscResizer.classList.remove('hidden');
+          }
+      };
+
+      updateResizerVisibility();
+      
+      // Отслеживать изменение видимости осциллографа
+      const observer = new MutationObserver(updateResizerVisibility);
+      observer.observe(oscContainerForResize, { attributes: true, attributeFilter: ['class', 'style'] });
+  }
+
   if (folderActionBtn) folderActionBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
     await openIniFile(appState);
@@ -769,12 +830,21 @@ export function initUI(deps: UiManagerDeps): void {
     }
   });
 
-  // Событие: Контроллер снова начал отвечать
+   // Событие: Контроллер снова начал отвечать
   window.addEventListener('app:controller-responding', () => {
     console.log('[UI] Получено событие "контроллер отвечает"');
     const osc = window.osc;
     if (osc && typeof (osc as any).resumeFromFrozen === 'function') {
       (osc as any).resumeFromFrozen();
+    }
+  });
+
+  // Событие: Запрос на перезапуск опроса после записи в контроллер
+  window.addEventListener('app:request-polling-restart', () => {
+    if (serial && serial.isConnected && appState.isPolling && !appState.isLoopRunning) {
+      console.log('[UI] Перезапуск readLoop по запросу после записи...');
+      appState.isLoopRunning = false;
+      void readLoop(serial, parser, view, buffers, appState);
     }
   });
 

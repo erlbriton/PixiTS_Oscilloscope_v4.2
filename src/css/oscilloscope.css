@@ -1,9 +1,9 @@
 #osc-container {
     display: flex;
     flex-direction: column;
-    flex: 1;
+    flex: none;
     height: 100%;
-    width: 100%;
+    width: 50%;
     overflow: hidden;
     background: #000;
     position: relative;
@@ -12,10 +12,15 @@
 /* В режиме full-window скрываем таблицу справа */
 #osc-container.full-window {
     z-index: 1000;
+    width: 100% !important; /* Перебивает inline-ширину, установленную ресайзером */
 }
 
 #osc-container.full-window ~ .panel-right {
     display: none !important;
+}
+
+#osc-container.full-window ~ .osc-resizer {
+    display: none;
 }
 
 /* =========================================
