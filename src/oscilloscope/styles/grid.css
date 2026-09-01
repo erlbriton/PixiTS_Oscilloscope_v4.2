@@ -74,8 +74,8 @@
 }
 
 .channel-row.selected {
-    background-color: rgba(74, 222, 128, 0.35) !important;
-    box-shadow: inset 4px 0 0 #4ade80;
+    background-color: rgba(0, 210, 255, 0.35) !important;
+    box-shadow: inset 4px 0 0 #00d2ff;
 }
 
 .channel-row.selected .col-graph {
@@ -89,7 +89,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: rgba(74, 222, 128, 0.35);
+    background-color: rgba(0, 210, 255, 0.35);
     pointer-events: none;
     z-index: 5;
 }
