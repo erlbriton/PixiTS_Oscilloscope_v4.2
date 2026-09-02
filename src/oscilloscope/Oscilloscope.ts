@@ -12,6 +12,10 @@ import { Layout } from "./ui/Layout";
 import { IniPanel, IniFileItem } from "./ui/IniPanel";
 import { Renderer } from "./graphics/Renderer";
 import { PixiView } from "./graphics/PixiView";
+// Импортируем класс совмещённой строки, который объединяет несколько каналов
+// (от 2 до 5) в одну систему координат для детального анализа сигналов.
+// Используется в обработчике onCreateComposite при клике «Совместить» в меню.
+import { CompositeChannelRow } from "./ui/CompositeChannelRow";
 import {
   IniParser as CoreIniParser,
   IniConfig,
@@ -83,6 +87,31 @@ export class Oscilloscope {
   private pixiApp: Application | null = null;
   private graphColumnOffset: number = 0;
   private canvasOverlay: HTMLDivElement | null = null;
+  
+  // ========================================================================
+  // СОВМЕЩЁННАЯ СТРОКА (Composite Channel Row)
+  // ========================================================================
+  // Поля для хранения текущей совмещённой строки и её PixiView.
+  // В текущей реализации поддерживается только одна совмещённая строка
+  // одновременно (согласно требованиям заказчика).
+  // Если пользователь создаст новую совмещённую группу, старая будет
+  // автоматически удалена (или можно добавить проверку в будущем).
+  
+  // Экземпляр текущей совмещённой строки. null означает, что сейчас
+  // совмещённой строки нет. Хранится здесь, чтобы метод renderVisibleGraphs
+  // мог отрисовать её наравне с обычными каналами.
+  private compositeRow: CompositeChannelRow | null = null;
+  
+  // PixiView для отрисовки графиков в совмещённой строке.
+  // Хранится отдельно от основной карты pixiViews, чтобы не смешивать
+  // обычные каналы и совмещённую группу. Это также упрощает удаление
+  // совмещённой строки при её разгруппировке.
+  private compositePixiView: PixiView | null = null;
+  
+  // Массив каналов, которые входят в текущую совмещённую группу.
+  // Нужен для отрисовки всех этих каналов в один PixiView в методе
+  // renderVisibleGraphs. Если compositeRow === null, массив пустой.
+  private compositeChannels: Channel[] = [];
 
     constructor(options?: { skipSerial?: boolean; skipRecorder?: boolean; viewerMode?: boolean }) {
     this.settings = new Settings();
@@ -178,6 +207,14 @@ public setAppState(state: AppState): void {
       this.settings.isPolling = false;
     }
     this.resizer = new Resizer(this.settings, layoutElements.headerContainer);
+    // При изменении ширины колонок пересинхронизируем позиции и ширину графиков.
+    this.resizer.onResize = () => {
+      this.graphColumnOffset = this.getGraphColumnMetrics().left;
+      // Обновляем размер и позицию самого canvas-overlay И pixi-рендерера.
+      // Без этого графики "застрянут" со старой шириной до прокрутки.
+      this.syncCanvasLayout();
+      syncViewPositions(this.getRenderingContext());
+    };
     this.resizer.initialize();
     this.iniPanel = new IniPanel(layoutElements.iniPanelContainer);
     this.bottomPanels = new BottomPanels(layoutElements.bottomPanelsContainer);
@@ -577,6 +614,15 @@ public setAppState(state: AppState): void {
         const newVal = ch.scaledValue === 0 ? 1 : 0;
         void handleCommandSubmit(this.getCommandContext(), `${ch.name} = ${newVal}`);
       },
+      
+      // Реализация callback'а создания совмещённой строки.
+      // Делегирует вызов методу createCompositeRow() этого класса, который
+      // управляет всем жизненным циклом совмещённой строки: создание,
+      // добавление в DOM, создание PixiView, скрытие исходных строк
+      // и сброс состояния выбора анализа.
+      onCreateComposite: (channels) => {
+        this.createCompositeRow(channels);
+      },
     };
   }
 
@@ -623,7 +669,28 @@ public setAppState(state: AppState): void {
 
     for (const channel of this.visibleChannels) {
       const row = this.table.getRow(channel.id);
-      if (!row || !row.getIsVisible()) continue;
+      const view = this.pixiViews.get(channel.id);
+      
+      if (!row || !view) continue;
+
+      // ========================================================================
+      // ОБРАБОТКА СКРЫТЫХ СТРОК
+      // ========================================================================
+      // Если строка канала скрыта (например, входит в совмещённую группу),
+      // нужно очистить её графику и сделать контейнер невидимым.
+      // Это важно, потому что PixiJS сохраняет последнее нарисованное состояние,
+      // и без очистки график скрытого канала будет "висеть" на экране.
+      // ========================================================================
+      if (!row.getIsVisible()) {
+        view.waveGraphics.clear();
+        view.gridGraphics.clear();
+        view.markerGraphics.clear();
+        view.container.visible = false;
+        continue;
+      }
+
+      // Делаем контейнер видимым (на случай, если канал был ранее скрыт).
+      view.container.visible = true;
 
       // В режиме просмотра .rec рисуем ВСЕ каналы, а не только те, что
       // видны в области прокрутки: опроса нет, и "доскролленные" строки
@@ -633,14 +700,172 @@ public setAppState(state: AppState): void {
         if (rowRect.bottom < viewportTop || rowRect.top > viewportBottom) continue;
       }
 
-      const view = this.pixiViews.get(channel.id);
-      if (!view) continue;
       try {
         this.renderer.renderChannelGraph(channel, view);
       } catch (renderErr) {
         console.error(`Error rendering channel ${channel.id}:`, renderErr);
       }
     }
+
+    // ========================================================================
+    // ОТРИСОВКА СОВМЕЩЁННОЙ СТРОКИ (Composite Channel Row)
+    // ========================================================================
+    // Если существует совмещённая строка, отрисовываем её графики через
+    // метод renderCompositeGraph(), который рисует все каналы группы
+    // в одном PixiView без очистки между ними.
+    //
+    // ПОЗИЦИОНИРОВАНИЕ:
+    // Совмещённая строка всегда располагается в самом низу таблицы,
+    // после всех одиночных каналов. Поэтому её координата Y вычисляется
+    // как сумма высот всех видимых каналов.
+    //
+    // ПРОВЕРКА ВИДИМОСТИ:
+    // Проверяем, находится ли совмещённая строка в видимой области экрана.
+    // Если пользователь прокрутил таблицу так, что совмещённая строка
+    // находится выше или ниже видимой области, пропускаем её отрисовку
+    // для оптимизации производительности.
+    // ========================================================================
+    if (this.compositeRow && this.compositePixiView && this.compositeChannels.length > 0) {
+      // Проверяем, видна ли совмещённая строка в области прокрутки.
+      if (!this.viewerMode) {
+        const compositeRect = this.compositeRow.getElement().getBoundingClientRect();
+        if (compositeRect.bottom < viewportTop || compositeRect.top > viewportBottom) {
+          // Совмещённая строка не видна на экране, пропускаем отрисовку.
+          return;
+        }
+      }
+
+      try {
+        // Вызываем метод отрисовки совмещённого графика, передавая массив
+        // каналов группы и их общий PixiView.
+        this.renderer.renderCompositeGraph(this.compositeChannels, this.compositePixiView);
+      } catch (renderErr) {
+        console.error('[Oscilloscope] Error rendering composite graph:', renderErr);
+      }
+    }
+  }
+
+  // ========================================================================
+  // СОЗДАНИЕ СОВМЕЩЁННОЙ СТРОКИ (Composite Channel Row)
+  // ========================================================================
+  // Метод создаёт совмещённую строку из массива выбранных каналов (от 2 до 5).
+  // Вызывается из обработчика onCreateComposite в OscilloscopeRenderer.
+  //
+  // ПОСЛЕДОВАТЕЛЬНОСТЬ ДЕЙСТВИЙ:
+  // 1) Удаляем предыдущую совмещённую строку, если она была.
+  //    Это предотвращает накопление совмещённых групп (в требованиях указано,
+  //    что несколько групп быть не может).
+  // 2) Создаём новый объект CompositeChannelRow с переданными каналами.
+  // 3) Добавляем HTML-элемент совмещённой строки в контейнер строк осциллографа.
+  // 4) Создаём общий PixiView для всех каналов совмещённой строки.
+  // 5) Скрываем исходные строки выбранных каналов (пользователь видит только
+  //    совмещённую строку с легендой).
+  // 6) Сбрасываем состояние выбора анализа (убираем красную подсветку и счётчик),
+  //    чтобы пользователь мог выбрать новую группу после создания этой.
+  // 7) Сохраняем ссылки на совмещённую строку, её PixiView и массив каналов,
+  //    чтобы метод renderVisibleGraphs() мог отрисовать её.
+  //
+  // ПРИМЕЧАНИЕ: На этом шаге график в совмещённой строке пока пустой,
+  // так как вызов renderCompositeGraph() будет добавлен в следующем шаге.
+  // ========================================================================
+  public createCompositeRow(channels: Channel[]): void {
+    // Логируем начало создания совмещённой строки.
+    console.log(`[Oscilloscope] Создание совмещённой строки из ${channels.length} каналов:`, channels.map(ch => ch.name));
+
+    // ШАГ 1: Удаляем предыдущую совмещённую строку, если она была.
+    // Это нужно сделать до создания новой, чтобы не было дублирования.
+    if (this.compositeRow) {
+      this.destroyCompositeRow();
+    }
+
+    // ШАГ 2: Создаём новый объект совмещённой строки.
+    // Конструктор создаёт HTML-структуру: колонку имён, легенду и контейнер графика.
+    const compositeRow = new CompositeChannelRow(channels);
+    
+    // ШАГ 3: Добавляем элемент строки в конец контейнера строк осциллографа.
+    // Строка появится внизу таблицы, ниже всех одиночных каналов.
+    this.rowsContainer.appendChild(compositeRow.getElement());
+
+    // ШАГ 4: Создаём PixiView для графика совмещённой строки.
+    // Вычисляем общую высоту как сумму высот всех каналов (битовые = 25px,
+    // аналоговые = их текущая высота).
+    const totalHeight = channels.reduce((sum, ch) => sum + ch.rowHeight, 0);
+    
+    let compositePixiView: PixiView | null = null;
+    if (this.pixiApp) {
+      compositePixiView = new PixiView(this.pixiApp, 0, 0, 300, totalHeight);
+      
+      // Добавляем PixiView в общую карту с фиксированным ключом '__composite_row__'.
+      // Это позволяет функции syncViewPositions() найти его и позиционировать
+      // после всех одиночных каналов.
+      this.pixiViews.set('__composite_row__', compositePixiView);
+    }
+
+    // ШАГ 5: Скрываем исходные строки выбранных каналов.
+    // Проходим по массиву каналов и для каждого находим соответствующую
+    // ChannelRow в таблице, затем делаем её невидимой через setVisible(false).
+    // Это убирает их из отрисовки в renderVisibleGraphs(), но не удаляет из памяти.
+    for (const channel of channels) {
+      const row = this.table.getRow(channel.id);
+      if (row) {
+        row.setVisible(false);
+      }
+    }
+
+    // ШАГ 6: Сбрасываем состояние выбора анализа через статический метод ChannelRow.
+    // Это убирает красную подсветку со строк и обнуляет счётчик выбранных.
+    // Метод вызывается после создания совмещённой строки, чтобы пользователь
+    // мог выбрать новую группу каналов сразу после текущей.
+    // ChannelRow.clearAllAnalysisSelection() вызывается напрямую, так как
+    // он статический и доступен из любого места.
+    (this.table.getRow(channels[0].id)?.constructor as any).clearAllAnalysisSelection();
+
+    // ШАГ 7: Сохраняем ссылки для использования в renderVisibleGraphs().
+    this.compositeRow = compositeRow;
+    this.compositePixiView = compositePixiView;
+    this.compositeChannels = channels;
+
+    console.log(`[Oscilloscope] Совмещённая строка создана, высота: ${totalHeight}px`);
+  }
+
+  // ========================================================================
+  // УНИЧТОЖЕНИЕ СОВМЕЩЁННОЙ СТРОКИ
+  // ========================================================================
+  // Метод удаляет текущую совмещённую строку и восстанавливает видимость
+  // исходных строк каналов, которые были в неё включены.
+  // Вызывается из createCompositeRow() перед созданием новой группы
+  // и будет использоваться при клике «Разъединить» в меню совмещённой строки.
+  // ========================================================================
+  private destroyCompositeRow(): void {
+    if (!this.compositeRow) return;
+
+    console.log('[Oscilloscope] Удаление совмещённой строки');
+
+    // Восстанавливаем видимость исходных строк всех каналов группы.
+    // Это вернёт их обратно в таблицу осциллографа с их отдельными графиками.
+    for (const channel of this.compositeChannels) {
+      const row = this.table.getRow(channel.id);
+      if (row) {
+        row.setVisible(true);
+      }
+    }
+
+    // Удаляем HTML-элемент совмещённой строки из DOM.
+    this.compositeRow.remove();
+
+    // Уничтожаем PixiView, чтобы освободить ресурсы WebGL.
+    if (this.compositePixiView) {
+      this.compositePixiView.destroy();
+      this.compositePixiView = null;
+      
+      // Удаляем PixiView из общей карты, чтобы syncViewPositions() больше
+      // не пытался его позиционировать.
+      this.pixiViews.delete('__composite_row__');
+    }
+
+    // Очищаем ссылки.
+    this.compositeRow = null;
+    this.compositeChannels = [];
   }
 
     /**

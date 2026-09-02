@@ -10,6 +10,22 @@ import { updateRowValues } from '../../ini-manager/tree-ui.js';
 import { hexToFloat32, float32ToHex } from '../../ini-manager/tree-core.js';
 
 export class ChannelRow {
+    // ========================================================================
+    // СОСТОЯНИЕ ВЫБОРА КАНАЛОВ ДЛЯ АНАЛИЗА (совмещение графиков)
+    // ========================================================================
+    // Глобальный счётчик каналов, выбранных пользователем для последующего
+    // совмещения в одну строку. Используется для двух целей:
+    //   1) Ограничить выбор максимум 5 каналами (лимит совмещения).
+    //   2) Определять, показывать ли пункт меню «Удалить все из анализа».
+    // Поле статическое, чтобы быть общим для всех экземпляров ChannelRow.
+    private static analysisSelectedCount: number = 0;
+
+    // Список экземпляров ChannelRow, которые сейчас выбраны для анализа.
+    // Нужен для того, чтобы по команде «Удалить все из анализа» можно было
+    // пройтись по всем выбранным строкам и снять с них подсветку и флаг.
+    // Без этого списка пришлось бы искать выбранные каналы перебором всех строк.
+    private static analysisSelectedRows: ChannelRow[] = [];
+
     private readonly element: HTMLDivElement;
     private readonly nameElement: HTMLDivElement;
     private readonly hexElement: HTMLDivElement;
@@ -22,8 +38,32 @@ export class ChannelRow {
     private lastValue: string = "";
     private coefficientModal: CoefficientModal | null = null;
 
+    // Флаг выбора данного конкретного канала для анализа (совмещения графиков).
+    // Когда пользователь кликает «Выбрать для анализа», флаг становится true,
+    // строка подсвечивается красноватым цветом, а канал добавляется в общий
+    // список выбранных. Когда кликает «Убрать из анализа» — флаг сбрасывается.
+    // Флаг нужен, чтобы при повторном правом клике показать правильный текст
+    // пункта меню («Выбрать» или «Убрать») и правильную иконку.
+    private isSelectedForAnalysis: boolean = false;
+
+    // ========================================================================
+    // ОБРАБОТЧИКИ СОБЫТИЙ (Callbacks)
+    // ========================================================================
+    // Эти поля являются публичными опциональными функциями, которые внешний
+    // код (например, OscilloscopeBindings) может установить для реакции на
+    // действия пользователя в строке канала.
+    
+    // Вызывается при обновлении данных канала (новое значение с контроллера).
     public onChannelUpdated?: (channel: Channel) => void;
+    
+    // Вызывается при клике на пункт меню «Удалить».
     public onDelete?: (channel: Channel) => void;
+    
+    // Вызывается при клике на пункт меню «Совместить».
+    // Передаёт массив каналов, которые были выбраны для анализа.
+    // OscilloscopeBindings слушает это событие и создаёт совмещённую строку
+    // (CompositeChannelRow), скрывая исходные строки выбранных каналов.
+    public onCreateComposite?: (channels: Channel[]) => void;
     public onSelect?: (channel: Channel) => void;
     public onToggleBit?: (channel: Channel) => void;
 
@@ -124,12 +164,114 @@ export class ChannelRow {
                 }
             ];
 
-            if (isAnalog) {
+                       if (isAnalog) {
                 menuItems.push({
                     label: 'Посчитать коэффициент',
                     icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="8" y2="10.01"/><line x1="12" y1="10" x2="12" y2="10.01"/><line x1="16" y1="10" x2="16" y2="10.01"/><line x1="8" y1="14" x2="8" y2="14.01"/><line x1="12" y1="14" x2="12" y2="14.01"/><line x1="16" y1="14" x2="16" y2="14.01"/><line x1="8" y1="18" x2="8" y2="18.01"/><line x1="12" y1="18" x2="12" y2="18.01"/><line x1="16" y1="18" x2="16" y2="18.01"/></svg>`,
-                                       onClick: () => {
+                    onClick: () => {
                         this.calculateCoefficient();
+                    }
+                });
+            }
+
+            // Пункт меню «Выбрать для анализа / Убрать из анализа».
+            // Текст и иконка пункта меняются динамически в зависимости от того,
+            // выбран ли данный канал для анализа в текущий момент.
+            // Если канал ещё не выбран — показываем «Выбрать для анализа» и иконку графика.
+            // Если уже выбран — показываем «Убрать из анализа» и иконку крестика.
+            menuItems.push({
+                label: this.isSelectedForAnalysis ? 'Убрать из анализа' : 'Выбрать для анализа',
+                icon: this.isSelectedForAnalysis
+                    ? `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`
+                    : `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`,
+                onClick: () => {
+                    // Ограничение: для совмещения можно выбрать не более 5 каналов.
+                    // Если пользователь пытается выбрать 6-й канал, показываем предупреждение
+                    // и прерываем выполнение, не меняя состояние.
+                    if (!this.isSelectedForAnalysis && ChannelRow.analysisSelectedCount >= 5) {
+                        alert('Можно выбрать не более 5 каналов для анализа');
+                        return;
+                    }
+
+                    // Инвертируем флаг выбора: если был не выбран — выбираем, и наоборот.
+                    this.isSelectedForAnalysis = !this.isSelectedForAnalysis;
+
+                    // Обновляем глобальный счётчик выбранных каналов:
+                    // +1 если канал только что выбран, -1 если убран из анализа.
+                    ChannelRow.analysisSelectedCount += this.isSelectedForAnalysis ? 1 : -1;
+
+                    // Обновляем глобальный список выбранных строк.
+                    // При выборе добавляем текущий экземпляр в конец списка.
+                    // При снятии выбора убираем текущий экземпляр из списка через filter.
+                    if (this.isSelectedForAnalysis) {
+                        ChannelRow.analysisSelectedRows.push(this);
+                    } else {
+                        ChannelRow.analysisSelectedRows = ChannelRow.analysisSelectedRows.filter(r => r !== this);
+                    }
+
+                    // Включаем или выключаем визуальную подсветку строки.
+                    // Класс 'analysis-selected' задаёт прозрачный красноватый фон,
+                    // чтобы пользователь видел, какие каналы выбраны для совмещения.
+                    this.element.classList.toggle('analysis-selected', this.isSelectedForAnalysis);
+
+                    // Логирование для отладки: показываем действие и текущее число выбранных.
+                    console.log(`[Oscilloscope] Канал ${this.isSelectedForAnalysis ? 'выбран' : 'убран'} для анализа:`, this.channel.id, this.channel.name, `(выбрано: ${ChannelRow.analysisSelectedCount})`);
+                }
+            });
+            // Пункт меню «Удалить все из анализа».
+            // Показывается только в том случае, если выбран хотя бы один канал.
+            // Позволяет пользователю одним кликом сбросить выбор всех каналов,
+            // если он передумал делать совмещение. Это удобнее, чем убирать
+            // каждый канал по отдельности.
+                       // Пункт меню «Удалить все из анализа».
+            // Показывается только в том случае, если выбран хотя бы один канал.
+            // Позволяет пользователю одним кликом сбросить выбор всех каналов,
+            // если он передумал делать совмещение. Это удобнее, чем убирать
+            // каждый канал по отдельности.
+            if (ChannelRow.analysisSelectedCount > 0) {
+                menuItems.push({
+                    label: 'Удалить все из анализа',
+                    icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
+                    onClick: () => {
+                        // Вызываем статический метод, который сбрасывает выбор
+                        // у всех выбранных каналов, очищает список и счётчик.
+                        ChannelRow.clearAllAnalysisSelection();
+                    }
+                });
+            }
+
+            // ==========================================================================
+            // ПУНКТ МЕНЮ «СОВМЕСТИТЬ» (Объединение графиков в одну строку)
+            // ==========================================================================
+            // Этот пункт появляется в контекстном меню ТОЛЬКО тогда, когда пользователь
+            // выбрал для анализа 2 или более каналов. Если выбран 0 или 1 канал, пункт
+            // полностью скрыт (а не просто неактивен). Это позволяет не перегружать меню
+            // недоступными действиями и избавляет нас от необходимости модифицировать
+            // сам компонент ContextMenu для поддержки состояния 'disabled'.
+            // Совмещение имеет смысл только при сравнении нескольких сигналов.
+            if (ChannelRow.analysisSelectedCount >= 2) {
+                menuItems.push({
+                    label: `Совместить (${ChannelRow.analysisSelectedCount})`,
+                    // Иконка: несколько наложенных друг на друга слоев (графиков)
+                    icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>`,
+                    onClick: () => {
+                        // Собираем массив объектов Channel из всех выбранных строк.
+                        // Это нужно передать в обработчик onCreateComposite, чтобы
+                        // внешний код (OscilloscopeBindings) мог создать совмещённую
+                        // строку с этими каналами.
+                        const selectedChannels = ChannelRow.analysisSelectedRows.map(r => r.channel);
+                        
+                        // Логируем действие для отладки.
+                        console.log(`[Oscilloscope] Запрошено совмещение ${ChannelRow.analysisSelectedCount} каналов.`);
+                        console.log('[Oscilloscope] Список каналов для совмещения:', selectedChannels.map(ch => ch.name));
+                        
+                        // Вызываем внешний обработчик, если он установлен.
+                        // OscilloscopeBindings установит этот callback при создании
+                        // строки канала и будет реагировать на него созданием
+                        // CompositeChannelRow.
+                        if (this.onCreateComposite) {
+                            this.onCreateComposite(selectedChannels);
+                        }
                     }
                 });
             }
@@ -139,6 +281,23 @@ export class ChannelRow {
                 danger: true,
                 icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`,
                 onClick: () => {
+                    // Если удаляемый канал был выбран для анализа, нужно корректно
+                    // убрать его из всех структур выбора, иначе счётчик и список
+                    // останутся с «призраком» удалённого канала. Это важно, чтобы
+                    // после удаления можно было выбрать новый канал вместо него.
+                    if (this.isSelectedForAnalysis) {
+                        // Уменьшаем глобальный счётчик выбранных каналов.
+                        ChannelRow.analysisSelectedCount -= 1;
+                        // Убираем текущий экземпляр из глобального списка выбранных строк.
+                        ChannelRow.analysisSelectedRows = ChannelRow.analysisSelectedRows.filter(r => r !== this);
+                        // Сбрасываем флаг выбора.
+                        this.isSelectedForAnalysis = false;
+                        // Убираем визуальную подсветку строки.
+                        this.element.classList.remove('analysis-selected');
+                    }
+
+                    // Скрываем строку и вызываем внешний обработчик удаления,
+                    // чтобы осциллограф удалил канал из своего списка.
                     this.setVisible(false);
                     if (this.onDelete) {
                         this.onDelete(this.channel);
@@ -202,7 +361,6 @@ export class ChannelRow {
             }
         }, intervalMs);
     }
-//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
     private async finishCoefficientCalculation(measuredValue: number, samples: number[], row: HTMLTableRowElement): Promise<void> {
         if (samples.length === 0) {
             console.error('[Коэффициент] Нет данных для расчёта');
@@ -234,7 +392,6 @@ export class ChannelRow {
             console.error('[Коэффициент] Ошибка записи значения в контроллер');
         }
     }
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
                       
     public updateHeaderUI(): void {
         this.colorIndicator.style.backgroundColor = this.channel.color;
@@ -333,5 +490,30 @@ export class ChannelRow {
 
     public getElement(): HTMLElement {
         return this.element;
+    }
+        // ========================================================================
+    // СБРОС ВСЕХ ВЫБРАННЫХ ДЛЯ АНАЛИЗА КАНАЛОВ
+    // ========================================================================
+    // Статический метод, который вызывается из пункта меню «Удалить все из анализа».
+    // Проходит по всем строкам, которые сейчас выбраны для анализа, и для каждой:
+    //   1) Сбрасывает флаг выбора (isSelectedForAnalysis = false).
+    //   2) Убирает визуальную подсветку (класс 'analysis-selected').
+    // После этого очищает глобальный список выбранных строк и обнуляет счётчик.
+    // Метод статический, потому что работает с общим состоянием всех каналов,
+    // а не с одним конкретным экземпляром.
+    // Важно: обращение к приватным полям экземпляров того же класса разрешено
+    // в TypeScript, поэтому мы можем менять row.isSelectedForAnalysis напрямую.
+    private static clearAllAnalysisSelection(): void {
+        // Проходим по всем выбранным строкам и сбрасываем их состояние.
+        for (const row of ChannelRow.analysisSelectedRows) {
+            row.isSelectedForAnalysis = false;
+            row.element.classList.remove('analysis-selected');
+        }
+        // Очищаем список выбранных строк.
+        ChannelRow.analysisSelectedRows = [];
+        // Обнуляем глобальный счётчик выбранных каналов.
+        ChannelRow.analysisSelectedCount = 0;
+        // Логирование для отладки.
+        console.log('[Oscilloscope] Все каналы убраны из анализа');
     }
 }

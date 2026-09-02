@@ -29,6 +29,13 @@ export interface RenderingContext {
   setSelectedChannel: (ch: Channel | null) => void;
   onChannelDeleted: (ch: Channel) => void;
   onToggleBit: (ch: Channel) => void;
+  
+  // Callback для создания совмещённой строки из нескольких каналов.
+  // Устанавливается главным классом Oscilloscope в методе getRenderingContext().
+  // Вызывается из обработчика row.onCreateComposite при клике «Совместить» в меню.
+  // Принимает массив выбранных каналов и делегирует создание совмещённой строки
+  // (CompositeChannelRow) главному классу осциллографа.
+  onCreateComposite: (channels: Channel[]) => void;
 }
 
 export function measureChannelAtTime(
@@ -144,6 +151,18 @@ export async function renderVisibleChannels(
       ctx.onToggleBit(toggledChannel);
     };
 
+    // Обработчик создания совмещённой строки из нескольких каналов.
+    // Вызывается при клике на пункт меню «Совместить» в контекстном меню строки канала.
+    // Получает массив выбранных каналов и должен создать CompositeChannelRow,
+    // добавить её в DOM и скрыть исходные строки выбранных каналов.
+    row.onCreateComposite = (channels: Channel[]) => {
+      // Делегируем создание совмещённой строки главному классу Oscilloscope.
+      // Он сам управляет всем жизненным циклом: создаёт CompositeChannelRow,
+      // добавляет его в DOM, создаёт общий PixiView, скрывает исходные строки
+      // выбранных каналов и сбрасывает состояние выбора анализа.
+      ctx.onCreateComposite(channels);
+    };
+
     if (ctx.pixiApp) {
       const pixiView = new PixiView(ctx.pixiApp, 0, 0, 300, channel.rowHeight);
       tempPixiViews.set(channel.id, pixiView);
@@ -177,12 +196,51 @@ export function syncViewPositions(ctx: RenderingContext): void {
 
   let yOffset = 0;
   const scrollTop = ctx.rowsContainer.scrollTop;
+  
+  // ========================================================================
+  // ПОЗИЦИОНИРОВАНИЕ ОДИНОЧНЫХ КАНАЛОВ (только видимых)
+  // ========================================================================
+  // Позиционируем графики только тех каналов, чьи строки сейчас видимы.
+  // Если строка скрыта (например, входит в совмещённую группу), её график
+  // НЕ должен занимать место в общей сетке координат.
+  //
+  // Проверка видимости: используем метод getRow().getIsVisible(), который
+  // возвращает false для строк, скрытых при создании совмещённой группы.
+  // ========================================================================
   for (const channel of ctx.visibleChannels) {
+    const row = ctx.table.getRow(channel.id);
     const view = ctx.pixiViews.get(channel.id);
+    
+    // Пропускаем скрытые строки — их графики не должны позиционироваться.
+    if (!row || !row.getIsVisible()) {
+      continue;
+    }
+    
     if (view) {
       view.updateLayout(0, yOffset - scrollTop, width, channel.rowHeight);
     }
     yOffset += channel.rowHeight;
+  }
+  
+  // ========================================================================
+  // ПОЗИЦИОНИРОВАНИЕ СОВМЕЩЁННОЙ СТРОКИ
+  // ========================================================================
+  // Если существует совмещённая строка (определяем по наличию специального
+  // ключа в карте pixiViews), позиционируем её PixiView после всех одиночных
+  // каналов. Координата Y вычисляется как сумма высот всех видимых каналов.
+  //
+  // КЛЮЧ СОХРАНЕНИЯ:
+  // Совмещённая строка сохраняется в карте ctx.pixiViews с ключом '__composite_row__'.
+  // Это позволяет этой функции работать без дополнительных параметров.
+  // ========================================================================
+  const compositeView = ctx.pixiViews.get('__composite_row__');
+  if (compositeView) {
+    // Находим высоту совмещённой строки через DOM-элемент.
+    const compositeRowElement = ctx.rowsContainer.querySelector('.composite-row');
+    if (compositeRowElement) {
+      const compositeHeight = compositeRowElement.getBoundingClientRect().height;
+      compositeView.updateLayout(0, yOffset - scrollTop, width, compositeHeight);
+    }
   }
 }
 
@@ -214,6 +272,12 @@ export function bindSharedCanvasEvents(getCtx: () => RenderingContext): void {
     const y = clientY - rect.top + ctx.rowsContainer.scrollTop;
     let acc = 0;
     for (const ch of ctx.visibleChannels) {
+      // Пропускаем скрытые строки (например, входящие в совмещённую группу).
+      // Их высота НЕ должна учитываться при вычислении координаты клика,
+      // иначе подсветка и выбор канала будут "съезжать" вниз.
+      const row = ctx.table.getRow(ch.id);
+      if (!row || !row.getIsVisible()) continue;
+      
       acc += ch.rowHeight;
       if (y < acc) return ch;
     }

@@ -7,6 +7,11 @@ export class Resizer {
     private headerElement: HTMLElement;
     private isResizing: boolean = false;
 
+    // Callback, вызывается после изменения ширины любой колонки.
+    // Осциллограф использует его, чтобы пересчитать ширину и позицию графиков
+    // сразу, без ожидания вертикальной прокрутки.
+    public onResize?: () => void;
+
     constructor(settings: Settings, headerElement: HTMLElement) {
         this.settings = settings;
         this.headerElement = headerElement;
@@ -50,6 +55,9 @@ export class Resizer {
             const onMouseUp = () => {
                 if (this.isResizing) {
                     this.settings.updateColumnWidth(colKey, pendingWidth);
+                    // Уведомляем осциллограф, что ширина колонки изменилась,
+                    // чтобы он пересинхронизировал графики без ожидания прокрутки.
+                    if (this.onResize) this.onResize();
                 }
                 this.isResizing = false;
                 handle.classList.remove('resizing');
