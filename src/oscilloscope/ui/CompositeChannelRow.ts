@@ -33,6 +33,7 @@
 // ============================================================================
 
 import { Channel } from '../core/Channel';
+import { ContextMenu } from './ContextMenu';
 
 export class CompositeChannelRow {
     // ========================================================================
@@ -69,6 +70,18 @@ export class CompositeChannelRow {
     
     // Видимость строки (может быть скрыта при разгруппировке)
     private isVisible: boolean = true;
+
+    // ========================================================================
+    // КОЛБЭКИ ДЛЯ ВЗАИМОДЕЙСТВИЯ С ГЛАВНЫМ КЛАССОМ
+    // ========================================================================
+    // Callback для разгруппировки совмещённой строки.
+    public onDisconnect?: () => void;
+
+    // Callback для открытия свойств первого канала в группе.
+    public onShowProperties?: () => void;
+
+    // Callback для расчёта коэффициента первого канала в группе.
+    public onCalculateCoefficient?: () => void;
 
     // ========================================================================
     // КОНСТРУКТОР
@@ -197,6 +210,50 @@ export class CompositeChannelRow {
                 }
             });
             this.element.classList.add('selected');
+        });
+
+        // --------------------------------------------------------------------
+        // КОНТЕКСТНОЕ МЕНЮ СОВМЕЩЁННОЙ СТРОКИ
+        // --------------------------------------------------------------------
+        // Отключаем стандартное меню браузера и показываем своё кастомное меню.
+        // Меню содержит пункты: Свойства, Посчитать коэффициент (если все аналоговые), Разъединить.
+        this.element.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const menuItems: any[] = [];
+
+            // 1. Пункт "Свойства" (открывает свойства первого канала группы)
+            menuItems.push({
+                label: 'Свойства',
+                icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+                onClick: () => {
+                    if (this.onShowProperties) this.onShowProperties();
+                }
+            });
+
+            // 2. Пункт "Посчитать коэффициент" (только если ВСЕ каналы аналоговые)
+            const allAnalog = this.channels.every(ch => ch.type !== 'digital');
+            if (allAnalog) {
+                menuItems.push({
+                    label: 'Посчитать коэффициент',
+                    icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="8" y2="10.01"/><line x1="12" y1="10" x2="12" y2="10.01"/><line x1="16" y1="10" x2="16" y2="10.01"/><line x1="8" y1="14" x2="8" y2="14.01"/><line x1="12" y1="14" x2="12" y2="14.01"/><line x1="16" y1="14" x2="16" y2="14.01"/><line x1="8" y1="18" x2="8" y2="18.01"/><line x1="12" y1="18" x2="12" y2="18.01"/><line x1="16" y1="18" x2="16" y2="18.01"/></svg>`,
+                    onClick: () => {
+                        if (this.onCalculateCoefficient) this.onCalculateCoefficient();
+                    }
+                });
+            }
+
+            // 3. Пункт "Разъединить"
+            menuItems.push({
+                label: 'Разъединить',
+                icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>`,
+                onClick: () => {
+                    if (this.onDisconnect) this.onDisconnect();
+                }
+            });
+
+            ContextMenu.getInstance().show(e.clientX, e.clientY, menuItems);
         });
     }
 

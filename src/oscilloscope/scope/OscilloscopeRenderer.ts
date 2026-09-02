@@ -37,10 +37,14 @@ export interface RenderingContext {
   // (CompositeChannelRow) главному классу осциллографа.
   onCreateComposite: (channels: Channel[]) => void;
   
-  // Метод для выбора канала или совмещённой строки по координате Y клика.
+    // Метод для выбора канала или совмещённой строки по координате Y клика.
   // Инкапсулирует логику определения: попал ли клик в обычный канал
   // или в область совмещённой строки. Вызывается из обработчика клика по canvas.
   selectAtClientY: (clientY: number) => void;
+
+  // Ссылка на текущую совмещённую строку (если создана).
+  // Используется обработчиком правого клика на канвасе для открытия меню.
+  compositeRow: any;
 }
 
 export function measureChannelAtTime(
@@ -464,4 +468,61 @@ export function bindSharedCanvasEvents(getCtx: () => RenderingContext): void {
     },
     { passive: false },
   );
+
+  // --------------------------------------------------------------------
+  // ОБРАБОТКА ПРАВОГО КЛИКА ПО CANVAS
+  // --------------------------------------------------------------------
+  // Отключаем стандартное меню браузера и эмулируем клик по строке,
+  // которая находится под курсором. Это позволяет открывать контекстное
+  // меню при клике по области графиков (как для обычных строк, так и для совмещённой).
+  canvas.addEventListener("contextmenu", (e: MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const ctx = getCtx();
+    
+    // Используем метод selectAtClientY, который умеет находить и обычные каналы,
+    // и совмещённую строку. Он сам вызовет .click() на нужном элементе.
+    // Но нам нужно вызвать именно событие 'contextmenu', а не 'click'.
+    // Поэтому найдем элемент вручную и вызовем на нем event.
+    
+    const rowsRect = ctx.rowsContainer.getBoundingClientRect();
+    const scrollTop = ctx.rowsContainer.scrollTop;
+    const y = e.clientY - rowsRect.top + scrollTop;
+    let acc = 0;
+    let targetElement: HTMLElement | null = null;
+
+    // 1. Ищем обычный видимый канал
+    for (const ch of ctx.visibleChannels) {
+      const row = ctx.table.getRow(ch.id);
+      if (!row || !row.getIsVisible()) continue;
+      
+      acc += ch.rowHeight;
+      if (y < acc) {
+        targetElement = row.getElement();
+        break;
+      }
+        }
+
+    // 2. Если обычная не найдена, проверяем совмещённую строку
+    if (!targetElement && ctx.compositeRow && ctx.compositeRow.getIsVisible()) {
+      const compRect = ctx.compositeRow.getElement().getBoundingClientRect();
+      // e.clientY относительно viewport, compRect тоже. Сравниваем напрямую.
+      if (e.clientY >= compRect.top && e.clientY <= compRect.bottom) {
+        targetElement = ctx.compositeRow.getElement();
+      }
+    }
+
+    // 3. Если элемент найден, диспатчим на него событие contextmenu
+    if (targetElement) {
+      const contextMenuEvent = new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        clientX: e.clientX,
+        clientY: e.clientY,
+        button: 2
+      });
+      targetElement.dispatchEvent(contextMenuEvent);
+    }
+  });
 }

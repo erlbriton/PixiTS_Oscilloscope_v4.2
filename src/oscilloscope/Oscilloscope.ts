@@ -655,6 +655,10 @@ public setAppState(state: AppState): void {
           }
         }
       },
+
+      // Передаем ссылку на совмещённую строку в контекст рендеринга.
+      // Это необходимо для обработки правого клика по области графиков.
+      compositeRow: this.compositeRow || null,
     };
   }
 
