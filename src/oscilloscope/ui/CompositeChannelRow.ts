@@ -180,6 +180,24 @@ export class CompositeChannelRow {
             this.unitElement,
             this.graphElement
         );
+
+        // --------------------------------------------------------------------
+        // ОБРАБОТЧИК КЛИКА: ВЫБОР СОВМЕЩЁННОЙ СТРОКИ
+        // --------------------------------------------------------------------
+        // При клике на совмещённую строку снимаем выделение со всех остальных
+        // строк (обычных и совмещённых) и выделяем эту классом 'selected'.
+        // Это повторяет ту же логику, что используется в ChannelRow.
+        this.element.addEventListener('click', () => {
+            const container = this.element.parentElement;
+            if (!container) return;
+            
+            container.querySelectorAll('.channel-row.selected').forEach((el) => {
+                if (el !== this.element) {
+                    el.classList.remove('selected');
+                }
+            });
+            this.element.classList.add('selected');
+        });
     }
 
     // ========================================================================

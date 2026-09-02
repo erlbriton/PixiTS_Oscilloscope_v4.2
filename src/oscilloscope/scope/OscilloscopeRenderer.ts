@@ -36,6 +36,11 @@ export interface RenderingContext {
   // Принимает массив выбранных каналов и делегирует создание совмещённой строки
   // (CompositeChannelRow) главному классу осциллографа.
   onCreateComposite: (channels: Channel[]) => void;
+  
+  // Метод для выбора канала или совмещённой строки по координате Y клика.
+  // Инкапсулирует логику определения: попал ли клик в обычный канал
+  // или в область совмещённой строки. Вызывается из обработчика клика по canvas.
+  selectAtClientY: (clientY: number) => void;
 }
 
 export function measureChannelAtTime(
@@ -316,12 +321,12 @@ export function bindSharedCanvasEvents(getCtx: () => RenderingContext): void {
 
   canvas.addEventListener("click", (e: MouseEvent) => {
     const ctx = getCtx();
+    
+    // Используем новый метод, который умеет выбирать и обычный канал,
+    // и совмещённую строку. Он инкапсулирует всю логику определения.
+    ctx.selectAtClientY(e.clientY);
+    
     const channel = channelFromClientY(ctx, e.clientY);
-
-    if (channel) {
-      const row = ctx.table.getRow(channel.id);
-      if (row) row.getElement().click();
-    }
 
     if (!ctx.settings.isAmplitudeMode && !ctx.settings.isIntervalMode) return;
     if (

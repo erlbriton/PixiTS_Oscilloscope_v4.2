@@ -301,7 +301,13 @@
    чтобы пользователь визуально отличал сгруппированные каналы от одиночных. */
 .channel-row.composite-row {
     border-left: 3px solid #f59e0b; 
-    box-shadow: inset 3px 0 0 #f59e0b; /* Дублируем для совместимости с .selected */
+}
+
+/* Совмещённая строка в выбранном состоянии */
+.channel-row.composite-row.selected {
+    background-color: rgba(0, 210, 255, 0.35) !important;
+    box-shadow: inset 4px 0 0 #55c0a9 !important;
+    border-left-color: #55c0a9;
 }
 /* Контейнер легенды, расположенный поверх графика.
    Позиционируется абсолютно внутри .col-graph в левом верхнем углу.

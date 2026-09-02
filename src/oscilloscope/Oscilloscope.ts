@@ -623,6 +623,38 @@ public setAppState(state: AppState): void {
       onCreateComposite: (channels) => {
         this.createCompositeRow(channels);
       },
+      
+      // Реализация выбора канала или совмещённой строки по координате Y.
+      // Сначала пытаемся найти обычный канал. Если не нашли — проверяем,
+      // не попал ли клик в область совмещённой строки.
+      selectAtClientY: (clientY) => {
+        // Сначала пытаемся найти обычный канал (видимый)
+        const rowsRect = this.rowsContainer.getBoundingClientRect();
+        const scrollTop = this.rowsContainer.scrollTop;
+        const y = clientY - rowsRect.top + scrollTop;
+        let acc = 0;
+        
+        for (const ch of this.visibleChannels) {
+          const row = this.table.getRow(ch.id);
+          if (!row || !row.getIsVisible()) continue;
+          
+          acc += ch.rowHeight;
+          if (y < acc) {
+            // Нашли обычный канал — кликаем по его строке
+            row.getElement().click();
+            return;
+          }
+        }
+        
+        // Если обычный канал не найден, проверяем совмещённую строку
+        if (this.compositeRow && this.compositeRow.getIsVisible()) {
+          const compositeRect = this.compositeRow.getElement().getBoundingClientRect();
+          if (clientY >= compositeRect.top && clientY <= compositeRect.bottom) {
+            // Клик попал в совмещённую строку — выбираем её
+            this.compositeRow.getElement().click();
+          }
+        }
+      },
     };
   }
 
