@@ -685,6 +685,13 @@ public setAppState(state: AppState): void {
         this.lastRenderSignature = signature;
         this.lastRenderTime = now;
         this.table.updateValues();
+        
+        // Обновляем значения в легенде совмещённой строки, если она существует.
+        // Это синхронизирует обновление данных с обычными строками таблицы.
+        if (this.compositeRow && this.compositeRow.getIsVisible()) {
+          this.compositeRow.updateValues();
+        }
+        
         this.renderVisibleGraphs();
       }
     } catch (err) {
