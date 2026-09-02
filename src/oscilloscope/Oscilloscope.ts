@@ -824,6 +824,50 @@ public setAppState(state: AppState): void {
     // ШАГ 2: Создаём новый объект совмещённой строки.
     // Конструктор создаёт HTML-структуру: колонку имён, легенду и контейнер графика.
     const compositeRow = new CompositeChannelRow(channels);
+
+    // ШАГ 2.1: Настраиваем колбэки для контекстного меню совмещённой строки.
+    // Без этого пункты меню будут появляться, но ничего не делать при клике.
+    
+    // 1. Разъединить: удаляет совмещённую строку и показывает исходные каналы.
+    compositeRow.onDisconnect = () => {
+      this.destroyCompositeRow();
+      syncViewPositions(this.getRenderingContext());
+    };
+
+    // 2. Свойства: открывает окно свойств для первого канала в группе.
+    compositeRow.onShowProperties = () => {
+      if (channels.length > 0) {
+        const firstChannel = channels[0];
+        const row = this.table.getRow(firstChannel.id);
+        if (row && typeof row.openProperties === 'function') {
+          row.openProperties();
+        }
+      }
+    };
+
+    // 3. Посчитать коэффициент: открывает свойства первого канала (или специфичную логику).
+    compositeRow.onCalculateCoefficient = () => {
+      if (channels.length > 0) {
+        const firstChannel = channels[0];
+        const row = this.table.getRow(firstChannel.id);
+        if (row) {
+          // Аналогично свойствам: эмулируем действие или вызываем метод расчёта.
+          // Обычно расчёт коэффициента делается внутри окна свойств на соответствующей вкладке.
+          // Поэтому просто откроем свойства, как выше.
+          const dblClickEvent = new MouseEvent('dblclick', {
+            bubbles: true,
+            cancelable: true,
+            view: window
+          });
+          row.getElement().dispatchEvent(dblClickEvent);
+          
+          // Если у вас есть отдельный метод calculateCoefficient() в ChannelRow, вызовите его:
+          // if (typeof (row as any).calculateCoefficient === 'function') {
+          //   (row as any).calculateCoefficient();
+          // }
+        }
+      }
+    };
     
     // ШАГ 3: Добавляем элемент строки в конец контейнера строк осциллографа.
     // Строка появится внизу таблицы, ниже всех одиночных каналов.
