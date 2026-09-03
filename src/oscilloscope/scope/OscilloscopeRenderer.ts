@@ -345,7 +345,13 @@ export function bindSharedCanvasEvents(getCtx: () => RenderingContext): void {
     if (markerTime === null) return;
 
     if (ctx.settings.isAmplitudeMode) {
-      if (!channel) return;
+      // Разрешаем перемещение маркера также при клике по совмещённой строке
+      let overComposite = false;
+      if (ctx.compositeRow && ctx.compositeRow.getIsVisible()) {
+        const compRect = ctx.compositeRow.getElement().getBoundingClientRect();
+        overComposite = e.clientY >= compRect.top && e.clientY <= compRect.bottom;
+      }
+      if (!channel && !overComposite) return;
       ctx.settings.amplitudeMarkerTime = markerTime;
 
       const date = new Date(markerTime);
@@ -358,7 +364,9 @@ export function bindSharedCanvasEvents(getCtx: () => RenderingContext): void {
       const formattedTime = `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`;
 
       ctx.bottomPanels.setReadout(2, formattedTime);
-      measureChannelAtTime(ctx, channel.id, markerTime);
+      if (channel) {
+        measureChannelAtTime(ctx, channel.id, markerTime);
+      }
 
       // Обновляем легенду совмещённой строки значениями в точке маркера
       if (ctx.compositeRow && ctx.compositeRow.getIsVisible()) {
