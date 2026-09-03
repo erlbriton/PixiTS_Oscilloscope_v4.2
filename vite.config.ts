@@ -4,6 +4,7 @@ import { defineConfig } from 'vite';
 
 export default defineConfig(() => {
   return {
+    base: '/PixiTS_Oscilloscope_v4.2/',
     plugins: [],
     resolve: {
       alias: {
