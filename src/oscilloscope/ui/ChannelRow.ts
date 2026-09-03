@@ -316,6 +316,12 @@ export class ChannelRow {
             if (this.onChannelUpdated) {
                 this.onChannelUpdated(updatedChannel);
             }
+
+            // Проверка обновления высоты для совмещённой строки
+            const osc = (window as any).osc;
+            if (osc && typeof osc.checkAndUpdateCompositeHeight === 'function') {
+                osc.checkAndUpdateCompositeHeight(updatedChannel.id);
+            }
         });
         modal.open(this.isVisible);
     }

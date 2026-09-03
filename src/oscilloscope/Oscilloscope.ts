@@ -227,6 +227,9 @@ public setAppState(state: AppState): void {
     }, 5000);
     this.rowsContainer = layoutElements.rowsContainer;
     this.propertiesModal = new PropertiesModal();
+
+    // Делаем экземпляр осциллографа доступным глобально для доступа из UI-компонентов (модалок).
+    (window as any).osc = this;
     this.connectionModal = new ConnectionModal();
     bindEvents(this.getBindingsContext());
     bindTimeZoomWheel(this.getBindingsContext(), this.rowsContainer);
@@ -811,6 +814,25 @@ public setAppState(state: AppState): void {
   // ПРИМЕЧАНИЕ: На этом шаге график в совмещённой строке пока пустой,
   // так как вызов renderCompositeGraph() будет добавлен в следующем шаге.
   // ========================================================================
+  /**
+   * Проверяет, входит ли канал в совмещённую строку, и если да — пересчитывает её высоту.
+   * Вызывается из ChannelRow после сохранения свойств канала.
+   */
+  public checkAndUpdateCompositeHeight(channelId: string): void {
+    if (!this.compositeRow || !this.compositeChannels) return;
+
+    const isInGroup = this.compositeChannels.some((ch) => ch.id === channelId);
+    if (!isInGroup) return;
+
+    const newTotalHeight = this.compositeChannels.reduce((sum, ch) => sum + ch.rowHeight, 0);
+
+    // Обновляем высоту DOM-элемента совмещённой строки
+    this.compositeRow.getElement().style.height = `${newTotalHeight}px`;
+
+    // Синхронизируем позиции и размеры PixiView
+    syncViewPositions(this.getRenderingContext());
+  }
+
   public createCompositeRow(channels: Channel[]): void {
     // Логируем начало создания совмещённой строки.
     console.log(`[Oscilloscope] Создание совмещённой строки из ${channels.length} каналов:`, channels.map(ch => ch.name));
