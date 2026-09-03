@@ -359,6 +359,24 @@ export function bindSharedCanvasEvents(getCtx: () => RenderingContext): void {
 
       ctx.bottomPanels.setReadout(2, formattedTime);
       measureChannelAtTime(ctx, channel.id, markerTime);
+
+      // Обновляем легенду совмещённой строки значениями в точке маркера
+      if (ctx.compositeRow && ctx.compositeRow.getIsVisible()) {
+        for (const ch of ctx.compositeRow.getChannels()) {
+          let raw: number | null = null;
+          if (ch.isBit) {
+            const stepValue = ctx.archive.getStepValueAtTime(ch.id, markerTime);
+            if (stepValue !== null) raw = stepValue > 0 ? 1 : 0;
+          } else {
+            const physicalValue = ctx.archive.getValueAtTime(ch.id, markerTime);
+            if (physicalValue !== null) {
+              raw = ch.scale !== 0 ? Math.round(physicalValue / ch.scale) : Math.round(physicalValue);
+            }
+          }
+          if (raw !== null) ch.updateRawValue(raw);
+        }
+        ctx.compositeRow.updateValues();
+      }
     }
 
     if (ctx.settings.isIntervalMode) {
