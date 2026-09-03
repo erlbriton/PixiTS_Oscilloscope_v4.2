@@ -148,7 +148,10 @@ export class ChannelPropertiesModal {
             if (e.target === this.overlay) this.close();
         });
 
-        saveBtn?.addEventListener('click', () => {
+        // Общая функция сохранения: вызывается и при клике на кнопку, и по Enter.
+        // Вынесена в отдельную константу, чтобы повесить её на два обработчика
+        // без дублирования кода.
+        const handleSave = (): void => {
             const nameInput = content.querySelector('#prop-name') as HTMLInputElement;
             const descInput = content.querySelector('#prop-desc') as HTMLInputElement;
             const scaleInput = content.querySelector('#prop-scale') as HTMLInputElement;
@@ -176,6 +179,26 @@ export class ChannelPropertiesModal {
 
             this.onSave(this.channel, true);
             this.close();
+        };
+
+        // Клик по кнопке "Сохранить" (если она есть — для битовых каналов её может не быть).
+        saveBtn?.addEventListener('click', handleSave);
+
+        // Обработка клавиши Enter на основной и цифровой клавиатуре.
+        // Слушаем keydown на всём оверлее, чтобы Enter срабатывал из любого
+        // поля ввода (название, описание, высота, шкала и т.д.).
+        // Проверяем наличие кнопки "Сохранить", чтобы не срабатывать в модалках
+        // битовых каналов, где эта кнопка отсутствует (там только "Отмена").
+        this.overlay.addEventListener('keydown', (e: KeyboardEvent) => {
+            if (e.key === 'Enter' && saveBtn) {
+                e.preventDefault(); // Предотвращаем возможную отправку формы
+                handleSave();
+            }
+            // Дополнительно: Escape закрывает модалку без сохранения.
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                this.close();
+            }
         });
     }
 

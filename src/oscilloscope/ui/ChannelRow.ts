@@ -313,12 +313,23 @@ export class ChannelRow {
         const modal = new ChannelPropertiesModal(this.channel, (updatedChannel, visible) => {
             this.updateHeaderUI();
             this.setVisible(visible);
+
+            // Если канал входит в текущую совмещённую группу — повторно скрываем
+            // его строку. Модалка всегда передаёт visible=true, что вернуло бы
+            // канал в таблицу и разрушило бы вид совмещённой строки.
+            const osc = (window as any).osc;
+            if (osc && Array.isArray(osc.compositeChannels) && osc.compositeChannels.length > 0) {
+                const isInGroup = osc.compositeChannels.some((ch: any) => ch.id === updatedChannel.id);
+                if (isInGroup) {
+                    this.setVisible(false);
+                }
+            }
+
             if (this.onChannelUpdated) {
                 this.onChannelUpdated(updatedChannel);
             }
 
             // Проверка обновления высоты для совмещённой строки
-            const osc = (window as any).osc;
             if (osc && typeof osc.checkAndUpdateCompositeHeight === 'function') {
                 osc.checkAndUpdateCompositeHeight(updatedChannel.id);
             }
