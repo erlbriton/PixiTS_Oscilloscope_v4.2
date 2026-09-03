@@ -218,6 +218,7 @@ export class CompositeChannelRow {
         // Отключаем стандартное меню браузера и показываем своё кастомное меню.
         // Меню содержит пункты: Свойства, Посчитать коэффициент (если все аналоговые), Разъединить.
         this.element.addEventListener('contextmenu', (e) => {
+            console.log('[CompositeChannelRow] ОТЛАДКА: contextmenu сработал');
             e.preventDefault();
             e.stopPropagation();
 
@@ -228,6 +229,7 @@ export class CompositeChannelRow {
                 label: 'Свойства',
                 icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
                 onClick: () => {
+                    console.log('[CompositeChannelRow] ОТЛАДКА: клик Свойства, onShowProperties=', !!this.onShowProperties);
                     if (this.onShowProperties) this.onShowProperties();
                 }
             });
@@ -237,11 +239,16 @@ export class CompositeChannelRow {
                 label: 'Разъединить',
                 icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>`,
                 onClick: () => {
+                    console.log('[CompositeChannelRow] ОТЛАДКА: клик Разъединить, onDisconnect=', !!this.onDisconnect);
                     if (this.onDisconnect) this.onDisconnect();
                 }
             });
 
-            ContextMenu.getInstance().show(e.clientX, e.clientY, menuItems);
+            const ctx = ContextMenu.getInstance();
+            console.log('[CompositeChannelRow] ОТЛАДКА: ContextMenu.getInstance()=', !!ctx);
+            if (ctx) {
+                ctx.show(e.clientX, e.clientY, menuItems);
+            }
         });
     }
 

@@ -133,7 +133,7 @@ export class Renderer {
     // На данном шаге метод является заготовкой и просто логирует вызов.
     // Реальная логика отрисовки будет добавлена в следующем шаге.
     // ========================================================================
-    public renderCompositeGraph(channels: Channel[], view: PixiView): void {
+        public renderCompositeGraph(channels: Channel[], view: PixiView): void {
         const { width, height } = view.bounds;
         if (width <= 0 || height <= 0) return;
 

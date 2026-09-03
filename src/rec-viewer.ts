@@ -251,7 +251,7 @@ async function loadRecData(recData: any, fileBytes: Uint8Array): Promise<void> {
       min: isBit ? 0 : -50,
       max: max,               // Используем восстановленное или дефолтное
       customMax: customMax,   // Передаем пользовательский максимум
-      autoScale: false,       // Отключаем автомасштаб, так как мы задали свой
+      autoScale: true,        // Включаем автомасштаб, чтобы синхронизировать с кнопкой тулбара
       rowHeight: rowHeight,   // Используем восстановленную высоту
       color: color,
       recRawParts: p.rawParts,

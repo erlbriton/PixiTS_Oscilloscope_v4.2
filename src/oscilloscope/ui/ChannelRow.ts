@@ -309,7 +309,7 @@ export class ChannelRow {
         });
     }
 
-    public openProperties(): void {
+    public openProperties(allowBitSave: boolean = false): void {
         const modal = new ChannelPropertiesModal(this.channel, (updatedChannel, visible) => {
             this.updateHeaderUI();
             this.setVisible(visible);
@@ -322,8 +322,15 @@ export class ChannelRow {
             if (osc && typeof osc.checkAndUpdateCompositeHeight === 'function') {
                 osc.checkAndUpdateCompositeHeight(updatedChannel.id);
             }
+
+            // Принудительная перерисовка для просмотрщика (viewerMode).
+            // В просмотрщике отключён живой цикл, поэтому после изменения
+            // высоты строки график не перерисовывается автоматически.
+            if (osc && osc.viewerMode && typeof osc.renderVisibleGraphs === 'function') {
+                osc.renderVisibleGraphs();
+            }
         });
-        modal.open(this.isVisible);
+        modal.open(this.isVisible, allowBitSave);
     }
 
         public calculateCoefficient(): void {

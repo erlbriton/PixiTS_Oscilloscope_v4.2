@@ -708,7 +708,7 @@ public setAppState(state: AppState): void {
   }
 
   /** Рендерит только те каналы, чьи строки сейчас видимы в области прокрутки. */
-  private renderVisibleGraphs(): void {
+  public renderVisibleGraphs(): void {
     const rowsRect = this.rowsContainer.getBoundingClientRect();
     const viewportTop = rowsRect.top - 60;
     const viewportBottom = rowsRect.bottom + 60;
@@ -818,7 +818,7 @@ public setAppState(state: AppState): void {
    * Проверяет, входит ли канал в совмещённую строку, и если да — пересчитывает её высоту.
    * Вызывается из ChannelRow после сохранения свойств канала.
    */
-  public checkAndUpdateCompositeHeight(channelId: string): void {
+      public checkAndUpdateCompositeHeight(channelId: string): void {
     if (!this.compositeRow || !this.compositeChannels) return;
 
     const isInGroup = this.compositeChannels.some((ch) => ch.id === channelId);
@@ -826,13 +826,31 @@ public setAppState(state: AppState): void {
 
     const newTotalHeight = this.compositeChannels.reduce((sum, ch) => sum + ch.rowHeight, 0);
 
-    // Обновляем высоту DOM-элемента совмещённой строки
+    // Обновляем высоту DOM-элемента совмещённой строки.
     this.compositeRow.getElement().style.height = `${newTotalHeight}px`;
 
-    // Синхронизируем позиции и размеры PixiView
-    syncViewPositions(this.getRenderingContext());
+    if (this.viewerMode) {
+      // В просмотрщике обновляем высоту PixiView НАПРЯМУЮ из данных.
+      // У .channel-row есть CSS-transition высоты, поэтому getBoundingClientRect()
+      // сразу после изменения возвращает СТАРОЕ значение, и syncViewPositions()
+      // перезаписывал бы bounds старой высотой.
+      if (this.compositePixiView) {
+        this.compositePixiView.updateLayout(
+          this.compositePixiView.container.x,
+          this.compositePixiView.container.y,
+          this.compositePixiView.bounds.width,
+          newTotalHeight
+        );
+      }
+      // Принудительная перерисовка: живой цикл отключён.
+      this.renderVisibleGraphs();
+    } else {
+      // В основном осциллографе используем syncViewPositions — живой цикл
+      // постоянно вызывает renderVisibleGraphs, и позиция PixiView должна
+      // быть синхронизирована через DOM.
+      syncViewPositions(this.getRenderingContext());
+    }
   }
-
   public createCompositeRow(channels: Channel[]): void {
     // Логируем начало создания совмещённой строки.
     console.log(`[Oscilloscope] Создание совмещённой строки из ${channels.length} каналов:`, channels.map(ch => ch.name));
@@ -857,12 +875,14 @@ public setAppState(state: AppState): void {
     };
 
     // 2. Свойства: открывает окно свойств для первого канала в группе.
+    // Для битовых каналов в совмещённой строке разрешаем кнопку «Сохранить»,
+    // чтобы можно было изменить высоту строки.
     compositeRow.onShowProperties = () => {
       if (channels.length > 0) {
         const firstChannel = channels[0];
         const row = this.table.getRow(firstChannel.id);
         if (row && typeof row.openProperties === 'function') {
-          row.openProperties();
+          row.openProperties(true); // allowBitSave = true
         }
       }
     };
@@ -934,6 +954,16 @@ public setAppState(state: AppState): void {
     this.compositePixiView = compositePixiView;
     this.compositeChannels = channels;
 
+    // ШАГ 8: Принудительная синхронизация позиций и перерисовка для просмотрщика.
+    // Новый PixiView создаётся с дефолтными координатами (0, 0, 300, height),
+    // поэтому сначала syncViewPositions() ставит его на правильное место и ширину,
+    // и только затем renderVisibleGraphs() рисует график. В просмотрщике живой
+    // цикл отключён, поэтому без этого график появляется только после скролла.
+    if (this.viewerMode) {
+      syncViewPositions(this.getRenderingContext());
+      this.renderVisibleGraphs();
+    }
+
     console.log(`[Oscilloscope] Совмещённая строка создана, высота: ${totalHeight}px`);
   }
 
@@ -955,6 +985,17 @@ public setAppState(state: AppState): void {
     for (const channel of this.compositeChannels) {
       const row = this.table.getRow(channel.id);
       if (row) {
+        // Сбрасываем высоту всех каналов к дефолтной 25px.
+        // При совмещении высота могла быть изменена через свойства,
+        // но после разъединения все каналы возвращаются к стандартной высоте.
+        if (channel.rowHeight !== 25) {
+          channel.rowHeight = 25;
+          if (typeof (row as any).updateHeight === 'function') {
+            (row as any).updateHeight();
+          } else {
+            row.getElement().style.height = '25px';
+          }
+        }
         row.setVisible(true);
       }
     }
@@ -975,6 +1016,14 @@ public setAppState(state: AppState): void {
     // Очищаем ссылки.
     this.compositeRow = null;
     this.compositeChannels = [];
+
+    // Принудительная синхронизация позиций и перерисовка для просмотрщика.
+    // Живой цикл отключён, поэтому графики восстановленных строк не появятся
+    // без явного вызова renderVisibleGraphs().
+    if (this.viewerMode) {
+      syncViewPositions(this.getRenderingContext());
+      this.renderVisibleGraphs();
+    }
   }
 
     /**
