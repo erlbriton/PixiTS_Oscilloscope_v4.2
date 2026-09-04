@@ -120,12 +120,40 @@ export function showCompactError(text: string): void {
 }
 
 /**
- * Обновляет текст в верхнем баннере ID
+ * Обновляет текст в верхнем баннере ID (полный) и в шапке осциллографа (урезанный).
+ * Урезанный формат: "ID: 00444444 DExS.SMFCB" (только серийный номер и тип устройства).
  */
 export function updateIdBanner(idText: string): void {
+    // 1. Обновляем основной баннер (полный ID)
     const idSpan = document.querySelector('.id-banner span');
     if (idSpan) {
         idSpan.textContent = idText;
+    }
+
+    // 2. Обновляем баннер в шапке осциллографа (урезанный ID)
+    const oscIdBanner = document.querySelector('.osc-id-banner');
+    if (oscIdBanner) {
+        if (!idText || idText === '—') {
+            oscIdBanner.textContent = 'Ожидание подключения...';
+        } else {
+            // Форматируем ID: оставляем только "ID: <серийный> <тип>"
+            // Используем ту же логику, что и в parseDeviceIdString из report-data.ts
+            let s = idText.trim();
+            if (s.toUpperCase().startsWith('ID:')) {
+                s = s.substring(3).trim();
+            }
+            const parts = s.split(/\s+/);
+            const serial = parts[0] ?? '';
+            const deviceType = parts[1] ?? '';
+            
+            if (serial && deviceType) {
+                oscIdBanner.textContent = `ID: ${serial} ${deviceType}`;
+            } else if (serial) {
+                oscIdBanner.textContent = `ID: ${serial}`;
+            } else {
+                oscIdBanner.textContent = '—';
+            }
+        }
     }
 }
 

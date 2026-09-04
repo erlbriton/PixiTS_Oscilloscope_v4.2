@@ -194,3 +194,36 @@
     border-color: #b91c1c !important;
     color: #ffffff !important;
 }
+/* Баннер с коротким ID контроллера в шапке осциллографа.
+   Стоит СРАЗУ ПОСЛЕ кнопок (не прижат к правому краю).
+   При нехватке места просто обрезается многоточием. */
+.osc-id-banner {
+    margin-left: 8px;      /* небольшой отступ от последней кнопки */
+    flex: 0 1 auto;        /* не растягивается, но РАЗРЕШЕНО сжиматься */
+    min-width: 0;          /* критично: позволяет сжиматься меньше ширины текста */
+    padding: 6px 12px;
+    background-color: rgba(30, 30, 30, 0.8);
+    border: 2px solid #c0e1e9;
+    border-radius: 6px;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 13px;
+    font-weight: 600;
+    color: #c0e1e9;
+    white-space: nowrap;      /* текст в одну строку */
+    overflow: hidden;         /* всё, что не влезло, скрываем */
+    text-overflow: ellipsis;  /* ... в конце при обрезке */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Контейнер тулбара: элементы в одну строку, лишнее не вылезает наружу */
+#toolbar {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    overflow: hidden;
+}
+
+/* Группа кнопок не сжимается и не переносится — сжимается только баннер */
+#toolbar .toolbar-group {
+    flex-shrink: 0;
+}

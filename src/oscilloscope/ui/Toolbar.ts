@@ -385,6 +385,11 @@ export class Toolbar {
     const title = document.createElement("div");
     title.className = "toolbar-title";
 
+    // Создаем баннер для короткого ID контроллера в шапке осциллографа
+    const oscIdBanner = document.createElement("div");
+    oscIdBanner.className = "osc-id-banner";
+    oscIdBanner.textContent = "Ожидание подключения...";
+
     // Добавляем ВСЕ кнопки в одну группу: groupLeft
     groupLeft.append(
       this.propertiesBtn,
@@ -404,8 +409,9 @@ export class Toolbar {
 
     this.updateStatus(false);
 
-    // Добавляем только одну группу в контейнер
+    // Добавляем группу и баннер в контейнер (баннер будет справа)
     this.container.append(groupLeft);
+    this.container.append(oscIdBanner);
 
     this.serial?.onStateChange((state: unknown) => {
       const isConnected = state === "connected" || state === true;
