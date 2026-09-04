@@ -84,6 +84,12 @@ export class Toolbar {
     this.intervalBtn.style.display = 'none';
     this.statusBadge.style.display = 'none';
     this.windowSizeBtn.style.display = 'none';
+
+    // Скрываем баннер с ID контроллера — в просмотрщике он не нужен
+    const oscIdBanner = this.container.querySelector('.osc-id-banner') as HTMLElement | null;
+    if (oscIdBanner) {
+      oscIdBanner.style.display = 'none';
+    }
   }
 
   /** Финальная настройка тулбара для просмотрщика (вызывать ПОСЛЕ добавления всех кнопок) */
