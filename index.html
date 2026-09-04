@@ -89,7 +89,10 @@
               <div class="settings-section-title">Настройки связи</div>
               <div class="settings-row">
                 <span class="label">BUS</span>
-                <select class="select-blue"><option>MODBUS RTU</option></select>
+                <select class="select-blue" id="busSelect">
+                    <option value="RTU" selected>MODBUS RTU</option>
+                    <option value="TCP">MODBUS TCP/IP</option>
+                </select>
                 <span class="label">COM</span>
                 <select id="comSelect" class="select-gray"><option>—</option></select>
                 <span class="label">BPS</span>
