@@ -26,6 +26,7 @@ import { initNewDeviceUI, showNewDeviceModal, setNewDeviceAddToLoaded } from './
 import { initBackupUI, setBackupLoadFn } from './backup-ui.js';
 import { initParamPropertiesUI } from './param-properties-ui.js';
 import { SearchPanel } from '../oscilloscope/ui/SearchPanel.js';
+import { initHelpUI } from './help-ui.js';
 
 /** Буфер данных канала (типизирован явно, без any) */
 export interface ChannelBuffer {
@@ -406,6 +407,7 @@ export function initUI(deps: UiManagerDeps): void {
   // Командная строка (кнопка терминала)
   // ---------------------------------------------------------------------------
   initCmdlineUI();
+  initHelpUI();
 
   // ---------------------------------------------------------------------------
   // Окно "Новое устройство" (если родной INI не найден)
@@ -781,6 +783,26 @@ export function initUI(deps: UiManagerDeps): void {
         console.log(`[UI] Скорость установлена на ${newBaudRate} (будет использована при подключении).`);
       }
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Переключение BUS: MODBUS RTU <-> MODBUS TCP/IP
+  // RTU: видны COM, BPS, FE. TCP/IP: видны IP и Port.
+  // ---------------------------------------------------------------------------
+  const busSelect = document.getElementById('busSelect') as HTMLSelectElement | null;
+  const rtuControls = document.getElementById('rtuControls') as HTMLElement | null;
+  const tcpControls = document.getElementById('tcpControls') as HTMLElement | null;
+
+  const applyBusMode = (): void => {
+    const isTcp = busSelect?.value === 'TCP';
+    if (rtuControls) rtuControls.style.display = isTcp ? 'none' : '';
+    if (tcpControls) tcpControls.style.display = isTcp ? '' : 'none';
+    console.log(`[UI] Режим связи: ${isTcp ? 'MODBUS TCP/IP' : 'MODBUS RTU'}`);
+  };
+
+  if (busSelect) {
+    busSelect.addEventListener('change', applyBusMode);
+    applyBusMode(); // применяем текущий режим при старте
   }
 
   // Кнопка адреса Modbus: окно ввода, новый адрес применяется ко всему обмену

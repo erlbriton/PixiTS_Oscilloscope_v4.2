@@ -113,22 +113,30 @@
                     <option value="RTU" selected>MODBUS RTU</option>
                     <option value="TCP">MODBUS TCP/IP</option>
                 </select>
-                <span class="label">COM</span>
-                <select id="comSelect" class="select-gray"><option>—</option></select>
-                <span class="label">BPS</span>
-                <select id="baudSelect" class="select-blue">
-                    <option value="9600">9600</option>
-                    <option value="19200">19200</option>
-                    <option value="57600">57600</option>
-                    <option value="115200" selected>115200</option>
-                    <option value="230400">230400</option>
-                    <option value="460800">460800</option>
-                    <option value="921600">921600</option>
-                    </select>
-                    <span class="label">FE</span>
-                    <input type="text" class="input-text frame-input" value="20" />               
-                    <button id="addrBtn" class="inline-btn addr-btn">Адрес: x01</button>
-                    </div>
+                <span id="rtuControls">
+                  <span class="label">COM</span>
+                  <select id="comSelect" class="select-gray"><option>—</option></select>
+                  <span class="label">BPS</span>
+                  <select id="baudSelect" class="select-blue">
+                      <option value="9600">9600</option>
+                      <option value="19200">19200</option>
+                      <option value="57600">57600</option>
+                      <option value="115200" selected>115200</option>
+                      <option value="230400">230400</option>
+                      <option value="460800">460800</option>
+                      <option value="921600">921600</option>
+                  </select>
+                  <span class="label">FE</span>
+                  <input type="text" class="input-text frame-input" value="20" />
+                </span>
+                <span id="tcpControls" style="display: none;">
+                  <span class="label">IP</span>
+                  <input type="text" id="tcpIpInput" class="input-text" value="192.168.1.78" style="width: 110px;" />
+                  <span class="label">Port</span>
+                  <input type="text" id="tcpPortInput" class="input-text" value="501" style="width: 50px;" />
+                </span>
+                <button id="addrBtn" class="inline-btn addr-btn">Адрес: x01</button>
+              </div>
                     <div class="id-banner">ID: <span>—</span></div>
                     <div class="settings-row">
                       <span class="label">Тип механизма</span>
