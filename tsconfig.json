@@ -23,5 +23,10 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "strict": true
-  }
+  },
+  "include": [
+    "src",
+    "global.d.ts",
+    "vite-env.d.ts"
+  ]
 }

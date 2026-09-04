@@ -7,6 +7,11 @@ export default defineConfig(() => {
     build: {
       chunkSizeWarningLimit: 1000, // Увеличиваем лимит предупреждений до 1 МБ
       rollupOptions: {
+        // Указываем две точки входа: главное приложение и просмотрщик осциллограмм
+        input: {
+          main: 'index.html',
+          viewer: 'rec-viewer.html',
+        },
         output: {
           manualChunks: {
             // Выносим PixiJS в отдельный чанк (самая тяжелая библиотека)
