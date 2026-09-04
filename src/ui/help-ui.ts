@@ -82,8 +82,7 @@ export function showAboutWindow(): void {
 
 /** Пункт "Помощь": открывает справку в новой вкладке браузера */
 export function showHelpWindow(): void {
-    // TODO: когда справка будет готова, заменить на реальный адрес
-    window.open('about:blank', '_blank');
+    window.open(import.meta.env.BASE_URL + 'help/index.html', '_blank');
 }
 
 /** Привязка обработчиков к кнопке Help и её меню */
