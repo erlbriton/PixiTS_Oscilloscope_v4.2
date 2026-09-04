@@ -669,7 +669,7 @@ export function initUI(deps: UiManagerDeps): void {
   if (menuViewRec) {
     menuViewRec.addEventListener('click', () => {
       toggleOscDropdown?.classList.remove('show');
-      window.open('/rec-viewer.html', '_blank');
+      window.open(import.meta.env.BASE_URL + 'rec-viewer.html', '_blank');
     });
   }
 
