@@ -26,7 +26,7 @@ import { initNewDeviceUI, showNewDeviceModal, setNewDeviceAddToLoaded } from './
 import { initBackupUI, setBackupLoadFn } from './backup-ui.js';
 import { initParamPropertiesUI } from './param-properties-ui.js';
 import { SearchPanel } from '../oscilloscope/ui/SearchPanel.js';
-import { initHelpUI } from './help-ui.js';
+import { initHelpUI , showHelpWindow } from './help-ui.js';
 
 /** Буфер данных канала (типизирован явно, без any) */
 export interface ChannelBuffer {
@@ -408,6 +408,15 @@ export function initUI(deps: UiManagerDeps): void {
   // ---------------------------------------------------------------------------
   initCmdlineUI();
   initHelpUI();
+
+  // Клавиша F1: открываем справку приложения вместо справки браузера.
+  // preventDefault() подавляет действие браузера по умолчанию.
+  document.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key === 'F1') {
+      e.preventDefault();
+      showHelpWindow();
+    }
+  });
 
   // ---------------------------------------------------------------------------
   // Окно "Новое устройство" (если родной INI не найден)
