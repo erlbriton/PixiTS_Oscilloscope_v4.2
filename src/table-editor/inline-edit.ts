@@ -3,6 +3,7 @@
 
 import { processValueWrite } from './value-write.js';
 import type { TableEditorState } from '../ini-manager/table-editor.js';
+import { markDirty } from '../ini-manager/dirty-tracker.js';
 
 export function startInlineEdit(cell: HTMLElement, stateObj: TableEditorState): void {
     const tr = cell.closest<HTMLTableRowElement>('tr');
@@ -75,6 +76,11 @@ export function startInlineEdit(cell: HTMLElement, stateObj: TableEditorState): 
                 } else {
                     cell.classList.add('write-success');
                     setTimeout(() => cell.classList.remove('write-success'), 1000);
+                    // Помечаем параметр как изменённый, если это колонка БАЗЫ (4 или 5)
+                    if (colIndex === 4 || colIndex === 5) {
+                        const paramId = tr.dataset.key;
+                        if (paramId) markDirty(paramId);
+                    }
                 }
             } catch (err) {
                 console.error('Error saving TPrmList value:', err);
@@ -122,6 +128,11 @@ export function startInlineEdit(cell: HTMLElement, stateObj: TableEditorState): 
             } else {
                 cell.classList.add('write-success');
                 setTimeout(() => cell.classList.remove('write-success'), 1000);
+                // Помечаем параметр как изменённый, если это колонка БАЗЫ (4 или 5)
+                if (colIndex === 4 || colIndex === 5) {
+                    const paramId = tr.dataset.key;
+                    if (paramId) markDirty(paramId);
+                }
             }
         } catch (err) {
             console.error("Error saving value:", err);
