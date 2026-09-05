@@ -10,8 +10,8 @@ export interface ModbusScanUiDeps {
     pausePolling(): void;
     /** Возобновить опрос после завершения поиска */
     resumePolling(): void;
-    /** Подключиться к найденному устройству: переключить адрес опроса */
-    connectToDevice(addr: number): void;
+    /** Подключиться к найденному устройству: переключить адрес опроса и передать ID для поиска INI */
+    connectToDevice(addr: number, idText: string): void;
 }
 
 let deps: ModbusScanUiDeps | null = null;
@@ -105,7 +105,7 @@ async function startScan(): Promise<void> {
                 setProgress(`Опрашивается адрес ${p.currentAddr} из ${p.total}. Найдено: ${p.foundCount}`);
             },
             (dev) => {
-                addFoundRow(dev, false);
+                addFoundRow(dev, true);
             },
         );
         setProgress(scanAbort.signal.aborted
@@ -145,7 +145,7 @@ function addFoundRow(dev: FoundDevice, canConnect: boolean): void {
     btn.textContent = 'Подключить';
     btn.disabled = !canConnect;
     btn.addEventListener('click', () => {
-        if (deps) deps.connectToDevice(dev.addr);
+        if (deps) deps.connectToDevice(dev.addr, dev.idText);
         getOverlay()?.classList.add('hidden');
     });
 

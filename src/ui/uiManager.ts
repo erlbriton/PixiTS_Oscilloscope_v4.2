@@ -606,10 +606,59 @@ export function initUI(deps: UiManagerDeps): void {
         void readLoop(serial, parser, window.osc ?? null, buffers, appState);
       }
     },
-    connectToDevice: (addr: number) => {
-      // Переключаем адрес опроса — readLoop подхватит его на следующем запросе
+        connectToDevice: (addr: number, idText: string) => {
+      // 1. Переключаем адрес опроса — readLoop подхватит его на следующем запросе
       appState.slaveAddress = addr;
-      console.log(`[UI] Опрос переключён на адрес ${addr}`);
+      console.log(`[UI][Scan] Опрос переключён на адрес ${addr}`);
+
+      // 2. Если ID пустой — сразу открываем окно "Новое устройство"
+      if (!idText) {
+        console.log('[UI][Scan] ID не получен — открываем "Новое устройство".');
+        showNewDeviceModal('');
+        return;
+      }
+
+      // 3. Ищем "родной" INI среди загруженных файлов
+      //    (критерий: серийный номер + тип устройства + версия)
+      const target = parseDeviceIdString(idText);
+      let matchedId: string | null = null;
+
+      for (const device of getAllDevices()) {
+        const candidate = device.iniConfig?.device?.id;
+        if (!candidate) continue;
+        const parsed = parseDeviceIdString(candidate);
+        if (
+          parsed.serial === target.serial &&
+          parsed.deviceType === target.deviceType &&
+          parsed.version === target.version
+        ) {
+          matchedId = device.id;
+          break;
+        }
+      }
+
+      if (matchedId !== null) {
+        // 4a. Родной INI найден — программный клик по узлу дерева:
+        //     подсветка, setCurrentIniConfig, populateDeviceForm, renderModbusTable
+        //     сработают в обработчике клика самого <li>.
+        const leaf = document.querySelector<HTMLLIElement>(
+          `.tree-id-item.is-leaf[data-device-id="${CSS.escape(matchedId)}"]`,
+        );
+        if (leaf) {
+          const details = leaf.closest('details.tree-location');
+          if (details) {
+            (details as HTMLDetailsElement).open = true;
+          }
+          leaf.click();
+          console.log(`[UI][Scan] Родной INI найден и выбран: ${matchedId}`);
+        } else {
+          console.warn(`[UI][Scan] Родной INI найден (${matchedId}), но узел дерева не отрендерен.`);
+        }
+      } else {
+        // 4b. Родной INI не найден — тот же алгоритм, что у кнопки "Подключиться"
+        console.log('[UI][Scan] Родной INI не найден — открываем "Новое устройство".');
+        showNewDeviceModal(idText);
+      }
     },
   });
 
