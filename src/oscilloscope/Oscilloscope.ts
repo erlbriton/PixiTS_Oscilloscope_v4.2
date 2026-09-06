@@ -48,6 +48,12 @@ import {
   checkAndUpdateCompositeHeight as compositeCheckHeight,
   type CompositeContext,
 } from "./scope/OscilloscopeComposite";
+import {
+  draw as loopDraw,
+  loop as loopTick,
+  renderVisibleGraphs as loopRenderGraphs,
+  type LoopContext,
+} from "./scope/OscilloscopeLoop";
 import type { AppState } from "../core/app-state.js";
 import { Application } from 'pixi.js';
 import { SearchPanel } from './ui/SearchPanel';
@@ -83,7 +89,6 @@ export class Oscilloscope {
   private animFrameId: number | null = null;
   private lastRenderTime: number = 0;
   private lastRenderSignature: string = "";
-  private static readonly RENDER_INTERVAL_MS: number = 20;//  Частота опроса
   private drawCallCount: number = 0;
   private lastReportedHz: number = 0;
   private statsTimerId: number | null = null;
@@ -335,20 +340,42 @@ public setAppState(state: AppState): void {
     return this.graphColumnOffset;
   }
 
+  /** Принимает новые значения параметров. Делегирует в scope/OscilloscopeLoop. */
   public draw(data: Record<string, number>): void {
-    if (this.isDestroyed || !data) return;
-    this.drawCallCount++;
-    const now = Date.now();
-    this.allChannels.forEach((ch) => {
-      if (data[ch.id] !== undefined) {
-        const val = data[ch.id];
-        if (typeof val === "number" && Number.isFinite(val)) {
-          ch.updateRawValue(val);
-          // ВАЖНО: теперь передаём И scaledValue, И rawValue
-          this.archive.addSample(ch.id, now, ch.scaledValue, ch.rawDecValue);
-        }
-      }
-    });
+    loopDraw(this.getLoopContext(), data);
+  }
+
+  /**
+   * Строит контекст кадрового цикла (scope/OscilloscopeLoop).
+   * Тайминг-состояние остаётся на классе — им делится lifecycle.
+   */
+  private getLoopContext(): LoopContext {
+    return {
+      isDestroyed: this.isDestroyed,
+      isRunning: this.isRunning,
+      table: this.table ?? null,
+      archive: this.archive,
+      settings: this.settings,
+      timelineScrollbar: this.timelineScrollbar ?? null,
+      toolbar: this.toolbar ?? null,
+      viewerMode: this.viewerMode,
+      renderer: this.renderer,
+      rowsContainer: this.rowsContainer ?? null,
+      pixiViews: this.pixiViews,
+      getVisibleChannels: () => this.visibleChannels,
+      getAllChannels: () => this.allChannels,
+      getCompositeRow: () => this.compositeRow,
+      getCompositeView: () => this.compositePixiView,
+      getCompositeChannels: () => this.compositeChannels,
+      getDrawCallCount: () => this.drawCallCount,
+      setDrawCallCount: (v) => { this.drawCallCount = v; },
+      getLastRenderSignature: () => this.lastRenderSignature,
+      setLastRenderSignature: (v) => { this.lastRenderSignature = v; },
+      getLastRenderTime: () => this.lastRenderTime,
+      setLastRenderTime: (v) => { this.lastRenderTime = v; },
+      setLastFrameTime: (v) => { this.lastFrameTime = v; },
+      setAnimFrameId: (v) => { this.animFrameId = v; },
+    };
   }
 
   public setIniFiles(files: IniFileItem[]): void {
@@ -656,130 +683,14 @@ public setAppState(state: AppState): void {
     };
   }
 
+  /** Кадровый цикл (приватный — запускается из setConnectionStatus/resumeFromFrozen). */
   private loop(now: number): void {
-    this.animFrameId = null;
-    if (this.isDestroyed || !this.isRunning || !this.table) return;
-    this.lastFrameTime = now;
-
-    const range = this.archive.getTimeRange();
-    this.timelineScrollbar.setRange(range.min, range.max);
-
-    if (this.settings.isPolling && this.settings.isLive()) {
-      this.timelineScrollbar.setPosition(range.max);
-    }
-
-    try {
-      this.toolbar.updateRecordTimer();
-
-      // Dirty-flag: есть ли смысл перерисовывать в этом тике
-      const signature =
-        `${range.max}|${this.settings.getCurrentViewTime()}|` +
-        `${this.settings.timeScale}|${this.settings.amplitudeMarkerTime}|` +
-        `${this.settings.intervalMarker1Time}|${this.settings.intervalMarker2Time}`;
-      const dirty = signature !== this.lastRenderSignature;
-      const throttled = now - this.lastRenderTime >= Oscilloscope.RENDER_INTERVAL_MS;
-
-      if (dirty && throttled) {
-        this.lastRenderSignature = signature;
-        this.lastRenderTime = now;
-        this.table.updateValues();
-        
-        // Обновляем значения в легенде совмещённой строки, если она существует.
-        // Это синхронизирует обновление данных с обычными строками таблицы.
-        if (this.compositeRow && this.compositeRow.getIsVisible()) {
-          this.compositeRow.updateValues();
-        }
-        
-        this.renderVisibleGraphs();
-      }
-    } catch (err) {
-      console.error("Oscilloscope loop error:", err);
-    }
-    this.animFrameId = requestAnimationFrame((t) => this.loop(t));
+    loopTick(this.getLoopContext(), now);
   }
 
-  /** Рендерит только те каналы, чьи строки сейчас видимы в области прокрутки. */
+  /** Публичная обёртка: отрисовка видимых графиков (вызывает ChannelRow). */
   public renderVisibleGraphs(): void {
-    const rowsRect = this.rowsContainer.getBoundingClientRect();
-    const viewportTop = rowsRect.top - 60;
-    const viewportBottom = rowsRect.bottom + 60;
-
-    for (const channel of this.visibleChannels) {
-      const row = this.table.getRow(channel.id);
-      const view = this.pixiViews.get(channel.id);
-      
-      if (!row || !view) continue;
-
-      // ========================================================================
-      // ОБРАБОТКА СКРЫТЫХ СТРОК
-      // ========================================================================
-      // Если строка канала скрыта (например, входит в совмещённую группу),
-      // нужно очистить её графику и сделать контейнер невидимым.
-      // Это важно, потому что PixiJS сохраняет последнее нарисованное состояние,
-      // и без очистки график скрытого канала будет "висеть" на экране.
-      // ========================================================================
-      if (!row.getIsVisible()) {
-        view.waveGraphics.clear();
-        view.gridGraphics.clear();
-        view.markerGraphics.clear();
-        view.container.visible = false;
-        continue;
-      }
-
-      // Делаем контейнер видимым (на случай, если канал был ранее скрыт).
-      view.container.visible = true;
-
-      // В режиме просмотра .rec рисуем ВСЕ каналы, а не только те, что
-      // видны в области прокрутки: опроса нет, и "доскролленные" строки
-      // иначе остались бы пустыми до следующего изменения времени.
-      if (!this.viewerMode) {
-        const rowRect = row.getElement().getBoundingClientRect();
-        if (rowRect.bottom < viewportTop || rowRect.top > viewportBottom) continue;
-      }
-
-      try {
-        this.renderer.renderChannelGraph(channel, view);
-      } catch (renderErr) {
-        console.error(`Error rendering channel ${channel.id}:`, renderErr);
-      }
-    }
-
-    // ========================================================================
-    // ОТРИСОВКА СОВМЕЩЁННОЙ СТРОКИ (Composite Channel Row)
-    // ========================================================================
-    // Если существует совмещённая строка, отрисовываем её графики через
-    // метод renderCompositeGraph(), который рисует все каналы группы
-    // в одном PixiView без очистки между ними.
-    //
-    // ПОЗИЦИОНИРОВАНИЕ:
-    // Совмещённая строка всегда располагается в самом низу таблицы,
-    // после всех одиночных каналов. Поэтому её координата Y вычисляется
-    // как сумма высот всех видимых каналов.
-    //
-    // ПРОВЕРКА ВИДИМОСТИ:
-    // Проверяем, находится ли совмещённая строка в видимой области экрана.
-    // Если пользователь прокрутил таблицу так, что совмещённая строка
-    // находится выше или ниже видимой области, пропускаем её отрисовку
-    // для оптимизации производительности.
-    // ========================================================================
-    if (this.compositeRow && this.compositePixiView && this.compositeChannels.length > 0) {
-      // Проверяем, видна ли совмещённая строка в области прокрутки.
-      if (!this.viewerMode) {
-        const compositeRect = this.compositeRow.getElement().getBoundingClientRect();
-        if (compositeRect.bottom < viewportTop || compositeRect.top > viewportBottom) {
-          // Совмещённая строка не видна на экране, пропускаем отрисовку.
-          return;
-        }
-      }
-
-      try {
-        // Вызываем метод отрисовки совмещённого графика, передавая массив
-        // каналов группы и их общий PixiView.
-        this.renderer.renderCompositeGraph(this.compositeChannels, this.compositePixiView);
-      } catch (renderErr) {
-        console.error('[Oscilloscope] Error rendering composite graph:', renderErr);
-      }
-    }
+    loopRenderGraphs(this.getLoopContext());
   }
 
   // ========================================================================
