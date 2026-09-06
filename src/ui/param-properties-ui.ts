@@ -5,6 +5,10 @@
  * зависимость. "Применить" пока просто закрывает окно — логика сохранения
  * будет добавлена следующим шагом.
  */
+import { markDirty } from '../ini-manager/dirty-tracker.js';
+
+/** ID параметра, для которого сейчас открыто окно свойств */
+let currentParamId: string | null = null;
 
 interface ParamInfo {
     id: string;
@@ -66,7 +70,11 @@ export function initParamPropertiesUI(): void {
     };
 
     closeBtn?.addEventListener('click', hide);
-    applyBtn?.addEventListener('click', hide); // Заглушка: просто закрываем
+    applyBtn?.addEventListener('click', () => {
+      // Помечаем параметр как изменённый перед закрытием окна
+      if (currentParamId) markDirty(currentParamId);
+      hide();
+    });
     cancelBtn?.addEventListener('click', hide);
 
     overlay.addEventListener('click', (e: MouseEvent) => {
@@ -87,6 +95,9 @@ export function initParamPropertiesUI(): void {
 export function showParamPropertiesModal(param: ParamInfo, allSiblings: ParamInfo[]): void {
     const overlay = document.getElementById('paramPropsOverlay');
     if (!overlay) return;
+
+    // Запоминаем, какой параметр открыт — нужно для кнопки Apply
+    currentParamId = param.id;
 
     const nameInput = document.getElementById('paramPropsName') as HTMLInputElement | null;
     const descInput = document.getElementById('paramPropsDescription') as HTMLInputElement | null;

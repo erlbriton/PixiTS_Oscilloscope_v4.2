@@ -27,6 +27,7 @@ import { initBackupUI, setBackupLoadFn } from './backup-ui.js';
 import { initParamPropertiesUI } from './param-properties-ui.js';
 import { SearchPanel } from '../oscilloscope/ui/SearchPanel.js';
 import { initHelpUI , showHelpWindow } from './help-ui.js';
+import { hasAnyDirty } from '../ini-manager/dirty-tracker.js';
 
 /** Буфер данных канала (типизирован явно, без any) */
 export interface ChannelBuffer {
@@ -930,6 +931,15 @@ export function initUI(deps: UiManagerDeps): void {
 
   // Конец обработчиков событий
   // ============================================================================
+
+  // Защита от закрытия вкладки при несохранённых изменениях:
+  // браузер покажет стандартное предупреждение.
+  window.addEventListener('beforeunload', (e: BeforeUnloadEvent) => {
+    if (hasAnyDirty()) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
 
   console.log("UI Manager: Интерфейс и обработчики инициализированы.");
 }

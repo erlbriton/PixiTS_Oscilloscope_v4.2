@@ -6,6 +6,7 @@ import { showIdModal } from '../ui/ui.js';
 import { showConfirmDialog } from '../ui/confirm-dialog.js';
 import { getCurrentIniFileHandle } from './file-loader.js';
 import type { AppState } from '../core/app-state.js';
+import { clearAllDirty } from './dirty-tracker.js';
 
 // ─────────────────────────────────────────────
 // Кодировка windows-1251 для записи
@@ -144,6 +145,7 @@ export async function saveIniChanges(appState: AppState): Promise<boolean> {
     await writable.close();
 
     appState.currentIniContent = newContent;
+    clearAllDirty();
     showIdModal(`Сохранено: ${applied} параметров`);
     console.log(`[SAVE] Файл сохранён (windows-1251), обновлено: ${applied}`);
     return true;

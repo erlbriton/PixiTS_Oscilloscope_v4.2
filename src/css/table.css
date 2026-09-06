@@ -168,6 +168,12 @@
 }
 
 /* Выделение строки в таблице Modbus (клик или поиск параметра) */
+
+/* Красная звёздочка несохранённого изменения в колонке № */
+.dirty-star {
+    color: #d40000;
+    font-weight: bold;
+}
 .table-wrapper .modbus-grid tbody tr.selected {
     background-color: #00d2ff !important;
 }

@@ -11,6 +11,7 @@ import {
 import { updateRowValues } from '../ini-manager/tree-ui.js';
 import { IniConfig } from '../core/ini/index.js';
 import type { TableEditorState } from '../ini-manager/table-editor.js'; // Импортируем тип состояния
+import { isDirty } from '../ini-manager/dirty-tracker.js';
 
 declare global {
     interface Window {
@@ -100,6 +101,18 @@ export function renderModbusTable(config?: IniConfig, appState?: TableEditorStat
                 <td class="hex-val">—</td>
                 <td>—</td>
             `;
+
+            // Если параметр уже помечен как несохранённый — добавляем звёздочку
+            if (isDirty(param.id)) {
+                const firstTd = tr.querySelector('td');
+                if (firstTd) {
+                    const star = document.createElement('span');
+                    star.className = 'dirty-star';
+                    star.textContent = ' *';
+                    star.title = 'Есть несохранённые изменения';
+                    firstTd.appendChild(star);
+                }
+            }
 
             const unitsDisplay = param.isBit ? '.' : (param.unit === '*' ? '—' : param.unit);
             const tds = tr.querySelectorAll('td');

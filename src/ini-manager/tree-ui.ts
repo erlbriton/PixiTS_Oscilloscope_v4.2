@@ -15,6 +15,10 @@ import {
 } from './tree-core.js';
 import type { TreeGroupMode, DeviceRegistryItem } from './tree-core.js';
 import { isNativeApp } from '../core/platform.js';
+import { hasAnyDirty, clearAllDirty } from './dirty-tracker.js';
+import { showConfirmDialog } from '../ui/confirm-dialog.js';
+import { saveIniChanges } from './save-ini.js';
+import type { AppState } from '../core/app-state.js';
 
 // ============================================================================
 // Контекстное меню дерева устройств
@@ -78,8 +82,22 @@ document.addEventListener('keydown', (e) => {
 // Пункт меню "Удалить" для группы: убирает все устройства группы
 const ctxGroupDeleteEl = document.getElementById('ctxGroupDelete');
 if (ctxGroupDeleteEl) {
-    ctxGroupDeleteEl.addEventListener('click', () => {
+    ctxGroupDeleteEl.addEventListener('click', async () => {
         if (contextGroupTarget && contextGroupTarget.length > 0) {
+            // Если есть несохранённые изменения — спросить перед удалением
+            if (hasAnyDirty()) {
+                const save = await showConfirmDialog('Записать изменения на диск перед удалением группы?');
+                if (save === null) {
+                    contextGroupTarget = null;
+                    hideTreeGroupContextMenu();
+                    return; // Отмена
+                }
+                if (save) {
+                    const appState = (window as unknown as { appState?: AppState }).appState;
+                    if (appState) await saveIniChanges(appState);
+                }
+                clearAllDirty();
+            }
             const ids: string[] = [];
             for (const item of [...contextGroupTarget]) {
                 if (removeDeviceItemFromRegistry(item)) {
@@ -99,8 +117,18 @@ if (ctxGroupDeleteEl) {
 // Пункт меню "Удалить": убирает устройство из списка загруженных
 const ctxDeleteEl = document.getElementById('ctxDelete');
 if (ctxDeleteEl) {
-    ctxDeleteEl.addEventListener('click', () => {
+    ctxDeleteEl.addEventListener('click', async () => {
         if (!contextTarget) return;
+        // Если есть несохранённые изменения — спросить перед удалением
+        if (hasAnyDirty()) {
+            const save = await showConfirmDialog('Записать изменения на диск перед удалением?');
+            if (save === null) return; // Отмена
+            if (save) {
+                const appState = (window as unknown as { appState?: AppState }).appState;
+                if (appState) await saveIniChanges(appState);
+            }
+            clearAllDirty();
+        }
         const removed = removeDeviceItemFromRegistry(contextTarget);
         if (removed) {
             // file-loader по этому событию уберёт файл из хранилища
@@ -159,7 +187,17 @@ export function renderDeviceTree(): void {
         liElement.style.overflow = 'hidden';
         liElement.style.textOverflow = 'ellipsis';
 
-        liElement.addEventListener('click', () => {
+        liElement.addEventListener('click', async () => {
+            // Если есть несохранённые изменения — спросить перед переключением
+            if (hasAnyDirty()) {
+                const save = await showConfirmDialog('Записать изменения на диск?');
+                if (save === null) return; // Отмена
+                if (save) {
+                    const appState = (window as unknown as { appState?: AppState }).appState;
+                    if (appState) await saveIniChanges(appState);
+                }
+                clearAllDirty();
+            }
             document.querySelectorAll('.tree-id-item.is-selected').forEach(el => el.classList.remove('is-selected'));
             liElement.classList.add('is-selected');
             setCurrentIniConfig(device.iniConfig);
