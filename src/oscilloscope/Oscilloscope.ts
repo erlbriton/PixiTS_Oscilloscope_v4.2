@@ -36,6 +36,13 @@ import {
   syncViewPositions, bindSharedCanvasEvents,
   type RenderingContext } from "./scope/OscilloscopeRenderer";
 import { bindEvents, bindTimeZoomWheel, updateTimeScaleReadout, type BindingsContext } from "./scope/OscilloscopeBindings";
+import {
+  getGraphColumnMetrics as canvasMetrics,
+  updateGraphColumnOffset as canvasUpdateOffset,
+  updateCanvasPosition as canvasUpdatePosition,
+  syncCanvasLayout as canvasSyncLayout,
+  type CanvasContext,
+} from "./scope/OscilloscopeCanvas";
 import type { AppState } from "../core/app-state.js";
 import { Application } from 'pixi.js';
 import { SearchPanel } from './ui/SearchPanel';
@@ -208,8 +215,8 @@ public setAppState(state: AppState): void {
     }
     this.resizer = new Resizer(this.settings, layoutElements.headerContainer);
     // При изменении ширины колонок пересинхронизируем позиции и ширину графиков.
-    this.resizer.onResize = () => {
-      this.graphColumnOffset = this.getGraphColumnMetrics().left;
+        this.resizer.onResize = () => {
+      canvasUpdateOffset(this.getCanvasContext());
       // Обновляем размер и позицию самого canvas-overlay И pixi-рендерера.
       // Без этого графики "застрянут" со старой шириной до прокрутки.
       this.syncCanvasLayout();
@@ -266,12 +273,12 @@ public setAppState(state: AppState): void {
     // Синхронизируем canvas и контейнеры при скролле из ЛЮБОГО источника:
     // колесо мыши, перетаскивание скроллбара, клавиатура
     this.rowsContainer.addEventListener('scroll', () => {
-      this.updateCanvasPosition();
+      canvasUpdatePosition(this.getCanvasContext());
       syncViewPositions(this.getRenderingContext());
     });
     
     // Вычисляем отступ до колонки графиков
-    this.updateGraphColumnOffset();
+    canvasUpdateOffset(this.getCanvasContext());
     
     // Навешиваем обработчики мыши на rowsContainer для работы с маркерами
     bindSharedCanvasEvents(() => this.getRenderingContext());
@@ -297,49 +304,28 @@ public setAppState(state: AppState): void {
     });
   }
   
-  private getGraphColumnMetrics(): { left: number; width: number } {
-    const host = this.rowsContainer.parentElement as HTMLElement;
-    const hostRect = host.getBoundingClientRect();
-    const firstRow = this.rowsContainer.querySelector(".channel-row");
-    const baseEl = firstRow ?? host.querySelector("#header");
-    const graphEl = baseEl ? (baseEl.querySelector(".col-graph") as HTMLElement | null) : null;
-    if (!graphEl) {
-      return { left: 0, width: Math.max(50, this.rowsContainer.clientWidth) };
-    }
-    const rect = graphEl.getBoundingClientRect();
+  /**
+   * Строит контекст для канвас-функций (scope/OscilloscopeCanvas).
+   * Состояние не копируется — передаются живые ссылки и сеттер.
+   */
+  private getCanvasContext(): CanvasContext {
     return {
-      left: Math.round(rect.left - hostRect.left),
-      width: Math.max(50, Math.round(rect.width)),
+      rowsContainer: this.rowsContainer,
+      pixiApp: this.pixiApp,
+      canvasOverlay: this.canvasOverlay,
+      setGraphColumnOffset: (value) => { this.graphColumnOffset = value; },
     };
   }
 
-  private updateGraphColumnOffset(): void {
-    this.graphColumnOffset = this.getGraphColumnMetrics().left;
-  }
-
-  private updateCanvasPosition(): void {
-    if (!this.pixiApp || !this.canvasOverlay) return;
-    const host = this.rowsContainer.parentElement as HTMLElement;
-    const hostRect = host.getBoundingClientRect();
-    const rowsRect = this.rowsContainer.getBoundingClientRect();
-    const metrics = this.getGraphColumnMetrics();
-    this.canvasOverlay.style.top = `${Math.round(rowsRect.top - hostRect.top)}px`;
-    this.canvasOverlay.style.left = `${metrics.left}px`;
-    this.canvasOverlay.style.width = `${metrics.width}px`;
-    this.canvasOverlay.style.height = `${Math.round(rowsRect.height)}px`;
-  }
-
+  /** Публичная обёртка: синхронизация размера/позиции canvas (внешний API не менялся). */
   public syncCanvasLayout(): void {
-    if (!this.pixiApp) return;
-    this.updateCanvasPosition();
-    const metrics = this.getGraphColumnMetrics();
-    this.pixiApp.renderer.resize(metrics.width, Math.max(50, this.rowsContainer.clientHeight));
+    canvasSyncLayout(this.getCanvasContext());
   }
-  
+
   public getPixiApp(): Application | null {
     return this.pixiApp;
   }
-  
+
   public getGraphColumnOffset(): number {
     return this.graphColumnOffset;
   }
@@ -502,7 +488,7 @@ public setAppState(state: AppState): void {
     }
 
     await renderVisibleChannels(this.getRenderingContext());
-    this.updateGraphColumnOffset();
+    canvasUpdateOffset(this.getCanvasContext());
     this.syncCanvasLayout();
     syncViewPositions(this.getRenderingContext());
     this.cursorsFooter?.setStats(this.allChannels.length, this.lastReportedHz);
