@@ -43,6 +43,11 @@ import {
   syncCanvasLayout as canvasSyncLayout,
   type CanvasContext,
 } from "./scope/OscilloscopeCanvas";
+import {
+  createCompositeRow as compositeCreateRow,
+  checkAndUpdateCompositeHeight as compositeCheckHeight,
+  type CompositeContext,
+} from "./scope/OscilloscopeComposite";
 import type { AppState } from "../core/app-state.js";
 import { Application } from 'pixi.js';
 import { SearchPanel } from './ui/SearchPanel';
@@ -801,215 +806,38 @@ public setAppState(state: AppState): void {
   // так как вызов renderCompositeGraph() будет добавлен в следующем шаге.
   // ========================================================================
   /**
-   * Проверяет, входит ли канал в совмещённую строку, и если да — пересчитывает её высоту.
-   * Вызывается из ChannelRow после сохранения свойств канала.
+   * Строит контекст для функций совмещённой строки (scope/OscilloscopeComposite).
+   * Состояние читается через live-геттеры, чтобы замыкания (onDisconnect и т.п.),
+   * срабатывающие позже, всегда видели актуальные значения.
    */
-      public checkAndUpdateCompositeHeight(channelId: string): void {
-    if (!this.compositeRow || !this.compositeChannels) return;
-
-    const isInGroup = this.compositeChannels.some((ch) => ch.id === channelId);
-    if (!isInGroup) return;
-
-    const newTotalHeight = this.compositeChannels.reduce((sum, ch) => sum + ch.rowHeight, 0);
-
-    // Обновляем высоту DOM-элемента совмещённой строки.
-    this.compositeRow.getElement().style.height = `${newTotalHeight}px`;
-
-    if (this.viewerMode) {
-      // В просмотрщике обновляем высоту PixiView НАПРЯМУЮ из данных.
-      // У .channel-row есть CSS-transition высоты, поэтому getBoundingClientRect()
-      // сразу после изменения возвращает СТАРОЕ значение, и syncViewPositions()
-      // перезаписывал бы bounds старой высотой.
-      if (this.compositePixiView) {
-        this.compositePixiView.updateLayout(
-          this.compositePixiView.container.x,
-          this.compositePixiView.container.y,
-          this.compositePixiView.bounds.width,
-          newTotalHeight
-        );
-      }
-      // Принудительная перерисовка: живой цикл отключён.
-      this.renderVisibleGraphs();
-    } else {
-      // В основном осциллографе используем syncViewPositions — живой цикл
-      // постоянно вызывает renderVisibleGraphs, и позиция PixiView должна
-      // быть синхронизирована через DOM.
-      syncViewPositions(this.getRenderingContext());
-    }
+  private getCompositeContext(): CompositeContext {
+    return {
+      table: this.table,
+      rowsContainer: this.rowsContainer,
+      pixiApp: this.pixiApp,
+      pixiViews: this.pixiViews,
+      viewerMode: this.viewerMode,
+      getCompositeRow: () => this.compositeRow,
+      getCompositeView: () => this.compositePixiView,
+      getCompositeChannels: () => this.compositeChannels,
+      setComposite: (row, view, channels) => {
+        this.compositeRow = row;
+        this.compositePixiView = view;
+        this.compositeChannels = channels;
+      },
+      getRenderingContext: () => this.getRenderingContext(),
+      renderVisibleGraphs: () => this.renderVisibleGraphs(),
+    };
   }
+
+  /** Публичная обёртка: пересчёт высоты совмещённой строки (вызывает ChannelRow). */
+  public checkAndUpdateCompositeHeight(channelId: string): void {
+    compositeCheckHeight(this.getCompositeContext(), channelId);
+  }
+
+  /** Публичная обёртка: создание совмещённой строки из выбранных каналов. */
   public createCompositeRow(channels: Channel[]): void {
-    // Логируем начало создания совмещённой строки.
-    console.log(`[Oscilloscope] Создание совмещённой строки из ${channels.length} каналов:`, channels.map(ch => ch.name));
-
-    // ШАГ 1: Удаляем предыдущую совмещённую строку, если она была.
-    // Это нужно сделать до создания новой, чтобы не было дублирования.
-    if (this.compositeRow) {
-      this.destroyCompositeRow();
-    }
-
-    // ШАГ 2: Создаём новый объект совмещённой строки.
-    // Конструктор создаёт HTML-структуру: колонку имён, легенду и контейнер графика.
-    const compositeRow = new CompositeChannelRow(channels);
-
-    // ШАГ 2.1: Настраиваем колбэки для контекстного меню совмещённой строки.
-    // Без этого пункты меню будут появляться, но ничего не делать при клике.
-    
-    // 1. Разъединить: удаляет совмещённую строку и показывает исходные каналы.
-    compositeRow.onDisconnect = () => {
-      this.destroyCompositeRow();
-      syncViewPositions(this.getRenderingContext());
-    };
-
-    // 2. Свойства: открывает окно свойств для первого канала в группе.
-    // Для битовых каналов в совмещённой строке разрешаем кнопку «Сохранить»,
-    // чтобы можно было изменить высоту строки.
-    compositeRow.onShowProperties = () => {
-      if (channels.length > 0) {
-        const firstChannel = channels[0];
-        const row = this.table.getRow(firstChannel.id);
-        if (row && typeof row.openProperties === 'function') {
-          row.openProperties(true); // allowBitSave = true
-        }
-      }
-    };
-
-    // 3. Посчитать коэффициент: открывает свойства первого канала (или специфичную логику).
-    compositeRow.onCalculateCoefficient = () => {
-      if (channels.length > 0) {
-        const firstChannel = channels[0];
-        const row = this.table.getRow(firstChannel.id);
-        if (row) {
-          // Аналогично свойствам: эмулируем действие или вызываем метод расчёта.
-          // Обычно расчёт коэффициента делается внутри окна свойств на соответствующей вкладке.
-          // Поэтому просто откроем свойства, как выше.
-          const dblClickEvent = new MouseEvent('dblclick', {
-            bubbles: true,
-            cancelable: true,
-            view: window
-          });
-          row.getElement().dispatchEvent(dblClickEvent);
-          
-          // Если у вас есть отдельный метод calculateCoefficient() в ChannelRow, вызовите его:
-          // if (typeof (row as any).calculateCoefficient === 'function') {
-          //   (row as any).calculateCoefficient();
-          // }
-        }
-      }
-    };
-    
-    // ШАГ 3: Добавляем элемент строки в конец контейнера строк осциллографа.
-    // Строка появится внизу таблицы, ниже всех одиночных каналов.
-    this.rowsContainer.appendChild(compositeRow.getElement());
-
-    // ШАГ 4: Создаём PixiView для графика совмещённой строки.
-    // Вычисляем общую высоту как сумму высот всех каналов (битовые = 25px,
-    // аналоговые = их текущая высота).
-    const totalHeight = channels.reduce((sum, ch) => sum + ch.rowHeight, 0);
-    
-    let compositePixiView: PixiView | null = null;
-    if (this.pixiApp) {
-      compositePixiView = new PixiView(this.pixiApp, 0, 0, 300, totalHeight);
-      
-      // Добавляем PixiView в общую карту с фиксированным ключом '__composite_row__'.
-      // Это позволяет функции syncViewPositions() найти его и позиционировать
-      // после всех одиночных каналов.
-      this.pixiViews.set('__composite_row__', compositePixiView);
-    }
-
-    // ШАГ 5: Скрываем исходные строки выбранных каналов.
-    // Проходим по массиву каналов и для каждого находим соответствующую
-    // ChannelRow в таблице, затем делаем её невидимой через setVisible(false).
-    // Это убирает их из отрисовки в renderVisibleGraphs(), но не удаляет из памяти.
-    for (const channel of channels) {
-      const row = this.table.getRow(channel.id);
-      if (row) {
-        row.setVisible(false);
-      }
-    }
-
-    // ШАГ 6: Сбрасываем состояние выбора анализа через статический метод ChannelRow.
-    // Это убирает красную подсветку со строк и обнуляет счётчик выбранных.
-    // Метод вызывается после создания совмещённой строки, чтобы пользователь
-    // мог выбрать новую группу каналов сразу после текущей.
-    // ChannelRow.clearAllAnalysisSelection() вызывается напрямую, так как
-    // он статический и доступен из любого места.
-    (this.table.getRow(channels[0].id)?.constructor as any).clearAllAnalysisSelection();
-
-    // ШАГ 7: Сохраняем ссылки для использования в renderVisibleGraphs().
-    this.compositeRow = compositeRow;
-    this.compositePixiView = compositePixiView;
-    this.compositeChannels = channels;
-
-    // ШАГ 8: Принудительная синхронизация позиций и перерисовка для просмотрщика.
-    // Новый PixiView создаётся с дефолтными координатами (0, 0, 300, height),
-    // поэтому сначала syncViewPositions() ставит его на правильное место и ширину,
-    // и только затем renderVisibleGraphs() рисует график. В просмотрщике живой
-    // цикл отключён, поэтому без этого график появляется только после скролла.
-    if (this.viewerMode) {
-      syncViewPositions(this.getRenderingContext());
-      this.renderVisibleGraphs();
-    }
-
-    console.log(`[Oscilloscope] Совмещённая строка создана, высота: ${totalHeight}px`);
-  }
-
-  // ========================================================================
-  // УНИЧТОЖЕНИЕ СОВМЕЩЁННОЙ СТРОКИ
-  // ========================================================================
-  // Метод удаляет текущую совмещённую строку и восстанавливает видимость
-  // исходных строк каналов, которые были в неё включены.
-  // Вызывается из createCompositeRow() перед созданием новой группы
-  // и будет использоваться при клике «Разъединить» в меню совмещённой строки.
-  // ========================================================================
-  private destroyCompositeRow(): void {
-    if (!this.compositeRow) return;
-
-    console.log('[Oscilloscope] Удаление совмещённой строки');
-
-    // Восстанавливаем видимость исходных строк всех каналов группы.
-    // Это вернёт их обратно в таблицу осциллографа с их отдельными графиками.
-    for (const channel of this.compositeChannels) {
-      const row = this.table.getRow(channel.id);
-      if (row) {
-        // Сбрасываем высоту всех каналов к дефолтной 25px.
-        // При совмещении высота могла быть изменена через свойства,
-        // но после разъединения все каналы возвращаются к стандартной высоте.
-        if (channel.rowHeight !== 25) {
-          channel.rowHeight = 25;
-          if (typeof (row as any).updateHeight === 'function') {
-            (row as any).updateHeight();
-          } else {
-            row.getElement().style.height = '25px';
-          }
-        }
-        row.setVisible(true);
-      }
-    }
-
-    // Удаляем HTML-элемент совмещённой строки из DOM.
-    this.compositeRow.remove();
-
-    // Уничтожаем PixiView, чтобы освободить ресурсы WebGL.
-    if (this.compositePixiView) {
-      this.compositePixiView.destroy();
-      this.compositePixiView = null;
-      
-      // Удаляем PixiView из общей карты, чтобы syncViewPositions() больше
-      // не пытался его позиционировать.
-      this.pixiViews.delete('__composite_row__');
-    }
-
-    // Очищаем ссылки.
-    this.compositeRow = null;
-    this.compositeChannels = [];
-
-    // Принудительная синхронизация позиций и перерисовка для просмотрщика.
-    // Живой цикл отключён, поэтому графики восстановленных строк не появятся
-    // без явного вызова renderVisibleGraphs().
-    if (this.viewerMode) {
-      syncViewPositions(this.getRenderingContext());
-      this.renderVisibleGraphs();
-    }
+    compositeCreateRow(this.getCompositeContext(), channels);
   }
 
     /**
