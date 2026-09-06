@@ -19,6 +19,7 @@ import { hasAnyDirty, clearAllDirty } from './dirty-tracker.js';
 import { showConfirmDialog } from '../ui/confirm-dialog.js';
 import { saveIniChanges } from './save-ini.js';
 import type { AppState } from '../core/app-state.js';
+import { currentIniConfig } from './tree-core.js';
 
 // ============================================================================
 // Контекстное меню дерева устройств
@@ -98,6 +99,12 @@ if (ctxGroupDeleteEl) {
                 }
                 clearAllDirty();
             }
+            
+            // Проверяем, был ли один из удаляемых файлов текущим
+            const selectedElement = document.querySelector('.tree-id-item.is-selected');
+            const selectedId = selectedElement?.getAttribute('data-device-id');
+            const wasSelectedInGroup = contextGroupTarget.some(item => String(item.id) === selectedId);
+            
             const ids: string[] = [];
             for (const item of [...contextGroupTarget]) {
                 if (removeDeviceItemFromRegistry(item)) {
@@ -108,6 +115,28 @@ if (ctxGroupDeleteEl) {
                 window.dispatchEvent(new CustomEvent('app:device-removed', { detail: { id } }));
             }
             renderDeviceTree();
+            
+            // Если удалили текущий файл — выбираем другой или очищаем таблицу
+            if (wasSelectedInGroup) {
+                const remaining = getAllDevices();
+                if (remaining.length > 0) {
+                    const firstLi = document.querySelector<HTMLLIElement>('.tree-id-item.is-leaf');
+                    if (firstLi) {
+                        // Раскрываем родительскую группу <details>, если она свёрнута
+                        const details = firstLi.closest('details');
+                        if (details && !(details as HTMLDetailsElement).open) {
+                            (details as HTMLDetailsElement).open = true;
+                        }
+                        firstLi.click();
+                        // Прокручиваем, чтобы подсвеченный файл был виден
+                        firstLi.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    }
+                } else {
+                    setCurrentIniConfig(null);
+                    renderModbusTable();
+                    populateDeviceForm({});
+                }
+            }
         }
         contextGroupTarget = null;
         hideTreeGroupContextMenu();
@@ -129,6 +158,10 @@ if (ctxDeleteEl) {
             }
             clearAllDirty();
         }
+        
+        // Проверяем, был ли удаляемый файл текущим (подсвеченным)
+        const wasSelected = document.querySelector(`.tree-id-item.is-selected[data-device-id="${CSS.escape(contextTarget.id)}"]`);
+        
         const removed = removeDeviceItemFromRegistry(contextTarget);
         if (removed) {
             // file-loader по этому событию уберёт файл из хранилища
@@ -137,6 +170,30 @@ if (ctxDeleteEl) {
                 detail: { id: String(contextTarget.id) },
             }));
             renderDeviceTree();
+            
+            // Если удалили текущий файл — выбираем другой или очищаем таблицу
+            if (wasSelected) {
+                const remaining = getAllDevices();
+                if (remaining.length > 0) {
+                    // Выбираем первый оставшийся файл в дереве
+                    const firstLi = document.querySelector<HTMLLIElement>('.tree-id-item.is-leaf');
+                    if (firstLi) {
+                        // Раскрываем родительскую группу <details>, если она свёрнута
+                        const details = firstLi.closest('details');
+                        if (details && !(details as HTMLDetailsElement).open) {
+                            (details as HTMLDetailsElement).open = true;
+                        }
+                        firstLi.click();
+                        // Прокручиваем, чтобы подсвеченный файл был виден
+                        firstLi.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    }
+                } else {
+                    // Файлов не осталось — очищаем таблицу и форму
+                    setCurrentIniConfig(null);
+                    renderModbusTable();
+                    populateDeviceForm({});
+                }
+            }
         }
         contextTarget = null;
         hideTreeContextMenu();

@@ -62,6 +62,22 @@ export async function openIniFile(appState: AppState): Promise<void> {
       iniFileHandles.set(file.name, fileHandle);
       await processSingleFileContent(content, file.name, appState, file, fileHandle);
     }
+
+    // Если до открытия ни один файл не был выбран — автоматически выбираем первый
+    setTimeout(() => {
+      const selected = document.querySelector('.tree-id-item.is-selected');
+      if (!selected) {
+        const firstLi = document.querySelector<HTMLLIElement>('.tree-id-item.is-leaf');
+        if (firstLi) {
+          const details = firstLi.closest('details');
+          if (details && !(details as HTMLDetailsElement).open) {
+            (details as HTMLDetailsElement).open = true;
+          }
+          firstLi.click();
+          firstLi.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      }
+    }, 100);
   } catch (err: unknown) {
     if (err instanceof Error && err.name === 'AbortError') {
       // Пользователь отменил выбор файла
@@ -133,13 +149,29 @@ export async function openIniFolder(appState: AppState): Promise<void> {
                         }
                     }
                 }
-            }
+                    }
+    }
+
+    // Если до открытия ни один файл не был выбран — автоматически выбираем первый
+    setTimeout(() => {
+      const selected = document.querySelector('.tree-id-item.is-selected');
+      if (!selected) {
+        const firstLi = document.querySelector<HTMLLIElement>('.tree-id-item.is-leaf');
+        if (firstLi) {
+          const details = firstLi.closest('details');
+          if (details && !(details as HTMLDetailsElement).open) {
+            (details as HTMLDetailsElement).open = true;
+          }
+          firstLi.click();
+          firstLi.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
-    } catch (err: unknown) {
-        if (err instanceof Error && err.name === 'AbortError') {
-            // Пользователь отменил выбор папки
-            return;
-        }
+      }
+    }, 100);
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      // Пользователь отменил выбор папки
+      return;
+    }
         const msg = err instanceof Error ? err.message : String(err);
         showIdModal('Ошибка открытия папки: ' + msg);
         console.error('[file-loader] openIniFolder error:', err);
