@@ -57,11 +57,11 @@ export async function saveIniChanges(appState: AppState): Promise<boolean> {
     return false;
   }
 
-  // Собираем изменения из таблицы: key → новое значение в формате INI
+  // Собираем изменения из таблицы: key → весь массив parts
   const rows = Array.from(
     document.querySelectorAll<HTMLTableRowElement>('#grid-data-rows tr'),
   );
-  const changes: { key: string; value: string }[] = [];
+  const changes: { key: string; parts: string[] }[] = [];
 
   for (const tr of rows) {
     const key = tr.getAttribute('data-key') || '';
@@ -74,26 +74,27 @@ export async function saveIniChanges(appState: AppState): Promise<boolean> {
     const baseText = (tds[4]?.textContent || '').trim();
     if (!baseText || baseText === '—') continue;
 
-    let iniValue: string | null = null;
+    let parts: string[] = [];
+    try { parts = JSON.parse(tr.dataset.parts || '[]'); } catch { continue; }
 
     if (dataType === 'TPRMLIST') {
-      // Текст опции → hex через список опций из data-parts
-      let partsRaw: string[] = [];
-      try { partsRaw = JSON.parse(tr.dataset.parts || '[]'); } catch { partsRaw = []; }
-      for (const p of partsRaw) {
+      // Обновляем hex в parts через текст опции
+      for (const p of parts) {
         const part = (p || '').trim();
         if (part.includes('#')) {
           const [h, t] = part.split('#');
-          if (h && t && t.trim() === baseText) { iniValue = h.trim(); break; }
+          if (h && t && t.trim() === baseText) {
+            const hexIndex = parseInt(tr.getAttribute('data-hex-index') || '-1', 10);
+            if (hexIndex >= 0 && hexIndex < parts.length) {
+              parts[hexIndex] = h.trim();
+            }
+            break;
+          }
         }
       }
-    } else {
-      // Для остальных типов ячейка Базы-hex уже содержит токен INI ('x0014', 'xC0A80064', '0'/'1')
-      iniValue = baseText;
     }
 
-    if (!iniValue) continue;
-    changes.push({ key, value: iniValue });
+    changes.push({ key, parts });
   }
 
   if (changes.length === 0) {
@@ -103,7 +104,7 @@ export async function saveIniChanges(appState: AppState): Promise<boolean> {
 
   console.log('[SAVE] Собранные изменения:', JSON.stringify(changes.slice(0, 10)));
 
-  // Хирургическая правка: меняем ТОЛЬКО последний токен значения в строке key=...
+  // Хирургическая правка: обновляем все изменённые токены в строке key=...
   const sep = original.includes('\r\n') ? '\r\n' : '\n';
   const lines = original.split(/\r?\n/);
   let applied = 0;
@@ -121,11 +122,14 @@ export async function saveIniChanges(appState: AppState): Promise<boolean> {
       const eq = line.indexOf('=');
       const rawValue = line.substring(eq + 1);
       const tokens = rawValue.split('/');
-      let idx = tokens.length - 1;
-      if (tokens[idx] === '') idx--; // пропускаем пустой хвостовой токен
-      if (idx < 0) break;
 
-      tokens[idx] = change.value;
+      // Обновляем все токены из parts
+      for (let j = 0; j < change.parts.length && j < tokens.length; j++) {
+        if (tokens[j] !== change.parts[j]) {
+          tokens[j] = change.parts[j];
+        }
+      }
+
       lines[i] = line.substring(0, eq + 1) + tokens.join('/');
       applied++;
       break;

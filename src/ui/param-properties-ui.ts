@@ -71,8 +71,28 @@ export function initParamPropertiesUI(): void {
 
     closeBtn?.addEventListener('click', hide);
     applyBtn?.addEventListener('click', () => {
-      // Помечаем параметр как изменённый перед закрытием окна
-      if (currentParamId) markDirty(currentParamId);
+      // Сохраняем изменённый коэффициент в parts
+      if (currentParamId) {
+        const row = document.querySelector<HTMLTableRowElement>(
+          `#grid-data-rows tr[data-key="${CSS.escape(currentParamId)}"]`
+        );
+        if (row) {
+          let parts: string[] = [];
+          try { parts = JSON.parse(row.dataset.parts || '[]'); } catch {}
+          
+          const coefficientInput = document.getElementById('paramPropsCoefficient') as HTMLInputElement | null;
+          if (coefficientInput && coefficientInput.value.trim()) {
+            const newMultiplier = coefficientInput.value.trim().replace(',', '.');
+            if (parts.length > 9) {
+              parts[9] = newMultiplier;
+              row.dataset.parts = JSON.stringify(parts);
+              console.log(`[PARAM-PROPS] ${currentParamId}: множитель обновлён на ${newMultiplier}`);
+            }
+          }
+          
+          markDirty(currentParamId);
+        }
+      }
       hide();
     });
     cancelBtn?.addEventListener('click', hide);
@@ -105,9 +125,7 @@ export function showParamPropertiesModal(param: ParamInfo, allSiblings: ParamInf
     const scaleSelect = document.getElementById('paramPropsScaleSelect') as HTMLSelectElement | null;
     const scaleValue = document.getElementById('paramPropsScaleValue') as HTMLInputElement | null;
     const dependsSelect = document.getElementById('paramPropsDependsSelect') as HTMLSelectElement | null;
-    const dependsSide = document.getElementById('paramPropsDependsSide') as HTMLInputElement | null;
     const coefficient = document.getElementById('paramPropsCoefficient') as HTMLInputElement | null;
-    const yx = document.getElementById('paramPropsYX') as HTMLInputElement | null;
 
     if (nameInput) nameInput.value = param.name ?? '';
     if (descInput) descInput.value = param.description ?? '';
@@ -118,25 +136,35 @@ export function showParamPropertiesModal(param: ParamInfo, allSiblings: ParamInf
     if (scaleSelect) scaleSelect.value = scaleName;
     if (scaleValue) scaleValue.value = getScaleValue(scaleName);
 
-    // "Зависит от": все id других параметров секции, кроме текущего.
+    // Получаем parts из строки таблицы
+    const row = document.querySelector<HTMLTableRowElement>(
+        `#grid-data-rows tr[data-key="${CSS.escape(param.id)}"]`
+    );
+    let parts: string[] = [];
+    if (row) {
+        try { parts = JSON.parse(row.dataset.parts || '[]'); } catch {}
+    }
+
+    const dependsOn = (parts[8] ?? '').trim();
+    const multiplier = (parts[9] ?? '').trim();
+
+    // "Зависит от": выпадающий список с одним элементом, заблокированный
+    // (пользователь не может изменить — зависимость задаётся только в INI)
     if (dependsSelect) {
         dependsSelect.innerHTML = '';
-        const emptyOpt = document.createElement('option');
-        emptyOpt.value = '';
-        emptyOpt.textContent = '—';
-        dependsSelect.appendChild(emptyOpt);
-        for (const sibling of allSiblings) {
-            if (sibling.id === param.id) continue;
-            const opt = document.createElement('option');
-            opt.value = sibling.id;
-            opt.textContent = sibling.id;
-            dependsSelect.appendChild(opt);
-        }
-        dependsSelect.value = '';
+        const opt = document.createElement('option');
+        opt.value = dependsOn;
+        opt.textContent = dependsOn || '—';
+        dependsSelect.appendChild(opt);
+        dependsSelect.value = dependsOn;
+        dependsSelect.disabled = true;
+        dependsSelect.style.backgroundColor = '#f0f0f0';
     }
-    if (dependsSide) dependsSide.value = ''; // Заглушка
-    if (coefficient) coefficient.value = ''; // Заглушка
-    if (yx) yx.value = ''; // Заглушка
+
+    // Коэффициент: редактируемое поле
+    if (coefficient) {
+        coefficient.value = multiplier.replace('.', ',');
+    }
 
     overlay.classList.remove('hidden');
 }

@@ -51,6 +51,7 @@ export function renderModbusTable(config?: IniConfig, appState?: TableEditorStat
             tr.setAttribute('data-type', param.dataType);
             tr.setAttribute('data-section', selectedMode);
             tr.setAttribute('data-key', param.id);
+            tr.setAttribute('data-name', param.name);
 
             if (param.registerAddress !== null) {
                 tr.setAttribute('data-reg', param.registerAddress.toString(16));

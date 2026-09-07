@@ -4,6 +4,7 @@
 import { float32ToHex } from '../ini-manager/tree-core.js';
 import { processControllerWrite, updateMismatchClass, updateCellDisplay } from './controller-write.js';
 import { processBasePrmListWrite, processBaseIpAddrWrite } from './base-write.js';
+import { markDirty } from '../ini-manager/dirty-tracker.js';
 import type { TableEditorState } from '../ini-manager/table-editor.js';
 
 export async function processValueWrite(
@@ -142,5 +143,101 @@ export async function processValueWrite(
     }
 
     console.log(`[UI ONLY] Значения обновлены в памяти. Hex: ${parts[4]}, Phys: ${parts[5]}`);
+
+    // --- ЛОГИКА ЗАВИСИМОСТЕЙ ПАРАМЕТРОВ ---
+    const currentParamName = (parts[0] ?? '').trim();
+    const dependsOn = (parts[8] ?? '').trim();
+
+    // 1. Если текущий параметр зависимый — пересчитываем множитель
+    if (dependsOn && colIndex >= 4 && colIndex <= 5) {
+        const baseRow = document.querySelector<HTMLTableRowElement>(
+            `#grid-data-rows tr[data-name="${CSS.escape(dependsOn)}"]`
+        );
+        if (baseRow) {
+            const basePhysText = (baseRow.querySelectorAll('td')[5]?.textContent || '').trim();
+            const baseValue = parseFloat(basePhysText.replace(',', '.'));
+            const currentPhysText = (tds[5]?.textContent || '').trim();
+            const currentValue = parseFloat(currentPhysText.replace(',', '.'));
+            
+            if (!isNaN(baseValue) && baseValue !== 0 && !isNaN(currentValue)) {
+                const newMultiplier = currentValue / baseValue;
+                parts[9] = newMultiplier.toString().replace('.', ',');
+                tr.dataset.parts = JSON.stringify(parts);
+                console.log(`[DEPENDENCY] ${tr.getAttribute('data-key')} зависит от ${dependsOn}, множитель обновлён: ${parts[9]}`);
+            }
+        }
+    }
+
+    // 2. Обновляем все параметры, зависящие от текущего
+    const allRows = document.querySelectorAll<HTMLTableRowElement>('#grid-data-rows tr');
+    allRows.forEach(depRow => {
+        if (depRow === tr) return;
+        
+        let depParts: string[] = [];
+        try { depParts = JSON.parse(depRow.dataset.parts || '[]'); } catch { return; }
+        
+        const depDependsOn = (depParts[8] ?? '').trim();
+        if (depDependsOn !== currentParamName) return;
+        
+        const multiplierStr = (depParts[9] ?? '1').replace(',', '.');
+        const multiplier = parseFloat(multiplierStr);
+        if (isNaN(multiplier)) return;
+        
+        const currentPhysText = (tds[5]?.textContent || '').trim();
+        const currentValue = parseFloat(currentPhysText.replace(',', '.'));
+        if (isNaN(currentValue)) return;
+        
+        const newDepValue = currentValue * multiplier;
+        const newDepValueStr = Number.isInteger(newDepValue) ? newDepValue.toString() : newDepValue.toFixed(4);
+        
+        const depDataType = (depRow.getAttribute('data-type') || '').toUpperCase();
+        const depHexIndex = parseInt(depRow.getAttribute('data-hex-index') || '-1', 10);
+        const depIs32Bit = depDataType.includes('FLOAT') || depDataType.includes('DWORD') ||
+            depDataType.includes('LONG') || depDataType.includes('INT32');
+        
+        let depScale = 1.0;
+        if (depParts.length > 6 && depParts[6]) {
+            const parsedScale = parseFloat(depParts[6].replace(',', '.'));
+            if (!isNaN(parsedScale) && parsedScale !== 0) depScale = parsedScale;
+        }
+        
+        let newDepHex: string;
+        if (depDataType.includes('FLOAT')) {
+            const unscaledVal = newDepValue / depScale;
+            const hexStr = float32ToHex(unscaledVal);
+            newDepHex = 'x' + hexStr.toUpperCase();
+        } else {
+            const rawVal = Math.round(newDepValue / depScale);
+            if (depIs32Bit) {
+                newDepHex = 'x' + rawVal.toString(16).toUpperCase().padStart(8, '0');
+            } else {
+                const word = rawVal & 0xFFFF;
+                newDepHex = 'x' + word.toString(16).toUpperCase().padStart(4, '0');
+            }
+        }
+        
+        if (depHexIndex >= 0 && depHexIndex < depParts.length) {
+            depParts[depHexIndex] = newDepHex;
+        }
+        
+        depRow.dataset.parts = JSON.stringify(depParts);
+        
+        const depTds = depRow.querySelectorAll('td');
+        updateCellDisplay(depTds[4], newDepHex);
+        updateCellDisplay(depTds[5], newDepValueStr);
+        updateMismatchClass(depRow, depDataType);
+        
+        const depParamId = depRow.getAttribute('data-key') || '';
+        if (depParamId) markDirty(depParamId);
+        
+        const depActiveCell = depTds[colIndex];
+        if (depActiveCell) {
+            depActiveCell.classList.add('write-success');
+            setTimeout(() => depActiveCell.classList.remove('write-success'), 1000);
+        }
+        
+        console.log(`[DEPENDENCY] ${depParamId} обновлён: ${newDepValueStr} (базовый: ${currentParamName}, множитель: ${multiplier})`);
+    });
+
     return true;
 }
