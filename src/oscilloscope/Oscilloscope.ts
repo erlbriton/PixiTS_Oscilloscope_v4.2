@@ -67,6 +67,7 @@ import {
   destroy as lifecycleDestroy,
   showFrozenState as lifecycleShowFrozenState,
   resumeFromFrozen as lifecycleResumeFromFrozen,
+  initialize as lifecycleInitialize,
 } from "./scope/OscilloscopeLifecycle";
 import type { AppState } from "../core/app-state.js";
 import { Application } from 'pixi.js';
@@ -77,33 +78,33 @@ export class Oscilloscope {
   public settings: Settings;
   public archive: Archive;
   public serial: Serial | null;
-  private recorder: Recorder | null;
-  private viewerMode: boolean = false;
-  private table!: Table;
+  public recorder: Recorder | null;
+  public viewerMode: boolean = false;
+  public table!: Table;
   public toolbar!: Toolbar;
-  private resizer!: Resizer;
+  public resizer!: Resizer;
   private renderer!: Renderer;
   public iniPanel!: IniPanel;
-  private bottomPanels!: BottomPanels;
+  public bottomPanels!: BottomPanels;
   public cursorsFooter!: CursorsFooter;
-  private searchPanel!: SearchPanel;
+  public searchPanel!: SearchPanel;
   public connectionModal!: ConnectionModal;
-  private timelineScrollbar!: TimelineScrollbar;
+  public timelineScrollbar!: TimelineScrollbar;
   public connectionLost: boolean = false;
-  private rowsContainer!: HTMLElement;
-  private splitContainer!: HTMLElement;
+  public rowsContainer!: HTMLElement;
+  public splitContainer!: HTMLElement;
   public allChannels: Channel[] = [];
   public visibleChannels: Channel[] = [];
   public pixiViews: Map<string, PixiView> = new Map();
   public isRunning: boolean = false;
   public lastFrameTime: number = 0;
-  private propertiesModal!: PropertiesModal;
+  public propertiesModal!: PropertiesModal;
   public availableIniFiles: IniFileItem[] = [];
   public currentIniId: string | null = null;
   public animFrameId: number | null = null;
   private lastRenderTime: number = 0;
   private lastRenderSignature: string = "";
-  private drawCallCount: number = 0;
+  public drawCallCount: number = 0;
   public lastReportedHz: number = 0;
   public statsTimerId: number | null = null;
   public targetRoot: HTMLElement | null = null;
@@ -115,9 +116,9 @@ export class Oscilloscope {
   private onPollingStateChangeCallback?: (isPolling: boolean) => void;
   public currentIniConfig: IniConfig | null = null;
   private appState: AppState | null = null;
-  private pixiApp: Application | null = null;
+  public pixiApp: Application | null = null;
   private graphColumnOffset: number = 0;
-  private canvasOverlay: HTMLDivElement | null = null;
+  public canvasOverlay: HTMLDivElement | null = null;
   
   // ========================================================================
   // СОВМЕЩЁННАЯ СТРОКА (Composite Channel Row)
@@ -190,142 +191,7 @@ public setAppState(state: AppState): void {
   public async initialize(
     targetContainer?: HTMLElement | string,
   ): Promise<void> {
-    if (this.targetRoot) return;
-    let rootElement: HTMLElement | null = null;
-    if (typeof targetContainer === "string") {
-      rootElement = document.querySelector(targetContainer);
-    } else if (targetContainer instanceof HTMLElement) {
-      rootElement = targetContainer;
-    }
-    if (!rootElement) {
-      rootElement = document.getElementById("root") || document.body;
-    }
-    this.targetRoot = rootElement;
-    this.isDestroyed = false;
-    this.settings.applyCSSTemplateVariables();   
-    const layoutElements = Layout.createSkeleton(rootElement);
-    this.splitContainer = layoutElements.splitContainer;
-    if (this.viewerMode) {
-      // В просмотрщике осциллограф всегда на всю ширину
-      this.splitContainer.classList.remove("half-window-left");
-    }
-
-    this.timelineScrollbar = new TimelineScrollbar(layoutElements.timelineContainer);
-    this.timelineScrollbar.onChange((timestamp) => {
-      if (this.timelineScrollbar.isAtLivePosition() && this.settings.isPolling) {
-        this.settings.followLive();
-      } else {
-        this.settings.setViewTime(timestamp);
-      }
-    });
-    this.table = new Table(layoutElements.rowsContainer);
-    this.toolbar = new Toolbar(
-      layoutElements.toolbarContainer,
-      this.settings,
-      this.recorder,
-      this.serial,
-    );
-    this.toolbar.initialize();
-    this.toolbar.setAutoScaleButtonState(true);
-    if (this.viewerMode) {
-      this.toolbar.applyViewerMode();
-      // Принудительно растягиваем осциллограф на всю ширину в просмотрщике
-      this.splitContainer.classList.remove("half-window-left");
-      this.splitContainer.style.width = "100%";
-      const oscRoot = rootElement.firstElementChild as HTMLElement | null;
-      if (oscRoot) oscRoot.style.width = "100%";
-      // Просмотрщик: отключаем "живой" режим, иначе маркеры плывут
-      this.settings.isPolling = false;
-    }
-    this.resizer = new Resizer(this.settings, layoutElements.headerContainer);
-    // При изменении ширины колонок пересинхронизируем позиции и ширину графиков.
-        this.resizer.onResize = () => {
-      canvasUpdateOffset(this.getCanvasContext());
-      // Обновляем размер и позицию самого canvas-overlay И pixi-рендерера.
-      // Без этого графики "застрянут" со старой шириной до прокрутки.
-      this.syncCanvasLayout();
-      syncViewPositions(this.getRenderingContext());
-    };
-    this.resizer.initialize();
-    this.iniPanel = new IniPanel(layoutElements.iniPanelContainer);
-    this.bottomPanels = new BottomPanels(layoutElements.bottomPanelsContainer);
-    this.cursorsFooter = new CursorsFooter(layoutElements.footerContainer);
-    this.statsTimerId = window.setInterval(() => {
-      const hz = this.drawCallCount / 5;
-      this.lastReportedHz = hz;
-      this.drawCallCount = 0;
-      this.cursorsFooter?.setStats(this.allChannels.length, hz);
-    }, 5000);
-    this.rowsContainer = layoutElements.rowsContainer;
-    this.propertiesModal = new PropertiesModal();
-
-    // Делаем экземпляр осциллографа доступным глобально для доступа из UI-компонентов (модалок).
-    (window as any).osc = this;
-    this.connectionModal = new ConnectionModal();
-    bindEvents(this.getBindingsContext());
-    bindTimeZoomWheel(this.getBindingsContext(), this.rowsContainer);
-    
-    // Создаём единое PixiJS приложение для всего осциллографа
-    this.pixiApp = new Application();
-    await this.pixiApp.init({
-      backgroundAlpha: 0,
-      antialias: true,
-      autoDensity: true,
-      resolution: window.devicePixelRatio || 1,
-    });
-    
-    // Создаём персональную обёртку поверх колонки графиков.
-    // Обёртка управляется только нашими инлайн-стилями,
-    // а canvas растягивается внутри неё штатным CSS приложения.
-    const canvasHost = this.rowsContainer.parentElement as HTMLElement;
-    canvasHost.style.position = 'relative';
-    this.canvasOverlay = document.createElement('div');
-    this.canvasOverlay.style.position = 'absolute';
-    this.canvasOverlay.style.overflow = 'hidden';
-    this.canvasOverlay.style.zIndex = '5';
-    canvasHost.appendChild(this.canvasOverlay);
-    this.canvasOverlay.appendChild(this.pixiApp.canvas);
-    this.syncCanvasLayout();
-    
-    // Синхронизируем размер и позицию canvas с rowsContainer
-    const resizeObserver = new ResizeObserver(() => {
-      this.syncCanvasLayout();
-      syncViewPositions(this.getRenderingContext());
-    });
-    resizeObserver.observe(this.rowsContainer);
-    
-    // Синхронизируем canvas и контейнеры при скролле из ЛЮБОГО источника:
-    // колесо мыши, перетаскивание скроллбара, клавиатура
-    this.rowsContainer.addEventListener('scroll', () => {
-      canvasUpdatePosition(this.getCanvasContext());
-      syncViewPositions(this.getRenderingContext());
-    });
-    
-    // Вычисляем отступ до колонки графиков
-    canvasUpdateOffset(this.getCanvasContext());
-    
-    // Навешиваем обработчики мыши на rowsContainer для работы с маркерами
-    bindSharedCanvasEvents(() => this.getRenderingContext());
-    
-    this.isRunning = true;
-    this.lastFrameTime = performance.now();
-    this.animFrameId = requestAnimationFrame((t) => this.loop(t));
-
-        this.searchPanel = new SearchPanel();
-    this.searchPanel.onSelect = (item) => {
-      document.querySelectorAll(".channel-row.selected").forEach((el) => {
-        el.classList.remove("selected");
-      });
-      const row = this.table.getRow(item.id);
-      if (row) {
-        const rowElement = row.getElement();
-        rowElement.classList.add("selected");
-        rowElement.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
-    };
-    window.addEventListener("oscilloscope-search", () => {
-      this.searchPanel.open(this.allChannels);
-    });
+    return lifecycleInitialize(this, targetContainer);
   }
   
   /**
@@ -462,7 +328,7 @@ public setAppState(state: AppState): void {
     };
   }
 
-    private getBindingsContext(): BindingsContext {
+    public getBindingsContext(): BindingsContext {
     return {
       settings: this.settings,
       getChannels: () => this.allChannels,
