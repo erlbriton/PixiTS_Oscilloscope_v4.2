@@ -36,6 +36,7 @@ export class ChannelRow {
     private isVisible: boolean = true;
     private lastHex: string = "";
     private lastValue: string = "";
+    private lastUpdateTime: number = 0; // Троттлинг обновления цифр: 5 Гц вместо ~50 Гц
     private coefficientModal: CoefficientModal | null = null;
 
     // Флаг выбора данного конкретного канала для анализа (совмещения графиков).
@@ -462,6 +463,14 @@ export class ChannelRow {
 
     public updateValue(): void {
         if (!this.isVisible) return;
+
+        // Троттлинг: обновляем цифры не чаще раза в 200 мс (5 Гц вместо 50 Гц)
+        // Опрос устройства и отрисовка графиков остаются на прежней частоте
+        const now = Date.now();
+        if (now - this.lastUpdateTime < 200) {//Период вывода значений величины сигнала.
+            return;
+        }
+        this.lastUpdateTime = now;
 
         if (this.channel.dataType.toUpperCase() === 'TIPADDR') {
             const num = Math.floor(this.channel.rawDecValue) >>> 0;
