@@ -62,45 +62,51 @@ import {
   loadIniContent as channelsLoadIniContent,
   setActiveIni as channelsSetActiveIni,
 } from "./scope/OscilloscopeChannels";
+import {
+  setConnectionStatus as lifecycleSetConnectionStatus,
+  destroy as lifecycleDestroy,
+  showFrozenState as lifecycleShowFrozenState,
+  resumeFromFrozen as lifecycleResumeFromFrozen,
+} from "./scope/OscilloscopeLifecycle";
 import type { AppState } from "../core/app-state.js";
 import { Application } from 'pixi.js';
 import { SearchPanel } from './ui/SearchPanel';
 
 
 export class Oscilloscope {
-  private settings: Settings;
+  public settings: Settings;
   public archive: Archive;
   public serial: Serial | null;
   private recorder: Recorder | null;
   private viewerMode: boolean = false;
   private table!: Table;
-  private toolbar!: Toolbar;
+  public toolbar!: Toolbar;
   private resizer!: Resizer;
   private renderer!: Renderer;
   public iniPanel!: IniPanel;
   private bottomPanels!: BottomPanels;
   public cursorsFooter!: CursorsFooter;
   private searchPanel!: SearchPanel;
-  private connectionModal!: ConnectionModal;
+  public connectionModal!: ConnectionModal;
   private timelineScrollbar!: TimelineScrollbar;
-  private connectionLost: boolean = false;
+  public connectionLost: boolean = false;
   private rowsContainer!: HTMLElement;
   private splitContainer!: HTMLElement;
   public allChannels: Channel[] = [];
   public visibleChannels: Channel[] = [];
-  private pixiViews: Map<string, PixiView> = new Map();
-  private isRunning: boolean = false;
-  private lastFrameTime: number = 0;
+  public pixiViews: Map<string, PixiView> = new Map();
+  public isRunning: boolean = false;
+  public lastFrameTime: number = 0;
   private propertiesModal!: PropertiesModal;
   public availableIniFiles: IniFileItem[] = [];
   public currentIniId: string | null = null;
-  private animFrameId: number | null = null;
+  public animFrameId: number | null = null;
   private lastRenderTime: number = 0;
   private lastRenderSignature: string = "";
   private drawCallCount: number = 0;
   public lastReportedHz: number = 0;
-  private statsTimerId: number | null = null;
-  private targetRoot: HTMLElement | null = null;
+  public statsTimerId: number | null = null;
+  public targetRoot: HTMLElement | null = null;
   public isDestroyed: boolean = false;
   public lastLoadedIniContent: string | null = null;
   private selectedChannel: Channel | null = null;
@@ -399,63 +405,11 @@ public setAppState(state: AppState): void {
   }
 
   public setConnectionStatus(connected: boolean, message?: string): void {
-    if (this.isDestroyed) return;
-
-    if (this.toolbar) {
-      this.toolbar.updateStatus(connected);
-    }
-
-    if (connected) {
-      if (!this.connectionLost) return;
-      this.connectionLost = false;
-      this.connectionModal.close();
-      this.isRunning = true;
-      this.lastFrameTime = performance.now();
-      // Возобновляем рендер-цикл, если он не запущен
-      if (this.animFrameId === null) {
-        this.animFrameId = requestAnimationFrame((t) => this.loop(t));
-      }
-      if (this.settings.isPolling) {
-        if (this.serial) {
-          this.serial.resumePolling();
-        }
-      }
-    } else {
-      if (this.connectionLost) return;
-      this.connectionLost = true;
-      this.isRunning = false;
-      // ПРИНУДИТЕЛЬНО останавливаем рендер-цикл: отменяем запланированный кадр
-      if (this.animFrameId !== null) {
-        cancelAnimationFrame(this.animFrameId);
-        this.animFrameId = null;
-      }
-      this.connectionModal.show(message ?? "Связь с устройством потеряна.");
-    }
+    lifecycleSetConnectionStatus(this, connected, message);
   }
 
   public destroy(): void {
-    this.isDestroyed = true;
-    this.isRunning = false;
-    this.connectionModal?.close();
-    if (this.statsTimerId !== null) {
-      clearInterval(this.statsTimerId);
-      this.statsTimerId = null;
-    }
-    if (this.animFrameId !== null) {
-      cancelAnimationFrame(this.animFrameId);
-      this.animFrameId = null;
-    }
-    this.pixiViews.forEach((view) => {
-      try {
-        view.destroy();
-      } catch (err) {
-        console.warn("[Oscilloscope] Failed to destroy PixiView:", err);
-      }
-    });
-    this.pixiViews.clear();
-    if (this.targetRoot) {
-      this.targetRoot.innerHTML = "";
-    }
+    lifecycleDestroy(this);
   }
 
   public async loadIniContent(iniContent: string): Promise<void> {
@@ -612,8 +566,8 @@ public setAppState(state: AppState): void {
     };
   }
 
-  /** Кадровый цикл (приватный — запускается из setConnectionStatus/resumeFromFrozen). */
-  private loop(now: number): void {
+  /** Кадровый цикл (запускается из lifecycle-функций и initialize). */
+  public loop(now: number): void {
     loopTick(this.getLoopContext(), now);
   }
 
@@ -680,18 +634,8 @@ public setAppState(state: AppState): void {
     compositeCreateRow(this.getCompositeContext(), channels);
   }
 
-    /**
-   * Показывает состояние "заморозки" (ошибка связи, но опрос продолжается).
-   * Останавливает только рендер и показывает окно. Не трогает isPolling.
-   */
   public showFrozenState(message: string): void {
-    if (this.isDestroyed) return;
-    // Только останавливаем рендер-цикл. Окно показывает UI-слой (uiManager).
-    this.isRunning = false;
-    if (this.animFrameId !== null) {
-      cancelAnimationFrame(this.animFrameId);
-      this.animFrameId = null;
-    }
+    lifecycleShowFrozenState(this, message);
   }
 
   /**
@@ -699,18 +643,6 @@ public setAppState(state: AppState): void {
    * Запускает рендер-цикл и закрывает окно.
    */
   public resumeFromFrozen(): void {
-    if (this.isDestroyed) return;
-    
-    // Закрываем окно, если оно было открыто именно этим методом
-    if (this.connectionModal.isOpen) {
-      this.connectionModal.close();
-    }
-    
-    // Запускаем рендер-цикл
-    this.isRunning = true;
-    this.lastFrameTime = performance.now();
-    if (this.animFrameId === null) {
-      this.animFrameId = requestAnimationFrame((t) => this.loop(t));
-    }
+    lifecycleResumeFromFrozen(this);
   }
 }
