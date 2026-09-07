@@ -39,8 +39,10 @@ export async function processValueWrite(
         return false;
     }
 
-    const hexIndexInParts = 4;
-    const physIndexInParts = 5;
+    // Hex хранится в слоте, указанном data-hex-index (как при рендере таблицы).
+    // Слоты 4 (modbusReg) и 5 (единицы) НЕ трогаем — иначе повредим INI при сохранении.
+    const hexIdxAttr = parseInt(tr.getAttribute('data-hex-index') || '-1', 10);
+    const hexIndexInParts = hexIdxAttr >= 0 ? hexIdxAttr : 4;
 
     let scale = 1.0;
     if (parts.length > 6 && parts[6]) {
@@ -88,7 +90,6 @@ export async function processValueWrite(
             if (is32Bit && parsedVal > 2147483647) signedVal = parsedVal - 4294967296;
             newPhysValue = (signedVal * scale).toString();
         }
-        parts[physIndexInParts] = newPhysValue || newValueStr;
     } else {
         const valNum = parseFloat(newValueStr.replace(',', '.'));
         if (isNaN(valNum)) {
@@ -96,7 +97,6 @@ export async function processValueWrite(
             return false;
         }
         newPhysValue = newValueStr;
-        parts[physIndexInParts] = newPhysValue;
 
         if (dataType.includes('FLOAT')) {
             const unscaledVal = valNum / scale;
@@ -131,8 +131,8 @@ export async function processValueWrite(
     tr.dataset.parts = JSON.stringify(parts);
 
     const tds = tr.querySelectorAll('td');
-    updateCellDisplay(tds[4], parts[4]);
-    updateCellDisplay(tds[5], parts[5]);
+    updateCellDisplay(tds[4], newHexValue || '');
+    updateCellDisplay(tds[5], newPhysValue || '');
 
     updateMismatchClass(tr, dataType);
 

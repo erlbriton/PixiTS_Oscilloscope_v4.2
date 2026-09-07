@@ -6,6 +6,8 @@
  * будет добавлена следующим шагом.
  */
 import { markDirty } from '../ini-manager/dirty-tracker.js';
+import { float32ToHex } from '../ini-manager/tree-core.js';
+import { updateCellDisplay, updateMismatchClass } from '../table-editor/controller-write.js';
 
 /** ID параметра, для которого сейчас открыто окно свойств */
 let currentParamId: string | null = null;
@@ -71,7 +73,7 @@ export function initParamPropertiesUI(): void {
 
     closeBtn?.addEventListener('click', hide);
     applyBtn?.addEventListener('click', () => {
-      // Сохраняем изменённый коэффициент в parts
+      // Сохраняем изменённый коэффициент в parts и пересчитываем значение
       if (currentParamId) {
         const row = document.querySelector<HTMLTableRowElement>(
           `#grid-data-rows tr[data-key="${CSS.escape(currentParamId)}"]`
@@ -79,17 +81,77 @@ export function initParamPropertiesUI(): void {
         if (row) {
           let parts: string[] = [];
           try { parts = JSON.parse(row.dataset.parts || '[]'); } catch {}
-          
+
           const coefficientInput = document.getElementById('paramPropsCoefficient') as HTMLInputElement | null;
           if (coefficientInput && coefficientInput.value.trim()) {
             const newMultiplier = coefficientInput.value.trim().replace(',', '.');
             if (parts.length > 9) {
               parts[9] = newMultiplier;
-              row.dataset.parts = JSON.stringify(parts);
               console.log(`[PARAM-PROPS] ${currentParamId}: множитель обновлён на ${newMultiplier}`);
+
+              // Пересчёт значения зависимого параметра: база × множитель
+              const dependsOn = (parts[8] ?? '').trim();
+              const mult = parseFloat(newMultiplier);
+              if (dependsOn && !isNaN(mult)) {
+                const baseRow = document.querySelector<HTMLTableRowElement>(
+                  `#grid-data-rows tr[data-name="${CSS.escape(dependsOn)}"]`
+                );
+                if (baseRow) {
+                  const basePhysText = (baseRow.querySelectorAll('td')[5]?.textContent || '').trim();
+                  const baseValue = parseFloat(basePhysText.replace(',', '.'));
+                  if (!isNaN(baseValue)) {
+                    const newValue = baseValue * mult;
+                    const newValueStr = Number.isInteger(newValue)
+                      ? newValue.toString()
+                      : newValue.toFixed(4);
+
+                    const dataType = (row.getAttribute('data-type') || '').toUpperCase();
+                    const hexIndex = parseInt(row.getAttribute('data-hex-index') || '-1', 10);
+                    const is32Bit = dataType.includes('FLOAT') || dataType.includes('DWORD') ||
+                      dataType.includes('LONG') || dataType.includes('INT32');
+
+                    let scale = 1.0;
+                    if (parts.length > 6 && parts[6]) {
+                      const parsedScale = parseFloat(parts[6].replace(',', '.'));
+                      if (!isNaN(parsedScale) && parsedScale !== 0) scale = parsedScale;
+                    }
+
+                    let newHex: string;
+                    if (dataType.includes('FLOAT')) {
+                      const hexStr = float32ToHex(newValue / scale);
+                      newHex = 'x' + hexStr.toUpperCase();
+                    } else {
+                      const rawVal = Math.round(newValue / scale);
+                      if (is32Bit) {
+                        newHex = 'x' + rawVal.toString(16).toUpperCase().padStart(8, '0');
+                      } else {
+                        newHex = 'x' + (rawVal & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
+                      }
+                    }
+
+                    if (hexIndex >= 0 && hexIndex < parts.length) {
+                      parts[hexIndex] = newHex;
+                    }
+
+                    row.dataset.parts = JSON.stringify(parts);
+
+                    const tds = row.querySelectorAll('td');
+                    updateCellDisplay(tds[4], newHex);
+                    updateCellDisplay(tds[5], newValueStr);
+                    updateMismatchClass(row, dataType);
+
+                    console.log(`[PARAM-PROPS] ${currentParamId}: значение пересчитано = ${newValueStr} (${dependsOn} × ${mult})`);
+                  }
+                } else {
+                  console.warn(`[PARAM-PROPS] Базовый параметр "${dependsOn}" не найден в таблице`);
+                }
+              } else {
+                // Зависимости нет — просто сохраняем множитель
+                row.dataset.parts = JSON.stringify(parts);
+              }
             }
           }
-          
+
           markDirty(currentParamId);
         }
       }

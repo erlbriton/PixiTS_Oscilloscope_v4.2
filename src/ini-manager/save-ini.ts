@@ -61,7 +61,7 @@ export async function saveIniChanges(appState: AppState): Promise<boolean> {
   const rows = Array.from(
     document.querySelectorAll<HTMLTableRowElement>('#grid-data-rows tr'),
   );
-  const changes: { key: string; parts: string[] }[] = [];
+  const changes: { key: string; hexValue: string; hexIndex: number; multiplier: string }[] = [];
 
   for (const tr of rows) {
     const key = tr.getAttribute('data-key') || '';
@@ -77,24 +77,26 @@ export async function saveIniChanges(appState: AppState): Promise<boolean> {
     let parts: string[] = [];
     try { parts = JSON.parse(tr.dataset.parts || '[]'); } catch { continue; }
 
+    const hexIndex = parseInt(tr.getAttribute('data-hex-index') || '-1', 10);
+    if (hexIndex < 0 || hexIndex >= parts.length) continue;
+
+    let hexValue = (parts[hexIndex] || '').trim();
+
     if (dataType === 'TPRMLIST') {
-      // Обновляем hex в parts через текст опции
+      // Текст опции → hex через список опций из data-parts
+      hexValue = '';
       for (const p of parts) {
         const part = (p || '').trim();
         if (part.includes('#')) {
           const [h, t] = part.split('#');
-          if (h && t && t.trim() === baseText) {
-            const hexIndex = parseInt(tr.getAttribute('data-hex-index') || '-1', 10);
-            if (hexIndex >= 0 && hexIndex < parts.length) {
-              parts[hexIndex] = h.trim();
-            }
-            break;
-          }
+          if (h && t && t.trim() === baseText) { hexValue = h.trim(); break; }
         }
       }
     }
 
-    changes.push({ key, parts });
+    if (!hexValue) continue;
+    const multiplier = parts.length > 9 ? (parts[9] ?? '').trim() : '';
+    changes.push({ key, hexValue, hexIndex, multiplier });
   }
 
   if (changes.length === 0) {
@@ -122,12 +124,15 @@ export async function saveIniChanges(appState: AppState): Promise<boolean> {
       const eq = line.indexOf('=');
       const rawValue = line.substring(eq + 1);
       const tokens = rawValue.split('/');
+      let idx = tokens.length - 1;
+      if (tokens[idx] === '') idx--; // пропускаем пустой хвостовой токен
+      if (idx < 0) break;
 
-      // Обновляем все токены из parts
-      for (let j = 0; j < change.parts.length && j < tokens.length; j++) {
-        if (tokens[j] !== change.parts[j]) {
-          tokens[j] = change.parts[j];
-        }
+      // Обновляем ТОЛЬКО токен значения и множитель зависимости (токен 9)
+      const targetIdx = change.hexIndex < tokens.length ? change.hexIndex : idx;
+      tokens[targetIdx] = change.hexValue;
+      if (change.multiplier !== '' && tokens.length > 9) {
+        tokens[9] = change.multiplier;
       }
 
       lines[i] = line.substring(0, eq + 1) + tokens.join('/');
