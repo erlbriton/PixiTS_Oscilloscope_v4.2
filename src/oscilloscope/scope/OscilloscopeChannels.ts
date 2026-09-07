@@ -9,6 +9,11 @@ import { Channel } from "../core/Channel.js";
 import type { ChannelConfig } from "../core/Channel.js";
 import type { IniFileItem } from "../ui/IniPanel";
 import {
+  IniParser as CoreIniParser,
+  IniConfig,
+  iniParamsToChannelConfigs,
+} from "../../core/ini/index.js";
+import {
   renderVisibleChannels,
   syncViewPositions,
 } from "./OscilloscopeRenderer";
@@ -76,4 +81,26 @@ export async function applyChannelConfigs(osc: Oscilloscope, configs: ChannelCon
     .filter((c) => c && c.id)
     .map((c) => new Channel(c));
   await osc.setChannels(channels);
+}
+export async function loadIniContent(osc: Oscilloscope, iniContent: string): Promise<void> {
+  if (osc.isDestroyed || typeof iniContent !== "string") return;
+  if (
+    osc.allChannels.length > 0 &&
+    iniContent === osc.lastLoadedIniContent
+  ) {
+    console.log("[Oscilloscope] loadIniContent skipped: same content");
+    return;
+  }
+  try {
+    const coreParser = new CoreIniParser();
+    const parseResult = coreParser.parse(iniContent);
+    const iniConfig = new IniConfig(parseResult);
+    const ramParams = iniConfig.getSection("RAM");
+    const channelConfigs = iniParamsToChannelConfigs(ramParams);
+    await osc.applyChannelConfigs(channelConfigs);
+    osc.currentIniConfig = iniConfig;
+    osc.lastLoadedIniContent = iniContent;
+  } catch (err) {
+    console.error("[Oscilloscope] Failed to parse INI content:", err);
+  }
 }

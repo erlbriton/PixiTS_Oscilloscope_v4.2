@@ -59,6 +59,7 @@ import {
   updateVisibleChannels as channelsUpdateVisible,
   setIniFiles as channelsSetIniFiles,
   applyChannelConfigs as channelsApplyConfigs,
+  loadIniContent as channelsLoadIniContent,
 } from "./scope/OscilloscopeChannels";
 import type { AppState } from "../core/app-state.js";
 import { Application } from 'pixi.js';
@@ -100,12 +101,12 @@ export class Oscilloscope {
   private statsTimerId: number | null = null;
   private targetRoot: HTMLElement | null = null;
   public isDestroyed: boolean = false;
-  private lastLoadedIniContent: string | null = null;
+  public lastLoadedIniContent: string | null = null;
   private selectedChannel: Channel | null = null;
   private slaveAddress: number = 1;
   private externalSerial: { write(data: Uint8Array): Promise<void> } | null = null;
   private onPollingStateChangeCallback?: (isPolling: boolean) => void;
-  private currentIniConfig: IniConfig | null = null;
+  public currentIniConfig: IniConfig | null = null;
   private appState: AppState | null = null;
   private pixiApp: Application | null = null;
   private graphColumnOffset: number = 0;
@@ -474,26 +475,7 @@ public setAppState(state: AppState): void {
   }
 
   public async loadIniContent(iniContent: string): Promise<void> {
-    if (this.isDestroyed || typeof iniContent !== "string") return;
-    if (
-      this.allChannels.length > 0 &&
-      iniContent === this.lastLoadedIniContent
-    ) {
-      console.log("[Oscilloscope] loadIniContent skipped: same content");
-      return;
-    }
-    try {
-      const coreParser = new CoreIniParser();
-      const parseResult = coreParser.parse(iniContent);
-      const iniConfig = new IniConfig(parseResult);
-      const ramParams = iniConfig.getSection("RAM");
-      const channelConfigs = iniParamsToChannelConfigs(ramParams);
-      await this.applyChannelConfigs(channelConfigs);
-      this.currentIniConfig = iniConfig;
-      this.lastLoadedIniContent = iniContent;
-    } catch (err) {
-      console.error("[Oscilloscope] Failed to parse INI content:", err);
-    }
+    return channelsLoadIniContent(this, iniContent);
   }
 
   public async applyChannelConfigs(configs: ChannelConfig[]): Promise<void> {
