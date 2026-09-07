@@ -60,6 +60,7 @@ import {
   setIniFiles as channelsSetIniFiles,
   applyChannelConfigs as channelsApplyConfigs,
   loadIniContent as channelsLoadIniContent,
+  setActiveIni as channelsSetActiveIni,
 } from "./scope/OscilloscopeChannels";
 import type { AppState } from "../core/app-state.js";
 import { Application } from 'pixi.js';
@@ -92,7 +93,7 @@ export class Oscilloscope {
   private lastFrameTime: number = 0;
   private propertiesModal!: PropertiesModal;
   public availableIniFiles: IniFileItem[] = [];
-  private currentIniId: string | null = null;
+  public currentIniId: string | null = null;
   private animFrameId: number | null = null;
   private lastRenderTime: number = 0;
   private lastRenderSignature: string = "";
@@ -390,24 +391,7 @@ public setAppState(state: AppState): void {
   }
 
   public setActiveIni(id: string, loadContent: boolean = true): void {
-    if (this.isDestroyed || !id) return;
-    if (
-      this.currentIniId === id &&
-      this.allChannels.length > 0 &&
-      !loadContent
-    ) {
-      return;
-    }
-    this.currentIniId = id;
-    if (this.iniPanel) {
-      this.iniPanel.selectFileById(id);
-    }
-    if (loadContent) {
-      const file = this.availableIniFiles.find((f) => f.id === id);
-      if (file && typeof file.content === "string") {
-        void this.loadIniContent(file.content);
-      }
-    }
+    channelsSetActiveIni(this, id, loadContent);
   }
 
   public setSlaveAddress(addr: number): void {

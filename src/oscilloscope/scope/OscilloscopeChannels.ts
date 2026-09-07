@@ -24,7 +24,6 @@ import {
 export async function setChannels(osc: Oscilloscope, newChannels: Channel[]): Promise<void> {
   if (osc.isDestroyed) return;
   console.log(`[Oscilloscope] Setting channels: ${newChannels.length}`);
-  console.log(`[DIAG] Before: allChannels=${osc.allChannels.length}, visibleChannels=${osc.visibleChannels.length}`);
   osc.allChannels = Array.isArray(newChannels) ? newChannels : [];
   osc.visibleChannels = [...osc.allChannels];
   try {
@@ -45,7 +44,6 @@ export async function setChannels(osc: Oscilloscope, newChannels: Channel[]): Pr
   osc.syncCanvasLayout();
   syncViewPositions(osc.getRenderingContext());
   osc.cursorsFooter?.setStats(osc.allChannels.length, osc.lastReportedHz);
-  console.log(`[DIAG] After: allChannels=${osc.allChannels.length}, visibleChannels=${osc.visibleChannels.length}`);
   console.log(`[Oscilloscope] Switch complete.`);
 }
 export async function updateVisibleChannels(
@@ -102,5 +100,25 @@ export async function loadIniContent(osc: Oscilloscope, iniContent: string): Pro
     osc.lastLoadedIniContent = iniContent;
   } catch (err) {
     console.error("[Oscilloscope] Failed to parse INI content:", err);
+  }
+}
+export function setActiveIni(osc: Oscilloscope, id: string, loadContent: boolean = true): void {
+  if (osc.isDestroyed || !id) return;
+  if (
+    osc.currentIniId === id &&
+    osc.allChannels.length > 0 &&
+    !loadContent
+  ) {
+    return;
+  }
+  osc.currentIniId = id;
+  if (osc.iniPanel) {
+    osc.iniPanel.selectFileById(id);
+  }
+  if (loadContent) {
+    const file = osc.availableIniFiles.find((f) => f.id === id);
+    if (file && typeof file.content === "string") {
+      void osc.loadIniContent(file.content);
+    }
   }
 }
