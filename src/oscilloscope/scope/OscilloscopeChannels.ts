@@ -5,7 +5,8 @@
 // ============================================================================
 
 import type { Oscilloscope } from "../Oscilloscope";
-import type { Channel } from "../core/Channel.js";
+import { Channel } from "../core/Channel.js";
+import type { ChannelConfig } from "../core/Channel.js";
 import type { IniFileItem } from "../ui/IniPanel";
 import {
   renderVisibleChannels,
@@ -68,4 +69,11 @@ export function setIniFiles(osc: Oscilloscope, files: IniFileItem[]): void {
   if (osc.iniPanel) {
     osc.iniPanel.setExternalFiles(osc.availableIniFiles);
   }
+}
+export async function applyChannelConfigs(osc: Oscilloscope, configs: ChannelConfig[]): Promise<void> {
+  if (osc.isDestroyed) return;
+  const channels = (Array.isArray(configs) ? configs : [])
+    .filter((c) => c && c.id)
+    .map((c) => new Channel(c));
+  await osc.setChannels(channels);
 }
