@@ -9,6 +9,7 @@ import './ui/layout.js';
 import { showIdModal } from './ui/ui.js';
 import { updateDeviceRegisters } from './serial/device_updater.js';
 import { setupFileHandling, openIniFile } from './ini-manager/file-loader.js';
+import { initDropZone } from './ini-manager/drop-loader.js';
 import {
     updateComInterfaceName,
     executeDeviceIdentification,
@@ -83,6 +84,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             showIdModal,
             updateDeviceRegisters
         });
+
+        // Инициализация drag-and-drop для INI-файлов
+        initDropZone(appState);
 
         console.log("Приложение запущено. Модуль осциллографа интегрирован.");
     } catch (error: unknown) {

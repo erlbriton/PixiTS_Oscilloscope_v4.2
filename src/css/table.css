@@ -275,3 +275,27 @@ td.cell-active div {
     cursor: pointer;
     /* Наследуем стили от .inline-btn, если нужно переопределить цвета - сделайте это здесь */
 }
+/* ==========================================================================
+   DRAG-AND-DROP подсветка таблицы при перетаскивании файлов
+   ========================================================================== */
+
+.drop-zone-active {
+  background-color: rgba(56, 189, 248, 0.15) !important;
+}
+
+.drop-zone-active::before {
+  content: "📁 Отпустите для загрузки INI-файлов";
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.9);
+  color: #38bdf8;
+  padding: 20px 40px;
+  border-radius: 12px;
+  font-size: 18px;
+  font-weight: 600;
+  z-index: 9999;
+  pointer-events: none;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
