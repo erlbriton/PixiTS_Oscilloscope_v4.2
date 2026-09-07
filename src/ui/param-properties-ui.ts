@@ -101,9 +101,7 @@ export function initParamPropertiesUI(): void {
                   const baseValue = parseFloat(basePhysText.replace(',', '.'));
                   if (!isNaN(baseValue)) {
                     const newValue = baseValue * mult;
-                    const newValueStr = Number.isInteger(newValue)
-                      ? newValue.toString()
-                      : newValue.toFixed(4);
+                    const newValueStr = parseFloat(newValue.toFixed(6)).toString();
 
                     const dataType = (row.getAttribute('data-type') || '').toUpperCase();
                     const hexIndex = parseInt(row.getAttribute('data-hex-index') || '-1', 10);

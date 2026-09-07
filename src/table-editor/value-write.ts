@@ -7,6 +7,12 @@ import { processBasePrmListWrite, processBaseIpAddrWrite } from './base-write.js
 import { markDirty } from '../ini-manager/dirty-tracker.js';
 import type { TableEditorState } from '../ini-manager/table-editor.js';
 
+/** Форматирует физическое значение без артефактов плавающей точки
+ * (5600.000000000001 → "5600", 1.25 → "1.25"). */
+function formatPhysValue(v: number): string {
+    return parseFloat(v.toFixed(6)).toString();
+}
+
 export async function processValueWrite(
     tr: HTMLTableRowElement,
     editType: string,
@@ -160,7 +166,7 @@ export async function processValueWrite(
             const currentValue = parseFloat(currentPhysText.replace(',', '.'));
             
             if (!isNaN(baseValue) && baseValue !== 0 && !isNaN(currentValue)) {
-                const newMultiplier = currentValue / baseValue;
+                const newMultiplier = parseFloat((currentValue / baseValue).toFixed(6));
                 parts[9] = newMultiplier.toString().replace('.', ',');
                 tr.dataset.parts = JSON.stringify(parts);
                 console.log(`[DEPENDENCY] ${tr.getAttribute('data-key')} зависит от ${dependsOn}, множитель обновлён: ${parts[9]}`);
@@ -188,7 +194,7 @@ export async function processValueWrite(
         if (isNaN(currentValue)) return;
         
         const newDepValue = currentValue * multiplier;
-        const newDepValueStr = Number.isInteger(newDepValue) ? newDepValue.toString() : newDepValue.toFixed(4);
+        const newDepValueStr = formatPhysValue(newDepValue);
         
         const depDataType = (depRow.getAttribute('data-type') || '').toUpperCase();
         const depHexIndex = parseInt(depRow.getAttribute('data-hex-index') || '-1', 10);
