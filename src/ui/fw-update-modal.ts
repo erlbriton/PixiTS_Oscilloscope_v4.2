@@ -4,6 +4,9 @@
 // от записанной в INI (другая версия/модель ПО).
 // Действия кнопок подключаются следующим шагом — сейчас заглушки.
 
+import { showBackupWindow } from './backup-ui.js';
+import { handleAddToBaseGeneric, refreshTemplateSelects } from './new-device-ui.js';
+
 export interface FwUpdateInfo {
     /** Полная ID-строка, прочитанная из контроллера */
     idLine: string;
@@ -32,15 +35,33 @@ export function initFwUpdateModal(): void {
         if (!overlay.classList.contains('hidden') && e.key === 'Escape') hide();
     });
 
-    // Заглушки — действия подключим следующим шагом
+       // "Создать резервную копию устройства" — открываем окно резерва,
+    // берём Механизм/Расположение из полей этого окна, и при применении
+    // закрываем именно это окно (а не "Новое устройство").
     document.getElementById('fwUpdateCreateCopyBtn')?.addEventListener('click', () => {
-        console.log('[FW-UPDATE] Кнопка "Создать резервную копию устройства" (действие будет подключено)');
+        showBackupWindow({
+            mechInputId: 'fwUpdateMech',
+            locInputId: 'fwUpdateLocation',
+            callerOverlayId: 'fwUpdateOverlay',
+        });
     });
-    document.getElementById('fwUpdateAddDeviceBtn')?.addEventListener('click', () => {
-        console.log('[FW-UPDATE] Кнопка "Добавить устройство в базу" (действие будет подключено)');
-    });
+
+    // "Добавить шаблон" — общий picker шаблонов
     document.getElementById('fwUpdateAddTemplateBtn')?.addEventListener('click', () => {
-        console.log('[FW-UPDATE] Кнопка "Добавить шаблон" (действие будет подключено)');
+        document.getElementById('templatePicker')?.click();
+    });
+
+    // "Добавить устройство в базу" — тот же конвейер, что у "Нового устройства"
+    document.getElementById('fwUpdateAddDeviceBtn')?.addEventListener('click', () => {
+        const idInput = document.getElementById('fwUpdateId') as HTMLInputElement | null;
+        void handleAddToBaseGeneric({
+            templateSelectId: 'fwUpdateTemplateSelect',
+            mechInputId: 'fwUpdateMech',
+            locInputId: 'fwUpdateLocation',
+            idText: (idInput?.value ?? '').trim(),
+            setStatus: setFwUpdateStatus,
+            onDone: hideFwUpdateModal,
+        });
     });
 
     console.log('[FW-UPDATE] Модальное окно "Обновление программы устройства" инициализировано.');
@@ -63,16 +84,25 @@ export function showFwUpdateModal(info: FwUpdateInfo): void {
     };
 
     // ID-строка: используем полную строку или собираем из частей
-    const idLine = info.idLine || `${info.serial} ${info.deviceType} v${info.deviceVersion} ${info.firmwareVersion} ${info.firmwareDate}`;
+    const idLine = info.idLine || `${info.deviceType} v${info.deviceVersion} ${info.firmwareVersion} ${info.firmwareDate}`;
     set('fwUpdateId', idLine);
     set('fwUpdateType', info.deviceType);
     setText('fwUpdateDevVersion', info.deviceVersion);
     setText('fwUpdateFwVersion', info.firmwareVersion);
     setText('fwUpdateFwDate', info.firmwareDate);
 
+    // Заполняем список шаблонов общими добавленными шаблонами
+    refreshTemplateSelects();
+
     overlay.classList.remove('hidden');
 }
 
 export function hideFwUpdateModal(): void {
     document.getElementById('fwUpdateOverlay')?.classList.add('hidden');
+}
+
+/** Строка-статус внизу окна (для сообщений без модальных окон). */
+function setFwUpdateStatus(text: string): void {
+    const note = document.querySelector('.fw-note');
+    if (note) note.textContent = text;
 }

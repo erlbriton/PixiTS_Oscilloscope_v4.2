@@ -45,10 +45,31 @@ export function initBackupUI(): void {
     });
 }
 
+export interface BackupWindowSource {
+    mechInputId?: string;
+    locInputId?: string;
+    callerOverlayId?: string;
+}
+
+/** Окно-источник: откуда брать Механизм/Расположение и что закрывать после применения. */
+let currentSource = {
+    mechInputId: 'newDeviceMechInput',
+    locInputId: 'newDeviceLocInput',
+    callerOverlayId: 'newDeviceOverlay',
+};
+
 /** Открывает окно и заполняет данные создаваемого устройства. */
-export function showBackupWindow(): void {
+export function showBackupWindow(source?: BackupWindowSource): void {
     const overlay = document.getElementById('backupOverlay');
     if (!overlay) return;
+
+    const mechInputId = source?.mechInputId ?? 'newDeviceMechInput';
+    const locInputId = source?.locInputId ?? 'newDeviceLocInput';
+    currentSource = {
+        mechInputId,
+        locInputId,
+        callerOverlayId: source?.callerOverlayId ?? 'newDeviceOverlay',
+    };
 
     const idText = (document.querySelector('.id-banner span')?.textContent ?? '').trim();
     const parsed = parseDeviceIdString(idText);
@@ -56,8 +77,8 @@ export function showBackupWindow(): void {
     // Блок "Устройство" — данные создаваемого устройства.
     const info = document.getElementById('backupDeviceInfo');
     if (info) {
-        const mech = (document.getElementById('newDeviceMechInput') as HTMLInputElement | null)?.value.trim() ?? '';
-        const loc = (document.getElementById('newDeviceLocInput') as HTMLInputElement | null)?.value.trim() ?? '';
+        const mech = (document.getElementById(mechInputId) as HTMLInputElement | null)?.value.trim() ?? '';
+        const loc = (document.getElementById(locInputId) as HTMLInputElement | null)?.value.trim() ?? '';
         info.textContent =
             `Серийный номер : ${parsed.serial}\n` +
             `Механизм       : ${mech}\n` +
@@ -146,6 +167,7 @@ function renderBackupTable(): void {
  * иначе эти строки удаляются. На диск ничего не пишется.
  */
 async function handleBackupApply(): Promise<void> {
+    console.log('[backup] Apply: selectedTemplateId =', selectedTemplateId);
     if (!selectedTemplateId) {
         showIdModal('Выберите строку-шаблон в таблице.');
         return;
@@ -157,10 +179,11 @@ async function handleBackupApply(): Promise<void> {
     }
     const dev = templateDev.iniConfig.device;
     const devId = dev ? dev.id : '';
-    const loc = dev?.location ?? '';
 
+    // Ищем контент шаблона в хранилище: сначала по ключу, затем перебором по ID в [DEVICE]
     const store = getFileStore();
-    const entry = store.get(`${loc || 'Неизвестное место'}::${devId || 'Без ID'}`);
+    let entry = store.get(`${dev?.location ?? ''}::${devId}`);
+    if (!entry?.content) entry = findStoreEntryByDeviceId(devId);
     if (!entry || !entry.content) {
         showIdModal('Файл шаблона не найден в хранилище.');
         return;
@@ -176,15 +199,20 @@ async function handleBackupApply(): Promise<void> {
     const useLocation = (document.getElementById('backupUseLocation') as HTMLInputElement | null)?.checked ?? false;
     const useMech = (document.getElementById('backupUseMech') as HTMLInputElement | null)?.checked ?? false;
 
-    const content = buildBackupContent(entry.content, newSerial, useLocation, useMech);
+    // Значения из окна-источника (Новое устройство или Обновление ПО)
+    const callerMech = (document.getElementById(currentSource.mechInputId) as HTMLInputElement | null)?.value.trim() ?? '';
+    const callerLoc = (document.getElementById(currentSource.locInputId) as HTMLInputElement | null)?.value.trim() ?? '';
 
-    // Новый ID — для выделения узла в дереве:
-    // в ID шаблона меняем только первый токен (серийный номер).
-    const tokens = devId.split(/\s+/);
-    tokens[0] = newSerial;
-    const newIdValue = tokens.join(' ');
+    // ID= в новом файле — полная строка подключённого контроллера (как в окне "Новое устройство")
+    const content = buildBackupContent(entry.content, bannerId, useLocation, useMech, callerLoc, callerMech);
 
-    const fileName = entry.file ? entry.file.name : 'backup.ini';
+    // Новый ID — для выделения узла в дереве: полная строка подключённого контроллера.
+    const newIdValue = bannerId;
+
+    // Имя нового файла: базовое имя шаблона + серийный номер нового устройства,
+    // чтобы не столкнуться с уже существующим файлом шаблона.
+    const templateBase = entry.file ? entry.file.name.replace(/\.ini$/i, '') : 'backup';
+    const fileName = `${templateBase}_${newSerial}.ini`;
     const bytes = encodeToWindows1251(content);
     const file = new File([bytes], fileName, { type: 'text/plain' });
 
@@ -193,8 +221,14 @@ async function handleBackupApply(): Promise<void> {
     const dbFolder = await ensureDbFolder();
     if (dbFolder) {
         const result = await saveFileToDbFolder(dbFolder, fileName, bytes);
-        if (result.status === 'saved' || result.status === 'exists') {
+        if (result.status === 'saved') {
             fileHandle = result.fileHandle ?? undefined;
+            console.log(`[backup] Файл ${fileName} сохранён в папку базы.`);
+        } else if (result.status === 'exists') {
+            fileHandle = result.fileHandle ?? undefined;
+            console.warn(`[backup] Файл ${fileName} уже есть в папке базы и НЕ перезаписан.`);
+        } else {
+            console.warn('[backup] Сохранить в папку базы не удалось.');
         }
     }
 
@@ -204,9 +238,21 @@ async function handleBackupApply(): Promise<void> {
     } else {
         console.warn('[backup] Связка с конвейером загрузки не установлена.');
     }
-    // Закрываем оба окна: резерв и "Новое устройство".
+
+    // Закрываем окно резерва и окно-источник.
     hideBackupWindow();
-    document.getElementById('newDeviceOverlay')?.classList.add('hidden');
+    document.getElementById(currentSource.callerOverlayId)?.classList.add('hidden');
+}
+
+/** Ищет запись хранилища по ID устройства из секции [DEVICE]. */
+function findStoreEntryByDeviceId(devId: string) {
+    const store = getFileStore();
+    for (const [, e] of store) {
+        if (!e.content) continue;
+        const m = e.content.match(/^\s*ID\s*=\s*(.+)$/m);
+        if (m && (m[1] ?? '').trim() === devId) return e;
+    }
+    return undefined;
 }
 
 /**
@@ -214,37 +260,80 @@ async function handleBackupApply(): Promise<void> {
  * Location=/Description= оставляем только при соответствующих галочках,
  * иначе удаляем эти строки.
  */
+/**
+ * Сборка контента резерва:
+ *  - ID= : серийный номер заменяется на номер подключённого блока;
+ *  - галочка стоит   → Location=/Description= берутся ИЗ ШАБЛОНА (строка как есть);
+ *  - галочки нет     → Location=/Description= берутся ИЗ ОКНА-ИСТОЧНИКА
+ *                       (если там пусто — строка отсутствует);
+ */
 function buildBackupContent(
     templateText: string,
-    newSerial: string,
+    newIdText: string,
     useLocation: boolean,
     useMech: boolean,
+    callerLocation: string,
+    callerMech: string,
 ): string {
     const lines = templateText.split(/\r?\n/);
     const out: string[] = [];
     let inDevice = false;
+    let deviceSeen = false;
+    let idDone = false;
+    let locDone = false;
+    let descDone = false;
+
+    const locLine = callerLocation ? `Location=${callerLocation}` : '';
+    const descLine = callerMech ? `Description=${callerMech}` : '';
+
+    const flushMissing = (): void => {
+        if (!idDone) out.push(`ID=${newIdText}`);
+        if (!useLocation && locLine && !locDone) out.push(locLine);
+        if (!useMech && descLine && !descDone) out.push(descLine);
+    };
 
     for (const line of lines) {
         const trimmed = line.trim();
         const sec = trimmed.match(/^\[(.*)\]$/);
         if (sec) {
+            if (inDevice) flushMissing();
             inDevice = ((sec[1] ?? '').trim().toUpperCase() === 'DEVICE');
+            if (inDevice) deviceSeen = true;
             out.push(line);
             continue;
         }
         if (inDevice && trimmed.includes('=')) {
             const key = trimmed.split('=')[0].trim().toLowerCase();
-            if (key === 'id') {
-                const value = trimmed.substring(trimmed.indexOf('=') + 1).trim();
-                const parts = value.split(/\s+/);
-                parts[0] = newSerial;
-                out.push(`ID=${parts.join(' ')}`);
+                       if (key === 'id') {
+                out.push(`ID=${newIdText}`);
+                idDone = true;
                 continue;
             }
-            if (key === 'location' && !useLocation) continue; // удаляем строку
-            if (key === 'description' && !useMech) continue; // удаляем строку
+            if (key === 'location') {
+                locDone = true;
+                if (useLocation) out.push(line);          // из шаблона
+                else if (locLine) out.push(locLine);       // из окна-источника
+                // иначе строка удаляется
+                continue;
+            }
+            if (key === 'description') {
+                descDone = true;
+                if (useMech) out.push(line);               // из шаблона
+                else if (descLine) out.push(descLine);     // из окна-источника
+                continue;
+            }
         }
         out.push(line);
+    }
+    if (inDevice) flushMissing();
+    if (!deviceSeen) {
+        out.unshift(
+            '[DEVICE]',
+            `ID=${newIdText}`,
+            ...(!useLocation && locLine ? [locLine] : []),
+            ...(!useMech && descLine ? [descLine] : []),
+            '',
+        );
     }
     return out.join('\n');
 }

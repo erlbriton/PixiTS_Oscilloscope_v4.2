@@ -94,9 +94,28 @@ export function initNewDeviceUI(): void {
         }
 
         console.log(`[new-device] Добавлены шаблоны: ${files.map((f) => f.name).join(', ')}`);
+        refreshTemplateSelects();
         // Сбрасываем, чтобы повторный выбор того же набора тоже сработал
         templatePicker.value = '';
     });
+}
+
+/** Синхронизирует списки шаблонов во всех окнах (новое устройство + обновление ПО). */
+export function refreshTemplateSelects(): void {
+    const selectIds = ['newDeviceTemplateSelect', 'fwUpdateTemplateSelect'];
+    for (const id of selectIds) {
+        const select = document.getElementById(id) as HTMLSelectElement | null;
+        if (!select) continue;
+        const current = select.value;
+        select.innerHTML = '';
+        for (const name of templateFiles.keys()) {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            select.appendChild(opt);
+        }
+        if (current && templateFiles.has(current)) select.value = current;
+    }
 }
 
 /**
@@ -141,22 +160,32 @@ function hideNewDeviceModal(): void {
  *  3) сохраняет файл в запомненную папку базы; при любом сбое —
  *     скачивает в "Загрузки", чтобы данные не потерялись.
  */
-async function handleAddToBase(): Promise<void> {
-    const select = document.getElementById('newDeviceTemplateSelect') as HTMLSelectElement | null;
+export interface AddToBaseSource {
+    templateSelectId: string;
+    mechInputId: string;
+    locInputId: string;
+    idText: string;
+    setStatus: (text: string) => void;
+    onDone: () => void;
+}
+
+/** Общая логика кнопки "Добавить устройство в базу" для обоих окон. */
+export async function handleAddToBaseGeneric(src: AddToBaseSource): Promise<void> {
+    const select = document.getElementById(src.templateSelectId) as HTMLSelectElement | null;
     const templateName = (select?.value ?? '').trim();
     if (!templateName) {
-        setNewDeviceStatus('Выберите шаблон из списка.');
+        src.setStatus('Выберите шаблон из списка.');
         return;
     }
     const templateFile = getTemplateFile(templateName);
     if (!templateFile) {
-        setNewDeviceStatus('Файл шаблона не найден — добавьте шаблоны ещё раз.');
+        src.setStatus('Файл шаблона не найден — добавьте шаблоны ещё раз.');
         return;
     }
 
-    const idText = (document.querySelector('.id-banner span')?.textContent ?? '').trim();
+    const idText = src.idText;
     if (!idText) {
-        setNewDeviceStatus('ID устройства пуст — сначала подключите устройство.');
+        src.setStatus('ID устройства пуст — сначала подключите устройство.');
         return;
     }
 
@@ -164,8 +193,8 @@ async function handleAddToBase(): Promise<void> {
     // диалоги/плашки только внутри пользовательского жеста.
     const folderPromise = ensureDbFolder();
 
-    const locInput = document.getElementById('newDeviceLocInput') as HTMLInputElement | null;
-    const mechInput = document.getElementById('newDeviceMechInput') as HTMLInputElement | null;
+    const locInput = document.getElementById(src.locInputId) as HTMLInputElement | null;
+    const mechInput = document.getElementById(src.mechInputId) as HTMLInputElement | null;
     const location = (locInput?.value ?? '').trim();
     const description = (mechInput?.value ?? '').trim();
 
@@ -174,21 +203,21 @@ async function handleAddToBase(): Promise<void> {
         templateText = await readFileWithEncoding(templateFile);
     } catch (err) {
         console.error('[new-device] Не удалось прочитать шаблон:', err);
-        setNewDeviceStatus('Не удалось прочитать файл шаблона.');
+        src.setStatus('Не удалось прочитать файл шаблона.');
         return;
     }
 
     const content = buildDeviceIniContent(templateText, idText, location, description);
-    const fileName = templateName + '.ini';
+    // Имя файла: имя шаблона + серийный номер подключённого устройства,
+    // чтобы разные устройства из одного шаблона не сталкивались именами
+    // и чтобы имя не совпадало с самим файлом шаблона.
+    const serial = parseDeviceIdString(idText).serial;
+    const fileName = `${templateName}_${serial}.ini`;
     // Пишем в Windows-1251 — как вся база и как старый аджастер:
     // новый файл неотличим от старых.
     const bytes = encodeToWindows1251(content);
-    // File-объект обязателен: без него конвейер пропустит fileStore.set(),
-    // и файл будет "не найден в хранилище" при редактировании/сохранении.
     const file = new File([bytes], fileName, { type: 'text/plain' });
 
-    // 1) Сохраняем на диск; заодно получаем ручку файла —
-    //    с ней новый файл будет доступен для редактирования сразу.
     const handle = await folderPromise;
     let fileHandle: FileSystemFileHandle | undefined;
     let existed = false;
@@ -215,8 +244,6 @@ async function handleAddToBase(): Promise<void> {
         console.log(`[new-device] Файл ${fileName} скачан в "Загрузки".`);
     }
 
-    // 2) Добавляем к загруженным (передаём ручку — тогда редактирование
-    //    доступно) и выделяем в дереве.
     if (addToLoadedFn) {
         await addToLoadedFn(content, fileName, file, fileHandle);
         selectNewDeviceInTree(idText);
@@ -224,10 +251,21 @@ async function handleAddToBase(): Promise<void> {
         console.warn('[new-device] Связка с конвейером загрузки не установлена.');
     }
 
-    hideNewDeviceModal();
+    src.onDone();
     if (existed) {
         showIdModal(`Файл ${fileName} уже есть в папке базы и НЕ перезаписан.`);
     }
+}
+
+async function handleAddToBase(): Promise<void> {
+    await handleAddToBaseGeneric({
+        templateSelectId: 'newDeviceTemplateSelect',
+        mechInputId: 'newDeviceMechInput',
+        locInputId: 'newDeviceLocInput',
+        idText: (document.querySelector('.id-banner span')?.textContent ?? '').trim(),
+        setStatus: setNewDeviceStatus,
+        onDone: hideNewDeviceModal,
+    });
 }
 
 /**
