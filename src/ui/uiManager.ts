@@ -15,7 +15,8 @@ import { initModbusScanUI } from './modbus-scan-ui.js';
 import { initReportUI } from './report-ui.js';
 import { initCmdlineUI } from './cmdline-ui.js';
 import { getFileStore, processSingleFileContent } from '../ini-manager/file-loader.js';
-import { parseDeviceIdString } from '../core/report-data.js';
+import { parseDeviceIdString, parseDeviceIdFull } from '../core/report-data.js';
+import { showFwUpdateModal } from './fw-update-modal.js';
 import { getAllDevices, getDeviceGroupKey, currentIniConfig } from '../ini-manager/tree-core.js';
 import { setTreeGroupMode } from '../ini-manager/tree-core.js';
 import { renderDeviceTree } from '../ini-manager/tree-ui.js';
@@ -181,6 +182,7 @@ export function initUI(deps: UiManagerDeps): void {
       const target = parseDeviceIdString(idText);
       let matchedId: string | null = null;
 
+      let fwUpdateCandidate: string | null = null;
       for (const device of getAllDevices()) {
         const candidate = device.iniConfig?.device?.id;
         if (!candidate) continue;
@@ -189,6 +191,22 @@ export function initUI(deps: UiManagerDeps): void {
           matchedId = device.id;
           break;
         }
+        // Запоминаем кандидата с совпадающим serial+deviceType, но разной version
+        if (
+          parsed.serial === target.serial &&
+          parsed.deviceType === target.deviceType &&
+          parsed.version !== target.version
+        ) {
+          fwUpdateCandidate = device.id;
+        }
+      }
+
+      if (!matchedId && fwUpdateCandidate) {
+        // Третий случай: номер и модель совпадают, но версия ПО отличается
+        const fullInfo = parseDeviceIdFull(idText);
+        console.log(`[Connect] Найдено устройство с другой версией ПО: ${fwUpdateCandidate}`);
+        showFwUpdateModal(fullInfo);
+        return;
       }
 
       if (matchedId !== null) {
@@ -633,6 +651,7 @@ export function initUI(deps: UiManagerDeps): void {
       const target = parseDeviceIdString(idText);
       let matchedId: string | null = null;
 
+      let fwUpdateCandidate: string | null = null;
       for (const device of getAllDevices()) {
         const candidate = device.iniConfig?.device?.id;
         if (!candidate) continue;
@@ -645,6 +664,22 @@ export function initUI(deps: UiManagerDeps): void {
           matchedId = device.id;
           break;
         }
+        // Запоминаем кандидата с совпадающим serial+deviceType, но разной version
+        if (
+          parsed.serial === target.serial &&
+          parsed.deviceType === target.deviceType &&
+          parsed.version !== target.version
+        ) {
+          fwUpdateCandidate = device.id;
+        }
+      }
+
+      if (!matchedId && fwUpdateCandidate) {
+        // Третий случай: номер и модель совпадают, но версия ПО отличается
+        const fullInfo = parseDeviceIdFull(idText);
+        console.log(`[UI][Scan] Найдено устройство с другой версией ПО: ${fwUpdateCandidate}`);
+        showFwUpdateModal(fullInfo);
+        return;
       }
 
       if (matchedId !== null) {

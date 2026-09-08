@@ -468,6 +468,44 @@
         <div class="context-menu-item" id="ctxGroupDelete">Удалить</div>
       </div>
     </div>
+    <!-- Модальное окно "Обновление программы устройства" -->
+<div id="fwUpdateOverlay" class="hidden">
+  <div class="fw-update-modal">
+    <div class="fw-update-header">
+      <span>Обновление программы устройства</span>
+      <button id="fwUpdateCloseBtn" class="fw-update-close" title="Закрыть">×</button>
+    </div>
+
+    <div class="fw-update-body">
+      <div class="fw-row"><label>ID</label><input id="fwUpdateId" type="text" readonly class="fw-id-input"></div>
+      <div class="fw-row"><label>Тип</label><input id="fwUpdateType" type="text" readonly></div>
+      <div class="fw-row fw-plain"><label>Версия устройства:</label><span id="fwUpdateDevVersion"></span></div>
+      <div class="fw-row fw-plain"><label>Версия прошивки:</label><span id="fwUpdateFwVersion"></span></div>
+      <div class="fw-row fw-plain"><label>Дата прошивки:</label><span id="fwUpdateFwDate"></span></div>
+
+      <div class="fw-update-warning">
+        <p>Изменилась версия программного обеспечения (ПО) устройства.<br>
+        Назначение и количество параметров в текущей и предыдущей версии могут существенно различаться.</p>
+        <p>Запись в устройство параметров относящихся к предыдущей версии может привести к некорректной работе устройства.
+        Поэтому в базу будут записаны данные из шаблона или выбранного вами источника (резерва).</p>
+        <p>Перед записью будет создана резервная копия существующего файла, которая будет помещена в директорию BackUp. В списке устройств, резервные копии выделены красным цветом. Не забывайте их удалять в конце работы по переносу параметров.</p>
+      </div>
+
+      <div class="fw-row"><label>* Механизм</label><input id="fwUpdateMech" type="text"></div>
+      <div class="fw-row"><label>Расположение</label><input id="fwUpdateLocation" type="text"></div>
+      <div class="fw-row"><label>Шаблон</label><select id="fwUpdateTemplateSelect"></select><button id="fwUpdateAddTemplateBtn" type="button">Добавить шаблон</button></div>
+      <div class="fw-note">* Эти поля можно заполнить позже</div>
+    </div>
+
+    <div class="fw-update-footer">
+      <button id="fwUpdateCreateCopyBtn" type="button">📄 Создать резервную копию устройства</button>
+      <div class="fw-footer-row">
+        <button id="fwUpdateAddDeviceBtn" type="button">Добавить устройство в базу</button>
+        <button id="fwUpdateCancelBtn" type="button">Отмена</button>
+      </div>
+    </div>
+  </div>
+</div>
     <script type="module" src="src/main.ts"></script>
   </body>
 </html>

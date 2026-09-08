@@ -290,3 +290,33 @@ export async function collectCsvData(
         coefficients,
     };
 }
+/** Извлекает полную информацию из ID-строки для модального окна обновления прошивки */
+export function parseDeviceIdFull(raw: string): {
+    idLine: string;
+    serial: string;
+    deviceType: string;
+    deviceVersion: string;
+    firmwareVersion: string;
+    firmwareDate: string;
+} {
+    let s = (raw ?? '').trim();
+    if (s.toUpperCase().startsWith('ID:')) {
+        s = s.substring(3).trim();
+    }
+    const parts = s.split(/\s+/);
+    const serial = parts[0] ?? '';
+    const deviceType = parts[1] ?? '';
+    const versionRaw = parts[2] ?? '';
+    const deviceVersion = versionRaw.replace(/^[vV]\s*/, '');
+    const firmwareVersion = parts[3] ?? '';
+    const firmwareDate = parts.slice(4).join(' ');
+
+    return {
+        idLine: raw,
+        serial,
+        deviceType,
+        deviceVersion,
+        firmwareVersion,
+        firmwareDate,
+    };
+}

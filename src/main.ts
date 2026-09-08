@@ -7,6 +7,7 @@ import { Oscilloscope } from './oscilloscope';
 import './ui/layout.js';
 
 import { showIdModal } from './ui/ui.js';
+import { initFwUpdateModal } from './ui/fw-update-modal.js';
 import { updateDeviceRegisters } from './serial/device_updater.js';
 import { setupFileHandling, openIniFile } from './ini-manager/file-loader.js';
 import { initDropZone } from './ini-manager/drop-loader.js';
@@ -87,6 +88,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Инициализация drag-and-drop для INI-файлов
         initDropZone(appState);
+
+        initFwUpdateModal();
 
         console.log("Приложение запущено. Модуль осциллографа интегрирован.");
     } catch (error: unknown) {
