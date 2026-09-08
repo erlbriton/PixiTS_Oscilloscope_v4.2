@@ -319,7 +319,7 @@ export async function readLoop(serial: ISerialPort, _parser: unknown, view: IOsc
                 // --- 3. СИНХРОНИЗАЦИЯ С ОСЦИЛЛОГРАФОМ (через типизированные IniParameter) ---
                 const ramParams: IniParameter[] = iniConfig.getSection('RAM');
                 const oscData: Record<string, number> = {};
-                for (const param of ramParams) {
+                                for (const param of ramParams) {
                     if (param.registerAddress === null) continue;
                     if (!mergedDataMap.has(param.registerAddress)) continue;
                     const reg = param.registerAddress;
@@ -331,16 +331,16 @@ export async function readLoop(serial: ISerialPort, _parser: unknown, view: IOsc
                     } else {
                         val = decode16BitValue(low, param);
                     }
-                    val = val * param.scale;
+                    // raw-значение без умножения на шкалу (умножение произойдёт в Channel.updateRawValue)
                     oscData[param.id] = val;
-                   if (buffers && !Array.isArray(buffers)) {
-                                    if (buffers instanceof Map && buffers.has(param.id)) {
-                                        buffers.get(param.id)?.push(val);
-                                    } else if (!(buffers instanceof Map) && buffers[param.id] && typeof buffers[param.id].push === 'function') {
-                                        buffers[param.id].push(val);
-                                    }
+               if (buffers && !Array.isArray(buffers)) {
+                                if (buffers instanceof Map && buffers.has(param.id)) {
+                                    buffers.get(param.id)?.push(val);
+                                } else if (!(buffers instanceof Map) && buffers[param.id] && typeof buffers[param.id].push === 'function') {
+                                    buffers[param.id].push(val);
                                 }
-                }
+                            }
+            }//////////////////////////////////////////////////////////////////////////////////////////////////
                 const activeOsc = window.osc ?? view;
                 if (activeOsc) {
                     activeOsc.draw(oscData);
