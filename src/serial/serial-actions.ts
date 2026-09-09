@@ -451,7 +451,9 @@ function decode16BitValue(word: number, param: IniParameter): number {
     if (param.isBit && param.bitIndex !== null) {
         return (word >> param.bitIndex) & 0x01;
     }
-    if (param.dataType === IniDataType.TSHORT || param.dataType === IniDataType.TINT16) {
+    // Знаковое преобразование для целых типов
+    if (param.dataType === IniDataType.TSHORT || param.dataType === IniDataType.TINT16 ||
+        param.dataType === IniDataType.TINTEGER) {
         return word & 0x8000 ? word - 0x10000 : word;
     }
     return word;

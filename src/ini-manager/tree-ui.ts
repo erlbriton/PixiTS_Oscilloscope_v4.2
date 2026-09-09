@@ -369,7 +369,7 @@ export function updateRowValues(
     const rCellPhysical = rowTds[colIndex + 1];
     let bHex = '—';
     let bPhysical = '—';
-    const dataTypeUpper = (rowDataType || '').toUpperCase();
+        const dataTypeUpper = (rowDataType || '').toUpperCase();
 
     if (dataTypeUpper === 'TBIT') {
         // device_updater пишет в последний элемент parts hexValue вида "x0", "x1" или "x0000", "x0001" (с паддингом).
@@ -396,6 +396,7 @@ export function updateRowValues(
         bHex = bitStr;
     } else {
         let rHex = '';
+                console.log(`[updateRowValues] data-type=${rowDataType}, upper=${dataTypeUpper}, hex=${rHex || '—'}`);
         if (rowHexIndex !== -1) {
             rHex = rowParts[rowHexIndex];
         }
@@ -453,7 +454,17 @@ export function updateRowValues(
                     bPhysical = `<div class="prm-val-display">—</div>`;
                 }
             } else {
-                const decValue = parseInt(rHex.slice(1), 16);
+                let decValue = parseInt(rHex.slice(1), 16);
+                                   // Знаковое преобразование для целых типов
+                    if (!isNaN(decValue)) {
+                        if (dataTypeUpper === 'TSHORT' || dataTypeUpper === 'TINT16' || dataTypeUpper === 'TINTEGER') {
+                            // 16-битное знаковое: если > 32767, вычесть 65536
+                            if (decValue > 32767) decValue -= 65536;
+                        } else if (dataTypeUpper === 'TLONG' || dataTypeUpper === 'TINT32') {
+                            // 32-битное знаковое: если > 2147483647, вычесть 4294967296
+                            if (decValue > 2147483647) decValue -= 4294967296;
+                        }
+                    }
                 if (!isNaN(decValue) && !isNaN(rowScale)) {
                     bPhysical = `<div class="prm-val-display">${Number((decValue * rowScale).toFixed(4)).toString()}</div>`;
                 } else if (!isNaN(decValue)) {
