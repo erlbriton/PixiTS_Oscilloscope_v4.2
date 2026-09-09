@@ -16,7 +16,7 @@ import { initReportUI } from './report-ui.js';
 import { initCmdlineUI } from './cmdline-ui.js';
 import { getFileStore, processSingleFileContent } from '../ini-manager/file-loader.js';
 import { parseDeviceIdString, parseDeviceIdFull } from '../core/report-data.js';
-import { showFwUpdateModal } from './fw-update-modal.js';
+import { showFwUpdateModal, FwUpdateInfo } from './fw-update-modal.js';
 import { getAllDevices, getDeviceGroupKey, currentIniConfig } from '../ini-manager/tree-core.js';
 import { setTreeGroupMode } from '../ini-manager/tree-core.js';
 import { renderDeviceTree } from '../ini-manager/tree-ui.js';
@@ -29,6 +29,8 @@ import { initParamPropertiesUI } from './param-properties-ui.js';
 import { SearchPanel } from '../oscilloscope/ui/SearchPanel.js';
 import { initHelpUI , showHelpWindow } from './help-ui.js';
 import { hasAnyDirty } from '../ini-manager/dirty-tracker.js';
+import { getParentFolder, acquireParentFolder } from '../ini-manager/db-folder.js';
+import { showConfirmDialog } from './confirm-dialog.js';
 
 /** Буфер данных канала (типизирован явно, без any) */
 export interface ChannelBuffer {
@@ -71,6 +73,14 @@ export interface UiManagerDeps {
 }
 
 export function initUI(deps: UiManagerDeps): void {
+    // Один раз при старте: доступ к родительской папке (Devices и BackUp) для резервных копий
+    void (async () => {
+        if (await getParentFolder()) return;
+        const ok = await showConfirmDialog(
+            'Выберите родительскую папку'
+        );
+        if (ok) await acquireParentFolder();
+    })();
   const {
     serial, appState, parser, view, buffers,
     setupFileHandling, setupFolderHandling, updateComInterfaceName,
@@ -203,8 +213,22 @@ export function initUI(deps: UiManagerDeps): void {
 
       if (!matchedId && fwUpdateCandidate) {
         // Третий случай: номер и модель совпадают, но версия ПО отличается
-        const fullInfo = parseDeviceIdFull(idText);
-        console.log(`[Connect] Найдено устройство с другой версией ПО: ${fwUpdateCandidate}`);
+        const fullInfo: FwUpdateInfo = parseDeviceIdFull(idText);
+        
+        // Получаем имя файла старого устройства
+        const oldDevice = getAllDevices().find((d) => d.id === fwUpdateCandidate);
+        if (oldDevice) {
+          const oldDev = oldDevice.iniConfig.device;
+          const oldDevId = oldDev ? oldDev.id : '';
+          const oldLoc = oldDev?.location ?? '';
+          const store = getFileStore();
+          const entry = store.get(`${oldLoc}::${oldDevId}`);
+          if (entry?.file) {
+            fullInfo.oldFileName = entry.file.name;
+          }
+        }
+        
+        console.log(`[Connect] Найдено устройство с другой версией ПО: ${fwUpdateCandidate}, oldFileName=${fullInfo.oldFileName}`);
         showFwUpdateModal(fullInfo);
         return;
       }
@@ -676,8 +700,22 @@ export function initUI(deps: UiManagerDeps): void {
 
       if (!matchedId && fwUpdateCandidate) {
         // Третий случай: номер и модель совпадают, но версия ПО отличается
-        const fullInfo = parseDeviceIdFull(idText);
-        console.log(`[UI][Scan] Найдено устройство с другой версией ПО: ${fwUpdateCandidate}`);
+        const fullInfo: FwUpdateInfo = parseDeviceIdFull(idText);
+        
+        // Получаем имя файла старого устройства
+        const oldDevice = getAllDevices().find((d) => d.id === fwUpdateCandidate);
+        if (oldDevice) {
+          const oldDev = oldDevice.iniConfig.device;
+          const oldDevId = oldDev ? oldDev.id : '';
+          const oldLoc = oldDev?.location ?? '';
+          const store = getFileStore();
+          const entry = store.get(`${oldLoc}::${oldDevId}`);
+          if (entry?.file) {
+            fullInfo.oldFileName = entry.file.name;
+          }
+        }
+        
+        console.log(`[UI][Scan] Найдено устройство с другой версией ПО: ${fwUpdateCandidate}, oldFileName=${fullInfo.oldFileName}`);
         showFwUpdateModal(fullInfo);
         return;
       }

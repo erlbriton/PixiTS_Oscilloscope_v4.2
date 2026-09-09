@@ -6,7 +6,7 @@
  * будет добавлена следующим шагом.
  */
 import { markDirty } from '../ini-manager/dirty-tracker.js';
-import { float32ToHex } from '../ini-manager/tree-core.js';
+import { float32ToHex, hexToFloat32 } from '../ini-manager/tree-core.js';
 import { updateCellDisplay, updateMismatchClass } from '../table-editor/controller-write.js';
 
 /** ID параметра, для которого сейчас открыто окно свойств */
@@ -233,6 +233,12 @@ export function showParamPropertiesModal(param: ParamInfo, allSiblings: ParamInf
     if (coefficient) {
         const coefStr = hasDep ? multiplier : (parts[6] ?? '').trim() || '1';
         coefficient.value = coefStr.replace('.', ',');
+    }
+
+    // Вид параметра: нередактируемое поле, значение — тип из строки таблицы (TWORD, TPrmList…)
+    const typeView = document.getElementById('paramPropsTypeView') as HTMLInputElement | null;
+    if (typeView) {
+        typeView.value = row?.getAttribute('data-type') ?? '';
     }
 
     overlay.classList.remove('hidden');

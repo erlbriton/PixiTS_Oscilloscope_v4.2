@@ -7,6 +7,9 @@
 import { showBackupWindow } from './backup-ui.js';
 import { handleAddToBaseGeneric, refreshTemplateSelects } from './new-device-ui.js';
 
+/** Текущая информация об устройстве с другой версией ПО */
+let currentInfo: FwUpdateInfo | null = null;
+
 export interface FwUpdateInfo {
     /** Полная ID-строка, прочитанная из контроллера */
     idLine: string;
@@ -18,6 +21,8 @@ export interface FwUpdateInfo {
     firmwareVersion: string;
     /** Дата прошивки */
     firmwareDate: string;
+    /** Имя файла старого устройства (с другой версией ПО), которое нужно заменить */
+    oldFileName?: string;
 }
 
 export function initFwUpdateModal(): void {
@@ -51,7 +56,8 @@ export function initFwUpdateModal(): void {
         document.getElementById('templatePicker')?.click();
     });
 
-    // "Добавить устройство в базу" — тот же конвейер, что у "Нового устройства"
+    // "Добавить устройство в базу" — тот же конвейер, что у "Нового устройства",
+    // но с переносом старого файла в BackUp и записью нового под тем же именем
     document.getElementById('fwUpdateAddDeviceBtn')?.addEventListener('click', () => {
         const idInput = document.getElementById('fwUpdateId') as HTMLInputElement | null;
         void handleAddToBaseGeneric({
@@ -61,6 +67,8 @@ export function initFwUpdateModal(): void {
             idText: (idInput?.value ?? '').trim(),
             setStatus: setFwUpdateStatus,
             onDone: hideFwUpdateModal,
+            moveExistingToBackup: true,
+            oldFileName: currentInfo?.oldFileName,
         });
     });
 
@@ -72,6 +80,7 @@ export function showFwUpdateModal(info: FwUpdateInfo): void {
     const overlay = document.getElementById('fwUpdateOverlay');
     if (!overlay) return;
 
+    currentInfo = info;
     console.log('[FW-UPDATE] Показываем окно с данными:', info);
 
     const set = (id: string, value: string): void => {

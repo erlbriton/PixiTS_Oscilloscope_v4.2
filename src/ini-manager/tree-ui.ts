@@ -235,7 +235,7 @@ export function renderDeviceTree(): void {
     // полная версия показывается в подсказке при наведении
     const makeLeaf = (device: DeviceRegistryItem): HTMLLIElement => {
         const liElement = document.createElement('li');
-        liElement.className = 'tree-id-item is-leaf';
+        liElement.className = 'tree-id-item is-leaf' + (device.isBackup ? ' is-backup' : '');
         liElement.dataset.deviceId = device.id;
         const text = getDeviceLeafText(device, mode);
         liElement.textContent = text;

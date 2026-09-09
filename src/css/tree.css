@@ -218,3 +218,7 @@
     color: #ffffff !important;
     font-weight: bold !important;
 }
+/* Резервные копии (файл перенесён в BackUp) — красный текст */
+.tree-id-item.is-backup {
+    color: #c00 !important;
+}

@@ -9,9 +9,11 @@
 import { parseDeviceIdString } from '../core/report-data.js';
 import { getAllDevices } from '../ini-manager/tree-core.js';
 import { showIdModal } from './ui.js';
-import { ensureDbFolder, saveFileToDbFolder, downloadFallback, changeDbFolder } from '../ini-manager/db-folder.js';
+import { ensureDbFolder, saveFileToDbFolder, downloadFallback, changeDbFolder, acquireParentFolder, getBackupDir, DbDirectoryHandleLike } from '../ini-manager/db-folder.js';
 import { readFileWithEncoding, encodeToWindows1251 } from '../core/encoding.js';
 import { showBackupWindow } from './backup-ui.js';
+import { getFileStore } from '../ini-manager/file-loader.js';
+import { renderDeviceTree } from '../ini-manager/tree-ui.js';
 
 /** Выбранные шаблоны: имя → File */
 const templateFiles = new Map<string, File>();
@@ -167,6 +169,9 @@ export interface AddToBaseSource {
     idText: string;
     setStatus: (text: string) => void;
     onDone: () => void;
+    moveExistingToBackup?: boolean;
+    /** Имя файла старого устройства, которое нужно заменить (для режима обновления ПО) */
+    oldFileName?: string;
 }
 
 /** Общая логика кнопки "Добавить устройство в базу" для обоих окон. */
@@ -192,6 +197,7 @@ export async function handleAddToBaseGeneric(src: AddToBaseSource): Promise<void
     // ВАЖНО: запрашиваем папку в самом начале клика — браузер разрешает
     // диалоги/плашки только внутри пользовательского жеста.
     const folderPromise = ensureDbFolder();
+    const parentPromise = src.moveExistingToBackup ? acquireParentFolder() : Promise.resolve(null);
 
     const locInput = document.getElementById(src.locInputId) as HTMLInputElement | null;
     const mechInput = document.getElementById(src.mechInputId) as HTMLInputElement | null;
@@ -219,16 +225,26 @@ export async function handleAddToBaseGeneric(src: AddToBaseSource): Promise<void
     const file = new File([bytes], fileName, { type: 'text/plain' });
 
     const handle = await folderPromise;
+    const parent = await parentPromise;
     let fileHandle: FileSystemFileHandle | undefined;
     let existed = false;
     let savedToDb = false;
 
     if (handle) {
-        const res = await saveFileToDbFolder(handle, fileName, bytes);
-        if (res.status === 'saved') {
+        // Режим обновления: сначала ищем BackUp в родительской папке
+        let backupDir: DbDirectoryHandleLike | null = null;
+        if (src.moveExistingToBackup) {
+            backupDir = parent ? await getBackupDir(parent) : null;
+            if (!backupDir) {
+                showIdModal('Папка BackUp не найдена в родительской папке (или не разрешён доступ к родительской папке). Ничего не записано.');
+                return;
+            }
+        }
+        const res = await saveFileToDbFolder(handle, fileName, bytes, backupDir);
+        if (res.status === 'saved' || res.status === 'moved-and-saved') {
             savedToDb = true;
             fileHandle = res.fileHandle ?? undefined;
-            console.log(`[new-device] Файл ${fileName} сохранён в папку базы.`);
+            console.log(`[new-device] Файл ${fileName} сохранён в папку базы${res.status === 'moved-and-saved' ? ', старый перенесён в BackUp' : ''}.`);
         } else if (res.status === 'exists') {
             savedToDb = true;
             existed = true;
@@ -242,6 +258,23 @@ export async function handleAddToBaseGeneric(src: AddToBaseSource): Promise<void
     if (!savedToDb) {
         downloadFallback(fileName, bytes);
         console.log(`[new-device] Файл ${fileName} скачан в "Загрузки".`);
+    }
+
+    // Режим обновления: старое устройство (его файл уехал в BackUp) помечаем
+    // как резервную копию — оно остаётся в дереве, но рисуется красным
+    if (savedToDb && src.moveExistingToBackup && src.oldFileName) {
+        const store = getFileStore();
+        for (const [key, e] of Array.from(store.entries())) {
+            if (e.file && e.file.name === src.oldFileName) {
+                const item = getAllDevices().find((d) => d.iniConfig?.device?.id === e.id);
+                if (item) {
+                    item.isBackup = true;
+                    console.log(`[new-device] Старое устройство ${e.id} помечено как backup (файл уехал в BackUp)`);
+                }
+                store.delete(key);
+            }
+        }
+        renderDeviceTree();
     }
 
     if (addToLoadedFn) {

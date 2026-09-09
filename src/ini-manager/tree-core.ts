@@ -12,6 +12,8 @@ export interface DeviceRegistryItem {
   iniConfig: IniConfig;
   /** Сырой конфиг для обратной совместимости со старым кодом */
   fullConfig: RawIniConfig;
+  /** Флаг: это резервная копия (файл перенесён в BackUp) */
+  isBackup?: boolean;
 }
 
 /** Реестр: локации → массив устройств */

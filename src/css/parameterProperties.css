@@ -164,3 +164,8 @@
 .param-props-btn:hover {
     background: #e8e8e8 !important;
 }
+/* Поле "Вид параметра": нередактируемое, ширина под самое длинное имя типа (TPrmList) */
+.param-props-type-value {
+  flex: 0 0 auto;
+  width: auto;
+}
