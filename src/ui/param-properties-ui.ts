@@ -72,8 +72,7 @@ export function initParamPropertiesUI(): void {
     };
 
     closeBtn?.addEventListener('click', hide);
-    applyBtn?.addEventListener('click', () => {
-      // Сохраняем изменённый коэффициент в parts и пересчитываем значение
+        applyBtn?.addEventListener('click', () => {
       if (currentParamId) {
         const row = document.querySelector<HTMLTableRowElement>(
           `#grid-data-rows tr[data-key="${CSS.escape(currentParamId)}"]`
@@ -83,74 +82,78 @@ export function initParamPropertiesUI(): void {
           try { parts = JSON.parse(row.dataset.parts || '[]'); } catch {}
 
           const coefficientInput = document.getElementById('paramPropsCoefficient') as HTMLInputElement | null;
-          if (coefficientInput && coefficientInput.value.trim()) {
-            const newMultiplier = coefficientInput.value.trim().replace(',', '.');
-            if (parts.length > 9) {
-              parts[9] = newMultiplier;
-              console.log(`[PARAM-PROPS] ${currentParamId}: множитель обновлён на ${newMultiplier}`);
+          const newCoef = (coefficientInput?.value ?? '').trim().replace(',', '.');
+          const dependsOn = (parts[8] ?? '').trim();
+          const hasDep = dependsOn !== '' && dependsOn !== '0';
+          const dataType = (row.getAttribute('data-type') || '').toUpperCase();
+          const hexIndex = parseInt(row.getAttribute('data-hex-index') || '-1', 10);
+          const tds = row.querySelectorAll('td');
 
-              // Пересчёт значения зависимого параметра: база × множитель
-              const dependsOn = (parts[8] ?? '').trim();
-              const mult = parseFloat(newMultiplier);
-              if (dependsOn && !isNaN(mult)) {
-                const baseRow = document.querySelector<HTMLTableRowElement>(
-                  `#grid-data-rows tr[data-name="${CSS.escape(dependsOn)}"]`
-                );
-                if (baseRow) {
-                  const basePhysText = (baseRow.querySelectorAll('td')[5]?.textContent || '').trim();
-                  const baseValue = parseFloat(basePhysText.replace(',', '.'));
-                  if (!isNaN(baseValue)) {
-                    const newValue = baseValue * mult;
-                    const newValueStr = parseFloat(newValue.toFixed(6)).toString();
+          if (newCoef) {
+            if (hasDep) {
+              // Коэффициент = множитель: пишем в parts[9], значение = база × множитель
+              parts[9] = newCoef;
+              const mult = parseFloat(newCoef);
+              const baseRow = document.querySelector<HTMLTableRowElement>(
+                `#grid-data-rows tr[data-name="${CSS.escape(dependsOn)}"]`
+              );
+              if (baseRow && !isNaN(mult)) {
+                const basePhysText = (baseRow.querySelectorAll('td')[5]?.textContent || '').trim();
+                const baseValue = parseFloat(basePhysText.replace(',', '.'));
+                if (!isNaN(baseValue)) {
+                  const newValue = baseValue * mult;
+                  const newValueStr = parseFloat(newValue.toFixed(6)).toString();
 
-                    const dataType = (row.getAttribute('data-type') || '').toUpperCase();
-                    const hexIndex = parseInt(row.getAttribute('data-hex-index') || '-1', 10);
-                    const is32Bit = dataType.includes('FLOAT') || dataType.includes('DWORD') ||
+                  let scale = 1.0;
+                  const ps = parseFloat((parts[6] || '').replace(',', '.'));
+                  if (!isNaN(ps) && ps !== 0) scale = ps;
+
+                  const is32Bit = dataType.includes('FLOAT') || dataType.includes('DWORD') ||
                       dataType.includes('LONG') || dataType.includes('INT32');
-
-                    let scale = 1.0;
-                    if (parts.length > 6 && parts[6]) {
-                      const parsedScale = parseFloat(parts[6].replace(',', '.'));
-                      if (!isNaN(parsedScale) && parsedScale !== 0) scale = parsedScale;
-                    }
-
-                    let newHex: string;
-                    if (dataType.includes('FLOAT')) {
-                      const hexStr = float32ToHex(newValue / scale);
-                      newHex = 'x' + hexStr.toUpperCase();
-                    } else {
-                      const rawVal = Math.round(newValue / scale);
-                      if (is32Bit) {
-                        newHex = 'x' + rawVal.toString(16).toUpperCase().padStart(8, '0');
-                      } else {
-                        newHex = 'x' + (rawVal & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
-                      }
-                    }
-
-                    if (hexIndex >= 0 && hexIndex < parts.length) {
-                      parts[hexIndex] = newHex;
-                    }
-
-                    row.dataset.parts = JSON.stringify(parts);
-
-                    const tds = row.querySelectorAll('td');
-                    updateCellDisplay(tds[4], newHex);
-                    updateCellDisplay(tds[5], newValueStr);
-                    updateMismatchClass(row, dataType);
-
-                    console.log(`[PARAM-PROPS] ${currentParamId}: значение пересчитано = ${newValueStr} (${dependsOn} × ${mult})`);
+                  let newHex: string;
+                  if (dataType.includes('FLOAT')) {
+                    newHex = 'x' + float32ToHex(newValue / scale).toUpperCase();
+                  } else {
+                    const rawVal = Math.round(newValue / scale);
+                    newHex = is32Bit
+                      ? 'x' + (rawVal >>> 0).toString(16).toUpperCase().padStart(8, '0')
+                      : 'x' + (rawVal & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
                   }
-                } else {
-                  console.warn(`[PARAM-PROPS] Базовый параметр "${dependsOn}" не найден в таблице`);
+
+                  if (hexIndex >= 0 && hexIndex < parts.length) parts[hexIndex] = newHex;
+                  updateCellDisplay(tds[4], newHex);
+                  updateCellDisplay(tds[5], newValueStr);
+                  console.log(`[PARAM-PROPS] ${currentParamId}: множитель=${newCoef}, значение пересчитано = ${newValueStr}`);
                 }
               } else {
-                // Зависимости нет — просто сохраняем множитель
-                row.dataset.parts = JSON.stringify(parts);
+                console.warn(`[PARAM-PROPS] Базовый параметр "${dependsOn}" не найден или множитель не читается`);
               }
+            } else {
+              // Зависимости нет: коэффициент = шкала: пишем в parts[6], Physical = hex × шкала
+              parts[6] = newCoef;
+              const scale = parseFloat(newCoef);
+              if (!isNaN(scale) && scale !== 0 && hexIndex >= 0 && hexIndex < parts.length) {
+                const hexStr = (parts[hexIndex] || '').replace(/^x/i, '');
+                const dec = parseInt(hexStr, 16);
+                let raw = dec;
+                if (dataType.includes('FLOAT')) {
+                  raw = hexToFloat32(hexStr);
+                } else if (dataType === 'TSHORT' || dataType === 'TINT16' || dataType === 'TINTEGER') {
+                  if (dec > 32767) raw = dec - 65536;
+                } else if (dataType === 'TLONG' || dataType === 'TINT32') {
+                  if (dec > 2147483647) raw = dec - 4294967296;
+                }
+                const phys = raw * scale;
+                updateCellDisplay(tds[5], parseFloat(phys.toFixed(6)).toString());
+                console.log(`[PARAM-PROPS] ${currentParamId}: шкала=${newCoef}, Physical пересчитан = ${parseFloat(phys.toFixed(6))}`);
+              }
+              const scaleValue = document.getElementById('paramPropsScaleValue') as HTMLInputElement | null;
+              if (scaleValue) scaleValue.value = newCoef;
             }
+            row.dataset.parts = JSON.stringify(parts);
+            updateMismatchClass(row, dataType);
+            markDirty(currentParamId);
           }
-
-          markDirty(currentParamId);
         }
       }
       hide();
@@ -206,7 +209,12 @@ export function showParamPropertiesModal(param: ParamInfo, allSiblings: ParamInf
     }
 
     const dependsOn = (parts[8] ?? '').trim();
-    const multiplier = (parts[9] ?? '').trim();
+    const hasDep = dependsOn !== '' && dependsOn !== '0';
+    const multiplier = hasDep ? (parts[9] ?? '').trim() : '';
+    
+    console.log(`[PARAM-PROPS] ${param.id}: parts[${parts.length}] =`, parts);
+    console.log(`[PARAM-PROPS] scale из param.scale =`, param.scale);
+    console.log(`[PARAM-PROPS] parts[8]=${parts[8]}, parts[9]=${parts[9]}`);
 
     // "Зависит от": выпадающий список с одним элементом, заблокированный
     // (пользователь не может изменить — зависимость задаётся только в INI)
@@ -221,9 +229,10 @@ export function showParamPropertiesModal(param: ParamInfo, allSiblings: ParamInf
         dependsSelect.style.backgroundColor = '#f0f0f0';
     }
 
-    // Коэффициент: редактируемое поле
+    // Коэффициент: при наличии зависимости — множитель (parts[9]), иначе — шкала (parts[6])
     if (coefficient) {
-        coefficient.value = multiplier.replace('.', ',');
+        const coefStr = hasDep ? multiplier : (parts[6] ?? '').trim() || '1';
+        coefficient.value = coefStr.replace('.', ',');
     }
 
     overlay.classList.remove('hidden');
