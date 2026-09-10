@@ -436,6 +436,8 @@ export async function editDeviceIniFile(deviceId: string): Promise<void> {
     }
 
     if (!entry.handle) {
+        console.error(`[file-loader] Редактирование невозможно: у записи устройства "${deviceId}" нет handle. file=${entry.file?.name ?? '—'}, location=${entry.location}, id=${entry.id}`);
+        console.error(`[file-loader] Все записи в fileStore:`, Array.from(fileStore.entries()).map(([k, e]) => ({ key: k, fileName: e.file?.name, hasHandle: !!e.handle, id: e.id })));
         showCompactError('Редактирование доступно только для файлов, открытых через File System Access API.');
         return;
     }

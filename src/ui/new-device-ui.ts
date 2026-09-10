@@ -343,17 +343,34 @@ export async function handleAddToBaseGeneric(src: AddToBaseSource): Promise<void
             return;
         }
     } else if (handle) {
-        // Обычный режим (без обновления): просто сохраняем новый файл в папку базы
+        // Обычный режим (без обновления): сохраняем новый файл в папку базы
+        // и обязательно получаем FileSystemFileHandle для дальнейшего редактирования.
         const res = await saveFileToDbFolder(handle, fileName, bytes, null);
-        if (res.status === 'saved') {
+
+        if (res.status === 'saved' || res.status === 'exists') {
             savedToDb = true;
-            fileHandle = res.fileHandle ?? undefined;
-            console.log(`[new-device] Файл ${fileName} сохранён в папку базы.`);
-        } else if (res.status === 'exists') {
-            savedToDb = true;
-            existed = true;
-            fileHandle = res.fileHandle ?? undefined;
-            console.warn(`[new-device] Файл ${fileName} уже есть в папке базы и НЕ перезаписан.`);
+            existed = res.status === 'exists';
+
+            let savedHandle = res.fileHandle ?? undefined;
+
+            // Страховка: если saveFileToDbFolder сохранил файл, но не вернул handle,
+            // получаем handle напрямую из папки базы.
+            if (!savedHandle) {
+                try {
+                    savedHandle = await handle.getFileHandle(fileName, { create: false });
+                    console.log(`[new-device] Handle для ${fileName} получен напрямую из папки базы.`);
+                } catch (err) {
+                    console.error(`[new-device] Файл ${fileName} сохранён, но handle получить не удалось:`, err);
+                }
+            }
+
+            fileHandle = savedHandle;
+
+            if (res.status === 'saved') {
+                console.log(`[new-device] Файл ${fileName} сохранён в папку базы.`);
+            } else {
+                console.warn(`[new-device] Файл ${fileName} уже есть в папке базы и НЕ перезаписан.`);
+            }
         } else {
             console.warn('[new-device] Сохранить в папку базы не удалось — скачиваю в "Загрузки".');
         }

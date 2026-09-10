@@ -126,7 +126,6 @@ export function initUI(deps: UiManagerDeps): void {
     }
   };
 
-  if (filePicker) setupFileHandling(filePicker, appState);
   if (folderPicker && typeof setupFolderHandling === 'function') setupFolderHandling(folderPicker);
 
   // Обёртка loadIniContent — типизирована через IOscilloscopeApi
