@@ -84,9 +84,21 @@ export async function ensureDbFolder(): Promise<DbDirectoryHandleLike | null> {
             if (perm !== 'granted') {
                 perm = await handle.requestPermission({ mode: 'readwrite' });
             }
-            if (perm === 'granted') return handle;
-            // Битый handle — удаляем и покажем picker заново
-            try { await idbSet(HANDLE_KEY, undefined); } catch {}
+            if (perm === 'granted') {
+                // Дополнительная проверка: существует ли папка физически
+                // (handle может быть валидным по правам, но папка была удалена/перемещена)
+                try {
+                    const realHandle = handle as unknown as FileSystemDirectoryHandle;
+                    await realHandle.entries().next();
+                    return handle;
+                } catch (err) {
+                    console.warn('[db-folder] Handle папки базы невалиден (папка не существует). Перезапрашиваем.');
+                    try { await idbSet(HANDLE_KEY, undefined); } catch {}
+                }
+            } else {
+                // Битый handle — удаляем и покажем picker заново
+                try { await idbSet(HANDLE_KEY, undefined); } catch {}
+            }
         }
         const picker = (window as WindowWithPicker).showDirectoryPicker;
         if (typeof picker !== 'function') return null;

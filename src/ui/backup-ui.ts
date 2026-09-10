@@ -225,12 +225,28 @@ async function handleBackupApply(): Promise<void> {
     const dbFolder = await ensureDbFolder();
     if (dbFolder) {
         const result = await saveFileToDbFolder(dbFolder, fileName, bytes);
-        if (result.status === 'saved') {
-            fileHandle = result.fileHandle ?? undefined;
-            console.log(`[backup] Файл ${fileName} сохранён в папку базы.`);
-        } else if (result.status === 'exists') {
-            fileHandle = result.fileHandle ?? undefined;
-            console.warn(`[backup] Файл ${fileName} уже есть в папке базы и НЕ перезаписан.`);
+        
+        if (result.status === 'saved' || result.status === 'exists') {
+            let savedHandle = result.fileHandle ?? undefined;
+            
+            // Страховка: если saveFileToDbFolder сохранил файл, но не вернул handle,
+            // получаем handle напрямую из папки базы.
+            if (!savedHandle) {
+                try {
+                    savedHandle = await dbFolder.getFileHandle(fileName, { create: false });
+                    console.log(`[backup] Handle для ${fileName} получен напрямую из папки базы.`);
+                } catch (err) {
+                    console.error(`[backup] Файл ${fileName} сохранён, но handle получить не удалось:`, err);
+                }
+            }
+            
+            fileHandle = savedHandle;
+            
+            if (result.status === 'saved') {
+                console.log(`[backup] Файл ${fileName} сохранён в папку базы.`);
+            } else {
+                console.warn(`[backup] Файл ${fileName} уже есть в папке базы и НЕ перезаписан.`);
+            }
         } else {
             console.warn('[backup] Сохранить в папку базы не удалось.');
         }
