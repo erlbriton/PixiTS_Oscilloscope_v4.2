@@ -11,7 +11,7 @@ import { getAllDevices } from '../ini-manager/tree-core.js';
 import { getFileStore } from '../ini-manager/file-loader.js';
 import { encodeToWindows1251 } from '../core/encoding.js';
 import { showIdModal } from './ui.js';
-import { ensureDbFolder, saveFileToDbFolder } from '../ini-manager/db-folder.js'
+import { ensureDbFolder, saveFileToDbFolder, DbDirectoryHandleLike } from '../ini-manager/db-folder.js'
 
 /** Идентификатор устройства, выбранного шаблоном. */
 let selectedTemplateId: string | null = null;
@@ -220,9 +220,26 @@ async function handleBackupApply(): Promise<void> {
     const bytes = encodeToWindows1251(content);
     const file = new File([bytes], fileName, { type: 'text/plain' });
 
-        // Сохраняем резерв в папку базы (через ensureDbFolder).
+            // Сохраняем резерв в папку базы.
+    // Приоритет 1: используем parentHandle из шаблона (если файл был открыт через папку).
+    // Приоритет 2: fallback на ensureDbFolder() (если parentHandle нет).
     let fileHandle: FileSystemFileHandle | undefined;
-    const dbFolder = await ensureDbFolder();
+    let dbFolder: DbDirectoryHandleLike | null = null;
+
+    // Пытаемся получить родительскую папку из записи шаблона
+    if (entry && entry.parentHandle) {
+        dbFolder = entry.parentHandle;
+        console.log(`[backup] Используем parentHandle из шаблона: ${entry.file.name}`);
+    } else {
+        // Fallback: запрашиваем папку базы через ensureDbFolder
+        dbFolder = await ensureDbFolder();
+        if (!dbFolder) {
+            console.warn('[backup] Папка базы не выбрана или недоступна.');
+            showIdModal('Не удалось определить папку для сохранения резерва. Откройте файлы через "Открыть папку".');
+            return;
+        }
+    }
+
     if (dbFolder) {
         const result = await saveFileToDbFolder(dbFolder, fileName, bytes);
         
@@ -249,9 +266,8 @@ async function handleBackupApply(): Promise<void> {
             }
         } else {
             console.warn('[backup] Сохранить в папку базы не удалось.');
+            showIdModal('Ошибка сохранения файла резерва.');
         }
-    } else {
-        console.warn('[backup] Папка базы не выбрана или недоступна.');
     }
 
     if (loadFn) {
