@@ -91,6 +91,8 @@ export function showBackupWindow(source?: BackupWindowSource): void {
         select.innerHTML = '';
         const types: string[] = [];
         for (const d of getAllDevices()) {
+            // Резервные копии (файлы xxx_old.ini, помеченные красным) — не шаблоны
+            if (d.isBackup) continue;
             const devId = d.iniConfig.device ? d.iniConfig.device.id : '';
             const t = parseDeviceIdString(devId).deviceType;
             if (t && !types.includes(t)) types.push(t);
@@ -132,6 +134,8 @@ function renderBackupTable(): void {
     const store = getFileStore();
 
     for (const d of getAllDevices()) {
+        // Резервные копии (файлы xxx_old.ini, помеченные красным) — не шаблоны
+        if (d.isBackup) continue;
         const dev = d.iniConfig.device;
         const devId = dev ? dev.id : '';
         if (parseDeviceIdString(devId).deviceType !== type) continue;

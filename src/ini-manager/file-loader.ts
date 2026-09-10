@@ -229,12 +229,17 @@ export async function processSingleFileContent(
     const isAdded = addDeviceToRegistry(iniConfig);
     setCurrentIniConfig(iniConfig);
 
-    // Сохраняем File-объект, чтобы позже перечитать файл с диска
+        // Сохраняем File-объект, чтобы позже перечитать файл с диска
     console.log('[file-loader] save check:', { isAdded, hasFile: !!sourceFile, hasDevice: !!iniConfig.device });
-    if (isAdded && sourceFile && iniConfig.device) {
-              const loc = iniConfig.device.location || 'Неизвестное место';
+    if (sourceFile && iniConfig.device) {
+        const loc = iniConfig.device.location || 'Неизвестное место';
         const id = iniConfig.device.id || 'Без ID';
         const key = `${loc}::${id}`;
+        
+        // Если устройство уже есть в реестре (isAdded=false), но у нас есть handle —
+        // обновляем запись в fileStore, чтобы редактирование работало.
+        // Это нужно при обновлении ПО: старое устройство помечено как backup,
+        // новое устройство имеет тот же ID, но новый файл с новым handle.
         fileStore.set(key, {
             file: sourceFile,
             handle: sourceHandle,
