@@ -60,6 +60,8 @@ export function initFwUpdateModal(): void {
     // но с переносом старого файла в BackUp и записью нового под тем же именем
     document.getElementById('fwUpdateAddDeviceBtn')?.addEventListener('click', () => {
         const idInput = document.getElementById('fwUpdateId') as HTMLInputElement | null;
+        console.log(`[FW-UPDATE] Клик "Добавить устройство в базу": currentInfo=`, currentInfo);
+        console.log(`[FW-UPDATE] oldFileName в момент клика: ${currentInfo?.oldFileName ?? '—'}`);
         void handleAddToBaseGeneric({
             templateSelectId: 'fwUpdateTemplateSelect',
             mechInputId: 'fwUpdateMech',

@@ -79,18 +79,21 @@ async function idbSet(key: string, value: unknown): Promise<void> {
 export async function ensureDbFolder(): Promise<DbDirectoryHandleLike | null> {
     try {
         let handle = await idbGet<DbDirectoryHandleLike>(HANDLE_KEY);
-        if (!handle) {
-            const picker = (window as WindowWithPicker).showDirectoryPicker;
-            if (typeof picker !== 'function') return null;
-            handle = await picker.call(window, { mode: 'readwrite' });
-            if (!handle) return null;
-            await idbSet(HANDLE_KEY, handle);
+        if (handle) {
+            let perm = await handle.queryPermission({ mode: 'readwrite' });
+            if (perm !== 'granted') {
+                perm = await handle.requestPermission({ mode: 'readwrite' });
+            }
+            if (perm === 'granted') return handle;
+            // Битый handle — удаляем и покажем picker заново
+            try { await idbSet(HANDLE_KEY, undefined); } catch {}
         }
-        let perm = await handle.queryPermission({ mode: 'readwrite' });
-        if (perm !== 'granted') {
-            perm = await handle.requestPermission({ mode: 'readwrite' });
-        }
-        return perm === 'granted' ? handle : null;
+        const picker = (window as WindowWithPicker).showDirectoryPicker;
+        if (typeof picker !== 'function') return null;
+        handle = await picker.call(window, { mode: 'readwrite' });
+        if (!handle) return null;
+        await idbSet(HANDLE_KEY, handle);
+        return handle;
     } catch {
         // пользователь отменил выбор папки или запретил доступ
         return null;
@@ -122,11 +125,30 @@ export async function acquireParentFolder(): Promise<DbDirectoryHandleLike | nul
             if (perm !== 'granted') {
                 perm = await handle.requestPermission({ mode: 'readwrite' });
             }
-            return perm === 'granted' ? handle : null;
+            if (perm === 'granted') return handle;
+            // Битый handle — удаляем и покажем picker заново
+            try { await idbSet(PARENT_HANDLE_KEY, undefined); } catch {}
         }
         const picker = (window as WindowWithPicker).showDirectoryPicker;
         if (typeof picker !== 'function') return null;
         handle = await picker.call(window, { mode: 'readwrite' });
+        if (!handle) return null;
+        await idbSet(PARENT_HANDLE_KEY, handle);
+        return handle;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Принудительно открывает picker родительской папки (игнорирует сохранённый handle).
+ * Вызывать только внутри пользовательского жеста.
+ */
+export async function forcePickParentFolder(): Promise<DbDirectoryHandleLike | null> {
+    try {
+        const picker = (window as WindowWithPicker).showDirectoryPicker;
+        if (typeof picker !== 'function') return null;
+        const handle = await picker.call(window, { mode: 'readwrite' });
         if (!handle) return null;
         await idbSet(PARENT_HANDLE_KEY, handle);
         return handle;

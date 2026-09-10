@@ -31,6 +31,8 @@ let currentIniFileName: string | null = null;
 export interface StoredFileEntry {
     file: File;
     handle?: FileSystemFileHandle;
+    /** Родительская папка файла (если известна при загрузке — например, при открытии папки) */
+    parentHandle?: FileSystemDirectoryHandle;
     location: string;
     id: string;
     content: string;
@@ -142,7 +144,7 @@ export async function openIniFolder(appState: AppState): Promise<void> {
                             const file = await fileHandle.getFile();
                             const content = await readFileAsText(file);
                             iniFileHandles.set(file.name, fileHandle);
-                            await processSingleFileContent(content, file.name, appState, file, fileHandle);
+                            await processSingleFileContent(content, file.name, appState, file, fileHandle, currentDir);
                         } catch (fileErr) {
                             // Ошибка чтения одного файла не прерывает всю папку
                             console.warn(`[file-loader] Пропуск файла ${entry.name}:`, fileErr);
@@ -195,6 +197,7 @@ export async function processSingleFileContent(
     appState: AppState,
     sourceFile?: File,
     sourceHandle?: FileSystemFileHandle,
+    parentHandle?: FileSystemDirectoryHandle,
 ): Promise<void> {
   currentIniFileName = fileName;
   try {
@@ -229,16 +232,17 @@ export async function processSingleFileContent(
     // Сохраняем File-объект, чтобы позже перечитать файл с диска
     console.log('[file-loader] save check:', { isAdded, hasFile: !!sourceFile, hasDevice: !!iniConfig.device });
     if (isAdded && sourceFile && iniConfig.device) {
-        const loc = iniConfig.device.location || 'Неизвестное место';
+              const loc = iniConfig.device.location || 'Неизвестное место';
         const id = iniConfig.device.id || 'Без ID';
         const key = `${loc}::${id}`;
         fileStore.set(key, {
             file: sourceFile,
             handle: sourceHandle,
+            parentHandle,
             location: loc,
             id: String(id),
             content,
-            lastModified: Date.now(),
+            lastModified: sourceFile ? sourceFile.lastModified : Date.now(),
         });
     }
 

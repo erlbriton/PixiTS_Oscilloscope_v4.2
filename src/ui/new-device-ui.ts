@@ -174,6 +174,11 @@ export interface AddToBaseSource {
     oldFileName?: string;
 }
 
+/** Убирает недопустимые символы из имени файла для File System Access API (Windows не разрешает !:*?"<>| и т.п.). */
+function sanitizeFileName(name: string): string {
+    return name.replace(/[\\/:*?"<>|!]/g, '_');
+}
+
 /** Общая логика кнопки "Добавить устройство в базу" для обоих окон. */
 export async function handleAddToBaseGeneric(src: AddToBaseSource): Promise<void> {
     const select = document.getElementById(src.templateSelectId) as HTMLSelectElement | null;
@@ -196,7 +201,27 @@ export async function handleAddToBaseGeneric(src: AddToBaseSource): Promise<void
 
     // ВАЖНО: запрашиваем папку в самом начале клика — браузер разрешает
     // диалоги/плашки только внутри пользовательского жеста.
-    const folderPromise = ensureDbFolder();
+    // В режиме обновления: если нет handle папки базы, но у старого файла есть
+    // handle — используем его для записи (перезапись под тем же именем).
+    let folderPromise: Promise<DbDirectoryHandleLike | null>;
+    if (src.moveExistingToBackup && src.oldFileName) {
+        const store = getFileStore();
+        let oldHandle: FileSystemFileHandle | null = null;
+        for (const e of Array.from(store.values())) {
+            if (e.file && e.file.name === src.oldFileName && e.handle) {
+                oldHandle = e.handle;
+                break;
+            }
+        }
+        if (oldHandle) {
+            // Есть handle старого файла — пишем прямо в него, папку не выбираем
+            folderPromise = Promise.resolve(null as unknown as DbDirectoryHandleLike);
+        } else {
+            folderPromise = ensureDbFolder();
+        }
+    } else {
+        folderPromise = ensureDbFolder();
+    }
     const parentPromise = src.moveExistingToBackup ? acquireParentFolder() : Promise.resolve(null);
 
     const locInput = document.getElementById(src.locInputId) as HTMLInputElement | null;
@@ -214,11 +239,14 @@ export async function handleAddToBaseGeneric(src: AddToBaseSource): Promise<void
     }
 
     const content = buildDeviceIniContent(templateText, idText, location, description);
-    // Имя файла: имя шаблона + серийный номер подключённого устройства,
-    // чтобы разные устройства из одного шаблона не сталкивались именами
-    // и чтобы имя не совпадало с самим файлом шаблона.
+    // Имя файла:
+    //  - режим обновления (передан oldFileName): имя старого файла — новый файл
+    //    заменяет его в Devices, а старый уезжает в BackUp;
+    //  - иначе: имя шаблона + серийный номер подключённого устройства.
     const serial = parseDeviceIdString(idText).serial;
-    const fileName = `${templateName}_${serial}.ini`;
+    const fileName = src.moveExistingToBackup && src.oldFileName
+        ? src.oldFileName
+        : `${templateName}_${serial}.ini`;
     // Пишем в Windows-1251 — как вся база и как старый аджастер:
     // новый файл неотличим от старых.
     const bytes = encodeToWindows1251(content);
@@ -226,25 +254,101 @@ export async function handleAddToBaseGeneric(src: AddToBaseSource): Promise<void
 
     const handle = await folderPromise;
     const parent = await parentPromise;
+    console.log(`[new-device] update-mode: oldFileName=${src.oldFileName ?? '—'}, dbHandle=${handle ? 'yes' : 'no'}, parent=${parent ? 'yes' : 'no'}`);
     let fileHandle: FileSystemFileHandle | undefined;
     let existed = false;
     let savedToDb = false;
 
-    if (handle) {
-        // Режим обновления: сначала ищем BackUp в родительской папке
-        let backupDir: DbDirectoryHandleLike | null = null;
-        if (src.moveExistingToBackup) {
-            backupDir = parent ? await getBackupDir(parent) : null;
-            if (!backupDir) {
-                showIdModal('Папка BackUp не найдена в родительской папке (или не разрешён доступ к родительской папке). Ничего не записано.');
-                return;
+    // Ищем handle старого файла (для режима обновления)
+    let directOldHandle: FileSystemFileHandle | null = null;
+    if (src.moveExistingToBackup && src.oldFileName) {
+        const store = getFileStore();
+        for (const e of Array.from(store.values())) {
+            if (e.file && e.file.name === src.oldFileName && e.handle) {
+                directOldHandle = e.handle;
+                break;
             }
         }
-        const res = await saveFileToDbFolder(handle, fileName, bytes, backupDir);
-        if (res.status === 'saved' || res.status === 'moved-and-saved') {
+    }
+
+    if (directOldHandle && src.moveExistingToBackup && src.oldFileName) {
+        // Режим обновления:
+        //  1) читаем старое содержимое;
+        //  2) создаём копию "имя_old.ini" через папку базы;
+        //  3) перезаписываем старый файл "имя.ini" новым содержимым (handle прямого доступа).
+
+        const backupFileName = src.oldFileName.replace(/\.ini$/i, '_old.ini');
+        console.log(`[new-device] Режим обновления: oldFileName=${src.oldFileName}, backupFileName=${backupFileName}, fileName=${fileName}`);
+
+                // Шаг 1: читаем старое содержимое
+        let oldContent: Uint8Array<ArrayBuffer> | null = null;
+        try {
+            const oldFile = await directOldHandle.getFile();
+            oldContent = new Uint8Array(await oldFile.arrayBuffer()) as Uint8Array<ArrayBuffer>;
+            console.log(`[new-device] Старый файл прочитан, байт: ${oldContent.length}`);
+        } catch (err) {
+            console.error('[new-device] Не удалось прочитать старый файл:', err);
+            showIdModal('Не удалось прочитать старый файл. Ничего не записано.');
+            return;
+        }
+
+        // Шаг 2: показываем диалог сохранения для бэкапа "_old.ini"
+        // Если пользователь отменяет — НИЧЕГО не делаем, старый файл остаётся как есть.
+        let backupCreated = false;
+        try {
+            console.log(`[new-device] Показываем диалог сохранения для бэкапа ${backupFileName}...`);
+            const w = window as unknown as {
+                showSaveFilePicker?: (opts: { suggestedName?: string; types?: Array<{ description?: string; accept?: Record<string, string[]> }> }) => Promise<FileSystemFileHandle | undefined>;
+            };
+            if (typeof w.showSaveFilePicker !== 'function') {
+                showIdModal('Браузер не поддерживает диалог сохранения. Бэкап не создан, старый файл не изменён.');
+                return;
+            }
+            const backupHandle = await w.showSaveFilePicker({
+                suggestedName: backupFileName,
+                types: [{ description: 'INI Files', accept: { 'text/plain': ['.ini'] } }],
+            });
+            if (!backupHandle) {
+                console.log('[new-device] Пользователь отменил сохранение бэкапа. Старый файл не изменён.');
+                showIdModal('Сохранение бэкапа отменено. Старый файл не изменён.');
+                return;
+            }
+            const backupWritable = await backupHandle.createWritable();
+            await backupWritable.write(oldContent);
+            await backupWritable.close();
+            backupCreated = true;
+            console.log(`[new-device] Бэкап сохранён как ${backupHandle.name}`);
+        } catch (err) {
+            console.error('[new-device] Ошибка создания бэкапа:', err);
+            showIdModal('Ошибка создания бэкапа. Старый файл не изменён.');
+            return;
+        }
+
+        // Шаг 3: перезаписываем старый файл новым содержимым
+        // (только если бэкап успешно создан)
+        if (!backupCreated) {
+            console.warn('[new-device] Бэкап не создан — перезапись отменена.');
+            return;
+        }
+        try {
+            const writable = await directOldHandle.createWritable();
+            await writable.write(bytes);
+            await writable.close();
+            savedToDb = true;
+            fileHandle = directOldHandle;
+            console.log(`[new-device] Файл ${fileName} перезаписан новым содержимым.`);
+        } catch (err) {
+            console.error('[new-device] Ошибка перезаписи файла:', err);
+            showIdModal('Ошибка перезаписи файла. Ничего не записано.');
+            return;
+        }
+    } else if (handle) {
+        // Обычный режим (без обновления): просто сохраняем новый файл в папку базы
+        const res = await saveFileToDbFolder(handle, fileName, bytes, null);
+        if (res.status === 'saved') {
             savedToDb = true;
             fileHandle = res.fileHandle ?? undefined;
-            console.log(`[new-device] Файл ${fileName} сохранён в папку базы${res.status === 'moved-and-saved' ? ', старый перенесён в BackUp' : ''}.`);
+            console.log(`[new-device] Файл ${fileName} сохранён в папку базы.`);
         } else if (res.status === 'exists') {
             savedToDb = true;
             existed = true;

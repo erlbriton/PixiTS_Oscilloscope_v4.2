@@ -216,7 +216,7 @@ async function handleBackupApply(): Promise<void> {
     const bytes = encodeToWindows1251(content);
     const file = new File([bytes], fileName, { type: 'text/plain' });
 
-    // Сохраняем резерв в папку базы и получаем ручку для редактирования.
+        // Сохраняем резерв в папку базы (через ensureDbFolder).
     let fileHandle: FileSystemFileHandle | undefined;
     const dbFolder = await ensureDbFolder();
     if (dbFolder) {
@@ -230,6 +230,8 @@ async function handleBackupApply(): Promise<void> {
         } else {
             console.warn('[backup] Сохранить в папку базы не удалось.');
         }
+    } else {
+        console.warn('[backup] Папка базы не выбрана или недоступна.');
     }
 
     if (loadFn) {

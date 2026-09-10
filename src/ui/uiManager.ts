@@ -29,7 +29,7 @@ import { initParamPropertiesUI } from './param-properties-ui.js';
 import { SearchPanel } from '../oscilloscope/ui/SearchPanel.js';
 import { initHelpUI , showHelpWindow } from './help-ui.js';
 import { hasAnyDirty } from '../ini-manager/dirty-tracker.js';
-import { getParentFolder, acquireParentFolder } from '../ini-manager/db-folder.js';
+import { forcePickParentFolder } from '../ini-manager/db-folder.js';
 import { showConfirmDialog } from './confirm-dialog.js';
 
 /** Буфер данных канала (типизирован явно, без any) */
@@ -73,13 +73,13 @@ export interface UiManagerDeps {
 }
 
 export function initUI(deps: UiManagerDeps): void {
-    // Один раз при старте: доступ к родительской папке (Devices и BackUp) для резервных копий
+    // При каждом старте: доступ к родительской папке (Devices и BackUp) для резервных копий
     void (async () => {
-        if (await getParentFolder()) return;
+        console.log('[startup] спрашиваю родительскую папку');
         const ok = await showConfirmDialog(
-            'Выберите родительскую папку'
+            'Для резервных копий при обновлении программы устройства нужен доступ к родительской папке (содержит Devices и BackUp). Разрешить/выбрать её сейчас?'
         );
-        if (ok) await acquireParentFolder();
+        if (ok) await forcePickParentFolder();
     })();
   const {
     serial, appState, parser, view, buffers,
