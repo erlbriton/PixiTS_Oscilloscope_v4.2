@@ -55,7 +55,11 @@ export function setConnectionStatus(osc: Oscilloscope, connected: boolean, messa
       cancelAnimationFrame(osc.animFrameId);
       osc.animFrameId = null;
     }
-    osc.connectionModal.show(message ?? "Связь с устройством потеряна.");
+    // Показываем модальное окно ТОЛЬКО если message не пустая строка
+    // (пустая строка = ручной разрыв без предупреждения)
+    if (message !== '') {
+      osc.connectionModal.show(message ?? "Связь с устройством потеряна.");
+    }
   }
 }
 

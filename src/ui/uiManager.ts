@@ -260,13 +260,18 @@ export function initUI(deps: UiManagerDeps): void {
     });
   }
 
-   if (serial && typeof serial.onDisconnect === 'function') {
+  if (serial && typeof serial.onDisconnect === 'function') {
     serial.onDisconnect(() => {
+      const osc = window.osc;
       if (isManualDisconnect) {
         console.log('[UI] Порт отключён вручную пользователем (без предупреждения осциллографа).');
+        // Останавливаем маркеры, но НЕ показываем модальное окно (пустая строка = suppress modal)
+        if (osc && typeof osc.setConnectionStatus === 'function') {
+          osc.setConnectionStatus(false, '');
+        }
       } else {
         console.log('[UI] Обрыв связи обнаружен (физический обрыв USB).');
-        const osc = window.osc;
+        // Останавливаем маркеры И показываем предупреждение
         if (osc && typeof osc.setConnectionStatus === 'function') {
           osc.setConnectionStatus(false, 'Связь с устройством потеряна.');
         }
