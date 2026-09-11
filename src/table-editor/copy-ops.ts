@@ -89,8 +89,9 @@ async function writeBaseRowToController(
         bytePos = (sub || '').toUpperCase();
     }
 
-    // Значение Базы в формате входа planControllerWrite
+       // Значение Базы в формате входа planControllerWrite
     const baseText = (tds[4]?.textContent || '').trim();
+    console.log(`[BATCH-DIAG] row=${tr.getAttribute('data-key')}, dataType=${dataType}, baseText="${baseText}", tds[4].innerHTML=${tds[4]?.innerHTML}`);
     let valueStr = '';
     let editType: 'hex' | 'phys' = 'hex';
 
@@ -114,7 +115,11 @@ async function writeBaseRowToController(
     }
 
     const plan = planControllerWrite(dataType, editType, valueStr, scale, sub, bytePos);
-    if (!plan.ok) return false;
+    console.log(`[BATCH-DIAG] plan:`, JSON.stringify(plan));
+    if (!plan.ok) {
+        console.warn(`[BATCH-DIAG] plan.ok=false, пропускаю строку ${tr.getAttribute('data-key')}`);
+        return false;
+    }
 
     const reg = parseInt(tr.getAttribute('data-reg') || '', 16);
     if (isNaN(reg)) return false;

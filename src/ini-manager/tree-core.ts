@@ -278,7 +278,7 @@ const SIGNED_16BIT_TYPES: ReadonlySet<string> = new Set([
  * Не выполняет никаких операций с DOM или портом.
  * bytePosRaw — модификатор байта ('L'/'H') для TBYTE, извлекается вызывающим кодом.
  */
-export function planControllerWrite(
+export function planControllerWrite(//////////////////////////\
     dataTypeRaw: string,
     editType: string,
     valueStr: string,
@@ -353,8 +353,6 @@ export function planControllerWrite(
         if (!/^[0-9A-Fa-f]+$/.test(cleanHex)) return { ok: false };
         // 16 бит — максимум 4 hex-цифры, 32 бита — максимум 8
         if (is32Bit ? cleanHex.length > 8 : cleanHex.length > 4) return { ok: false };
-        // Для знаковых 16-битных не допускаем старшего бита (unsigned > 0x7FFF)
-        if (isSigned16 && parseInt(cleanHex, 16) > 0x7FFF) return { ok: false };
 
         const parsed = parseInt(cleanHex, 16);
         if (isNaN(parsed)) return { ok: false };
@@ -460,7 +458,7 @@ export function planControllerWrite(
         newHex: 'x' + word.toString(16).toUpperCase().padStart(4, '0'),
         newPhys: String(valNum),
     };
-}
+}//////////////////////////////////\
 
 /**
  * Преобразует строку IP-адреса в массив из двух 16-битных регистров.
