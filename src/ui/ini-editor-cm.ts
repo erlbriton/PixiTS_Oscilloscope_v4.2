@@ -1,5 +1,5 @@
 import { EditorState } from '@codemirror/state';
-import { EditorView, keymap, lineNumbers } from '@codemirror/view';
+import { EditorView, keymap, lineNumbers, drawSelection } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { autocompletion, completionKeymap } from '@codemirror/autocomplete';
 import { StreamLanguage, HighlightStyle, syntaxHighlighting } from '@codemirror/language';
@@ -81,19 +81,40 @@ const iniTheme = EditorView.theme(
         },
         '.cm-content': { padding: '8px 0' },
         '.cm-line': { padding: '0 8px' },
-        // Цвета токенов задаются через iniHighlightStyle, а не через классы cm-*
-        // Панели (поиск)
+                // Контейнер ВСЕХ панелей CodeMirror (у нас здесь только шапка поиска Ctrl+F)
         '.cm-panels': {
-            backgroundColor: '#252526',
-            color: '#d4d4d4',
-            borderBottom: '1px solid #454545',
+            backgroundColor: '#003366',      // Фон всей шапки поиска (тёмно-синий)
+            color: '#d4d4d4',                // Цвет текста по умолчанию внутри шапки:
+                                             // наследуют надписи чекбоксов (match case, regexp, by word)
+                                             // и кнопки, у которых свой color не задан
+            borderBottom: '3px solid #454545', // Линия внизу шапки: 1px, сплошная, цвет #454545
+            minHeight: '100px',              // Минимальная высота всей шапки (сюда входят обе строки: Find и Replace)
+            padding: '6px 8px',              // Внутренние отступы шапки: 6px сверху/снизу, 8px слева/справа
+                                             // (вместе с minHeight влияет на итоговую высоту)
         },
+        // Поля ввода "Find" и "Replace" (левая колонка шапки)
         '.cm-panel.cm-panel-search input': {
-            backgroundColor: '#e9e9e9',
-            color: '#d4d4d4',
-            border: '1px solid #555',
+            backgroundColor: '#e0e0e0',      // Фон полей ввода (светло-серый)
+            color: '#0a0909',                // Цвет текста, который печатает пользователь в поле
+            border: '1px solid #555',        // Рамка поля ввода: 1px, сплошная, цвет #555
+            height: '50px',                  // Высота каждого поля ввода
+            fontSize: '20px',                // Кегль шрифта внутри полей ввода
         },
+        // Кнопки next / previous / all / replace / replace all
+        '.cm-panel.cm-panel-search button': {
+            height: '50px',                  // Высота кнопок (выровнена с полями ввода)
+            fontSize: '20px',                // Кегль надписей на кнопках
+            // МОЖНО ДОБАВИТЬ:
+            // backgroundColor: '#4a4a4a',   // Фон кнопок (сейчас наследуется от браузера/темы)
+            // color: '#ffffff',             // Цвет надписей на кнопках (сейчас наследуется от .cm-panels: #d4d4d4)
+        },
+        // МОЖНО ДОБАВИТЬ ЦЕЛЫЙ БЛОК для надписей чекбоксов match case / regexp / by word:
+        // '.cm-panel.cm-panel-search label': {
+        //     fontSize: '20px',             // Кегль надписей чекбоксов (сейчас наследуется от .cm-panels)
+        //     color: '#e0e0e0',             // Цвет надписей чекбоксов (сейчас наследуется от .cm-panels)
+        // },
     },
+    // Флаг тёмной темы: говорит CodeMirror использовать базовую палитру для тёмного фона
     { dark: true }
 );
 
@@ -118,6 +139,7 @@ export function createIniEditor(
         extensions: [
             lineNumbers(),
             history(),
+            drawSelection(),
             iniLanguage,
             syntaxHighlighting(iniHighlightStyle),
             search({ top: true }),
