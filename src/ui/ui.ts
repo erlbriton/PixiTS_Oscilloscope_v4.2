@@ -3,6 +3,8 @@
 /**
  * Отображает кастомное модальное окно
  */
+import { createIniEditor, type IniEditorInstance } from './ini-editor-cm.js';
+
 export function showIdModal(text: string): void {
     const existing = document.querySelector('.id-modal-overlay');
     if (existing) existing.remove();
@@ -192,47 +194,63 @@ export function populateDeviceForm(devConfig?: Record<string, string | string[] 
  * Открывает встроенный модальный редактор с содержимым INI-файла.
  * Возвращает промис: отредактированный текст при "Сохранить", или null при "Отмена"/Escape.
  */
+
+
 export function openIniEditor(content: string, title: string): Promise<string | null> {
     const overlay = document.getElementById('iniEditorOverlay');
     const header = document.getElementById('iniEditorTitle');
-    const textarea = document.getElementById('iniEditorText') as HTMLTextAreaElement | null;
+    const container = document.getElementById('iniEditorContainer') as HTMLElement | null;
     const saveBtn = document.getElementById('iniEditorSave') as HTMLButtonElement | null;
     const cancelBtn = document.getElementById('iniEditorCancel') as HTMLButtonElement | null;
-    if (!overlay || !textarea || !saveBtn || !cancelBtn) {
+    
+    if (!overlay || !container || !saveBtn || !cancelBtn) {
         return Promise.reject(new Error('Элементы редактора не найдены в DOM'));
     }
+    
     if (header) header.textContent = title || 'Редактирование файла';
-    textarea.value = content;
+    
+    // Создаём instance CodeMirror
+    const editor = createIniEditor(container, content);
+    
     overlay.classList.remove('hidden');
-    // Фокус в поле сразу после показа
-    setTimeout(() => textarea.focus(), 0);
+    // Фокус в редактор сразу после показа
+    setTimeout(() => editor.focus(), 0);
+    
     return new Promise<string | null>((resolve) => {
         let settled = false;
+        
         const finish = (value: string | null): void => {
             if (settled) return;
             settled = true;
             overlay.classList.add('hidden');
-            textarea.value = '';
+            
+            // Уничтожаем instance CodeMirror
+            editor.destroy();
+            
             saveBtn.removeEventListener('click', onSave);
             cancelBtn.removeEventListener('click', onCancel);
             document.removeEventListener('keydown', onKey);
             resolve(value);
         };
+        
         const onSave = (): void => {
-            finish(textarea.value);
+            finish(editor.getValue());
         };
+        
         const onCancel = (): void => {
             finish(null);
         };
+        
         const onKey = (e: KeyboardEvent): void => {
             if (e.key === 'Escape') {
                 e.preventDefault();
                 finish(null);
             } else if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
                 e.preventDefault();
-                finish(textarea.value);
+                finish(editor.getValue());
             }
         };
+        
         saveBtn.addEventListener('click', onSave);
         cancelBtn.addEventListener('click', onCancel);
         document.addEventListener('keydown', onKey);
