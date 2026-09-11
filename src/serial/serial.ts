@@ -50,7 +50,7 @@ export class SerialConnection implements ISerialPort {
   /**
    * Запрос разрешения у пользователя и открытие физического COM-порта.
    */
-  public async connect(baudRate: number = 115200): Promise<void> {
+   public async connect(baudRate: number = 115200): Promise<void> {
     const serialApi = navigator.serial;
     if (!serialApi) {
       throw new Error(
@@ -58,10 +58,28 @@ export class SerialConnection implements ISerialPort {
       );
     }
     try {
-      const port = await serialApi.requestPort();
-      if (!port) {
-        throw new Error("Порт не выбран.");
+      let port: WebSerialPort | null = null;
+      
+      // Пробуем получить ранее разрешённый порт (без диалога)
+      try {
+        const ports = await serialApi.getPorts();
+        if (ports.length > 0) {
+          port = ports[0]; // Берём первый запомненный порт
+          console.log('[Serial] Используем запомненный порт (без диалога).');
+        }
+      } catch (err) {
+        console.warn('[Serial] Не удалось получить список запомненных портов:', err);
       }
+      
+      // Если запомненного порта нет — запрашиваем через диалог
+      if (!port) {
+        console.log('[Serial] Запомненный порт не найден, показываю диалог выбора.');
+        port = await serialApi.requestPort();
+        if (!port) {
+          throw new Error("Порт не выбран.");
+        }
+      }
+      
       await port.open({ baudRate });
       const readable = port.readable;
       if (readable) {
@@ -76,16 +94,9 @@ export class SerialConnection implements ISerialPort {
       console.log(`[Serial] Порт успешно открыт на скорости ${baudRate} бод.`);
     } catch (error: unknown) {
       this.isConnected = false;
-      this.port = null;
-      this.reader = null;
-      this.readableStream = null;
-      // Пользователь закрыл окно выбора порта, не выбрав порт —
-      // это не ошибка подключения.
-      if (error instanceof DOMException && error.name === 'NotFoundError') {
-        throw new PortCancelledError();
-      }
       const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Ошибка подключения к порту: ${message}`);
+      console.error("[Serial] Ошибка открытия порта:", message);
+      throw error;
     }
   }
 
