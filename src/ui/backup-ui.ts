@@ -13,6 +13,17 @@ import { encodeToWindows1251 } from '../core/encoding.js';
 import { showIdModal } from './ui.js';
 import { ensureDbFolder, saveFileToDbFolder, DbDirectoryHandleLike } from '../ini-manager/db-folder.js'
 
+/**
+ * Очищает имя файла от недопустимых символов для File System Access API (Windows).
+ * Заменяет всё, кроме букв, цифр, точек, дефисов и подчеркиваний, на '_'.
+ */
+function sanitizeFileName(name: string): string {
+    // Разрешаем: латиницу, кириллицу, цифры, точку, дефис, подчеркивание, пробел (иногда нужен)
+    // Но для надежности на Windows лучше убрать пробелы тоже, заменив на '_'
+    // Регулярка оставляет только безопасные символы
+    return name.replace(/[^a-zA-Z0-9\u0400-\u04FF._-]/g, '_');
+}
+
 /** Идентификатор устройства, выбранного шаблоном. */
 let selectedTemplateId: string | null = null;
 
@@ -215,71 +226,88 @@ async function handleBackupApply(): Promise<void> {
 
     // Имя нового файла: базовое имя шаблона + серийный номер нового устройства,
     // чтобы не столкнуться с уже существующим файлом шаблона.
-    const templateBase = entry.file ? entry.file.name.replace(/\.ini$/i, '') : 'backup';
-    const fileName = `${templateBase}_${newSerial}.ini`;
+       const templateBase = entry.file ? entry.file.name.replace(/\.ini$/i, '') : 'backup';
+    let fileName = `${templateBase}_${newSerial}.ini`;
+    
+    // Жесткое удаление невидимых управляющих символов (переносы строк, табуляция, \0), 
+    // которые могут попасть из DOM (bannerId) и вызвать "Name is not allowed" в Windows.
+    fileName = fileName.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
+    fileName = sanitizeFileName(fileName);
+    
     const bytes = encodeToWindows1251(content);
-    const file = new File([bytes], fileName, { type: 'text/plain' });
+    let file = new File([bytes], fileName, { type: 'text/plain' });
+    
+    console.log(`[backup] Имя файла после санитизации: "${fileName}"`);
 
-            // Сохраняем резерв в папку базы.
-    // Приоритет 1: используем parentHandle из шаблона (если файл был открыт через папку).
-    // Приоритет 2: fallback на ensureDbFolder() (если parentHandle нет).
+                  // Сохраняем резерв в папку базы.
+    // Chrome/Edge (с конца 2024) блокирует создание файлов .ini/.cfg/.dll/.grp
+    // через getFileHandle(create: true) — ограничение безопасности Chromium (Won't Fix).
+    // Разрешённый канал для таких расширений — showSaveFilePicker:
+    // диалог запоминает последнюю папку, поэтому сохранение почти в один клик.
     let fileHandle: FileSystemFileHandle | undefined;
-    let dbFolder: DbDirectoryHandleLike | null = null;
 
-    // Пытаемся получить родительскую папку из записи шаблона
-    if (entry && entry.parentHandle) {
-        dbFolder = entry.parentHandle;
-        console.log(`[backup] Используем parentHandle из шаблона: ${entry.file.name}`);
+    const savePicker = (window as unknown as {
+        showSaveFilePicker?: (opts: {
+            suggestedName?: string;
+            types?: Array<{ description: string; accept: Record<string, string[]> }>;
+        }) => Promise<FileSystemFileHandle>;
+    }).showSaveFilePicker;
+
+    let isSaved = false;
+    let saveErrorMessage = '';
+
+    if (typeof savePicker !== 'function') {
+        saveErrorMessage = 'Браузер не поддерживает showSaveFilePicker (нужен Chrome или Edge).';
+        console.error(`[backup] ${saveErrorMessage}`);
     } else {
-        // Fallback: запрашиваем папку базы через ensureDbFolder
-        dbFolder = await ensureDbFolder();
-        if (!dbFolder) {
-            console.warn('[backup] Папка базы не выбрана или недоступна.');
-            showIdModal('Не удалось определить папку для сохранения резерва. Откройте файлы через "Открыть папку".');
-            return;
-        }
-    }
+        try {
+            console.log(`[backup] Сохранение через showSaveFilePicker: suggestedName="${fileName}", размер=${bytes.length} байт.`);
+            const savedHandle = await savePicker.call(window, {
+                suggestedName: fileName,
+                types: [{ description: 'INI files', accept: { 'text/plain': ['.ini'] } }],
+            });
 
-    if (dbFolder) {
-        const result = await saveFileToDbFolder(dbFolder, fileName, bytes);
-        
-        if (result.status === 'saved' || result.status === 'exists') {
-            let savedHandle = result.fileHandle ?? undefined;
-            
-            // Страховка: если saveFileToDbFolder сохранил файл, но не вернул handle,
-            // получаем handle напрямую из папки базы.
-            if (!savedHandle) {
-                try {
-                    savedHandle = await dbFolder.getFileHandle(fileName, { create: false });
-                    console.log(`[backup] Handle для ${fileName} получен напрямую из папки базы.`);
-                } catch (err) {
-                    console.error(`[backup] Файл ${fileName} сохранён, но handle получить не удалось:`, err);
-                }
+            const writable = await savedHandle.createWritable();
+            await writable.write(bytes);
+            await writable.close();
+
+            // Пользователь мог изменить имя в диалоге — берём фактическое
+            if (savedHandle.name !== fileName) {
+                console.warn(`[backup] Имя изменено в диалоге: "${fileName}" -> "${savedHandle.name}"`);
+                fileName = savedHandle.name;
+                file = new File([bytes], fileName, { type: 'text/plain' });
             }
-            
+
             fileHandle = savedHandle;
-            
-            if (result.status === 'saved') {
-                console.log(`[backup] Файл ${fileName} сохранён в папку базы.`);
+            isSaved = true;
+            console.log(`[backup] Файл ${fileName} сохранён через showSaveFilePicker.`);
+        } catch (err) {
+            if (err instanceof Error && err.name === 'AbortError') {
+                saveErrorMessage = 'Сохранение отменено пользователем.';
+                console.log('[backup] Пользователь отменил диалог сохранения.');
             } else {
-                console.warn(`[backup] Файл ${fileName} уже есть в папке базы и НЕ перезаписан.`);
+                saveErrorMessage = err instanceof Error ? err.message : String(err);
+                console.error('[backup] Ошибка сохранения через showSaveFilePicker:', err);
             }
-        } else {
-            console.warn('[backup] Сохранить в папку базы не удалось.');
-            showIdModal('Ошибка сохранения файла резерва.');
         }
     }
 
-    if (loadFn) {
-        await loadFn(content, fileName, file, fileHandle);
-        selectBackupDeviceInTree(newIdValue);
-    } else {
-        console.warn('[backup] Связка с конвейером загрузки не установлена.');
-    }
+    // Добавляем в базу и закрываем окна ТОЛЬКО если файл успешно сохранен и есть handle
+    if (isSaved && fileHandle) {
+        if (loadFn) {
+            await loadFn(content, fileName, file, fileHandle);
+            selectBackupDeviceInTree(newIdValue);
+        } else {
+            console.warn('[backup] Связка с конвейером загрузки не установлена.');
+        }
 
-    // Закрываем окно резерва и окно-источник.
-    hideBackupWindow();
-    document.getElementById(currentSource.callerOverlayId)?.classList.add('hidden');
+        hideBackupWindow();
+        document.getElementById(currentSource.callerOverlayId)?.classList.add('hidden');
+    } else {
+        // Показываем ошибку с деталями и НЕ добавляем фантомную запись в таблицу
+        const fullError = `Не удалось создать резерв.\nИмя файла: ${fileName}\nОшибка: ${saveErrorMessage || 'неизвестно'}\n\nПроверьте, не превышает ли длина пути к файлу 260 символов (лимит Windows) и нет ли в имени недопустимых символов.`;
+        showIdModal(fullError);
+    }
 }
 
 /** Ищет запись хранилища по ID устройства из секции [DEVICE]. */

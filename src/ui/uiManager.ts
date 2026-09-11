@@ -77,7 +77,7 @@ export function initUI(deps: UiManagerDeps): void {
     void (async () => {
         console.log('[startup] спрашиваю родительскую папку');
         const ok = await showConfirmDialog(
-            'Для резервных копий при обновлении программы устройства нужен доступ к родительской папке (содержит Devices и BackUp). Разрешить/выбрать её сейчас?'
+            'Выберите папку с *.ini файлами'
         );
         if (ok) await forcePickParentFolder();
     })();
@@ -86,7 +86,7 @@ export function initUI(deps: UiManagerDeps): void {
     setupFileHandling, setupFolderHandling, updateComInterfaceName,
     executeDeviceIdentification, readLoop, showIdModal, updateDeviceRegisters
   } = deps;
-
+  let isManualDisconnect = false;
   const filePicker = document.getElementById('filePicker') as HTMLInputElement | null;
   const folderPicker = document.getElementById('folderPicker') as HTMLInputElement | null;
   const idBtn = document.getElementById("idBtn") as HTMLButtonElement | null;
@@ -260,33 +260,78 @@ export function initUI(deps: UiManagerDeps): void {
     });
   }
 
-  if (serial && typeof serial.onDisconnect === 'function') {
+   if (serial && typeof serial.onDisconnect === 'function') {
     serial.onDisconnect(() => {
-      console.log('[UI] Обрыв связи обнаружен');
+      if (isManualDisconnect) {
+        console.log('[UI] Порт отключён вручную пользователем (без предупреждения осциллографа).');
+      } else {
+        console.log('[UI] Обрыв связи обнаружен (физический обрыв USB).');
+        const osc = window.osc;
+        if (osc && typeof osc.setConnectionStatus === 'function') {
+          osc.setConnectionStatus(false, 'Связь с устройством потеряна.');
+        }
+      }
+      // В обоих случаях: обновляем UI (баннер, кнопка, состояние опроса)
       appState.isPolling = false;
       updateIdBanner('');
-      const osc = window.osc;
-      if (osc && typeof osc.setConnectionStatus === 'function') {
-        osc.setConnectionStatus(false, 'Связь с устройством потеряна.');
-      }
+      updateIdButtonState(false);
     });
   }
 
-    if (idBtn) {
+  // Синхронизирует надпись и тултип кнопки ID с текущим состоянием порта.
+  // connected=true  → "Off" / "Отключить com порт"
+  // connected=false → "ID"  / "Подключить com порт"
+  const updateIdButtonState = (connected: boolean): void => {
+    if (!idBtn) return;
+    if (connected) {
+      idBtn.textContent = 'Off';
+      idBtn.title = 'Отключить com порт';
+    } else {
+      idBtn.textContent = 'ID';
+      idBtn.title = 'Подключить com порт';
+    }
+  };
+
+  // Начальное состояние (до первого взаимодействия).
+  updateIdButtonState(false);
+
+  // Отключение порта через release().
+  // release() автоматически вызовет onDisconnect callback, который сбросит
+  // кнопку ID в состояние "ID" / "Подключить com порт" через updateIdButtonState(false).
+  const disconnectPort = async (): Promise<void> => {
+    try {
+      isManualDisconnect = true;
+      serial.release();
+      console.log('[UI] Порт отключён вручную через serial.release().');
+    } catch (err) {
+      console.error('[UI] Ошибка при отключении порта:', err);
+      showIdModal(`Ошибка отключения: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      isManualDisconnect = false;
+    }
+  };
+
+  if (idBtn) {
     idBtn.addEventListener("click", async () => {
-      if (serial.isConnected) { 
-          showIdModal("Порт уже открыт!"); 
-          return; 
+      if (serial.isConnected) {
+        // Порт подключён — отключаем
+        await disconnectPort();
+        // После отключения (когда оно будет реализовано) обновим вид кнопки.
+        updateIdButtonState(serial.isConnected);
+        return;
       }
-      // Передаем baudSelect в функцию идентификации
+      // Порт не подключён — подключаем через идентификацию
       await executeDeviceIdentification(serial, comSelect, appState, baudSelect);
-      
+
       const osc = window.osc;
       if (osc && typeof osc.setSerialPort === 'function') {
-          osc.setSerialPort(serial);
+        osc.setSerialPort(serial);
       }
-      
+
       restoreConnection();
+
+      // После подключения обновляем вид кнопки на "Off" / "Отключить com порт"
+      updateIdButtonState(serial.isConnected);
     });
   }
 
@@ -319,7 +364,7 @@ export function initUI(deps: UiManagerDeps): void {
         // Неудача (контроллер не отвечает или ошибки связи):
         // показываем компактное окно ошибки независимо от осциллографа
         console.warn('[UI] updateDeviceRegisters вернул false — связь не удалась');
-        showCompactError('Контроллер не отвечает. Проверьте адрес.');
+        showCompactError('Контроллер не отвечает. Проверьте адрес и подключение.');
       }
     } catch (err) {
       console.error("Ошибка при обновлении:", err);
@@ -974,7 +1019,7 @@ export function initUI(deps: UiManagerDeps): void {
     console.log(`[UI] Получено событие "контроллер не отвечает" (подряд ошибок: ${count})`);
 
     // 1. Показываем компактное окно ВСЕГДА (независимо от осциллографа)
-    showCompactError('Контроллер не отвечает. Проверьте адрес.');
+    showCompactError('Контроллер не отвечает. Проверьте адрес и подключение.');
 
     // 2. Если осциллограф открыт — замораживаем его рендер (без своего окна)
     const osc = window.osc;

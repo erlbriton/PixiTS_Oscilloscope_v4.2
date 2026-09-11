@@ -332,9 +332,10 @@ export class SerialConnection implements ISerialPort {
   /**
    * Корректное освобождение ресурсов.
    */
-  public release(): void {
+ public release(): void {
     const wasConnected = this.isConnected;
     this.isConnected = false;
+    
     const reader = this.reader;
     if (reader) {
       try {
@@ -345,9 +346,19 @@ export class SerialConnection implements ISerialPort {
     }
     this.reader = null;
     this.readableStream = null;
-    this.port = null;
+
+    // Закрываем сам порт Web Serial API, чтобы освободить его для других приложений
+    if (this.port) {
+      try {
+        void this.port.close();
+      } catch (err) {
+        console.warn('[Serial] Ошибка при закрытии порта:', err);
+      }
+      this.port = null;
+    }
+
     if (wasConnected && this.onDisconnectCallback) {
       this.onDisconnectCallback();
     }
-  }
+}
 }

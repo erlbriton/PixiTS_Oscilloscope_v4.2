@@ -85,20 +85,12 @@ export async function ensureDbFolder(): Promise<DbDirectoryHandleLike | null> {
                 perm = await handle.requestPermission({ mode: 'readwrite' });
             }
             if (perm === 'granted') {
-                // Дополнительная проверка: существует ли папка физически
-                // (handle может быть валидным по правам, но папка была удалена/перемещена)
-                try {
-                    const realHandle = handle as unknown as FileSystemDirectoryHandle;
-                    await realHandle.entries().next();
-                    return handle;
-                } catch (err) {
-                    console.warn('[db-folder] Handle папки базы невалиден (папка не существует). Перезапрашиваем.');
-                    try { await idbSet(HANDLE_KEY, undefined); } catch {}
-                }
-            } else {
-                // Битый handle — удаляем и покажем picker заново
-                try { await idbSet(HANDLE_KEY, undefined); } catch {}
+                // Проверку через entries() убрали из-за проблем с типами.
+                // Валидность проверится при сохранении.
+                return handle;
             }
+            // Битый handle — удаляем
+            try { await idbSet(HANDLE_KEY, undefined); } catch {}
         }
         const picker = (window as WindowWithPicker).showDirectoryPicker;
         if (typeof picker !== 'function') return null;
@@ -107,7 +99,6 @@ export async function ensureDbFolder(): Promise<DbDirectoryHandleLike | null> {
         await idbSet(HANDLE_KEY, handle);
         return handle;
     } catch {
-        // пользователь отменил выбор папки или запретил доступ
         return null;
     }
 }
@@ -217,7 +208,7 @@ export async function saveFileToDbFolder(
     name: string,
     content: Uint8Array<ArrayBuffer>,
     backupDir: DbDirectoryHandleLike | null = null,
-): Promise<{ status: 'saved' | 'exists' | 'error' | 'moved-and-saved'; fileHandle: FileSystemFileHandle | null }> {
+): Promise<{ status: 'saved' | 'exists' | 'error' | 'moved-and-saved'; fileHandle: FileSystemFileHandle | null; errorMessage?: string }> {
     try {
         let existed = false;
         try {
@@ -242,8 +233,9 @@ export async function saveFileToDbFolder(
         await writable.close();
         return { status: existed ? 'moved-and-saved' : 'saved', fileHandle };
     } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
         console.error('[db-folder] Ошибка сохранения в папку базы:', err);
-        return { status: 'error', fileHandle: null };
+        return { status: 'error', fileHandle: null, errorMessage: errMsg };
     }
 }
 
