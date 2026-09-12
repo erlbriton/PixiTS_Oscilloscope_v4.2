@@ -74,6 +74,22 @@ function resetView(): void {
     const results = getEl('scanResults');
     if (results) results.innerHTML = '';
     setProgress('Готов к поиску. Диапазон адресов: 1–247.');
+    
+    const progressEl = getEl('scanProgress');
+    if (progressEl) {
+        // Удаляем существующую подсказку, если она есть
+        const existingHint = progressEl.nextElementSibling;
+        if (existingHint?.classList?.contains('scan-hint')) {
+            existingHint.remove();
+        }
+        
+        // Добавляем новую подсказку
+        const hint = document.createElement('div');
+        hint.className = 'scan-hint';
+        hint.textContent = 'Поиск выполняется на текущей скорости из таблицы. Для смены скорости измените значение на нужное и переподключитесь кликнув на кнопку Off-ID.';
+        progressEl.insertAdjacentElement('afterend', hint);
+    }
+    
     setScanningButtons(false);
 }
 
