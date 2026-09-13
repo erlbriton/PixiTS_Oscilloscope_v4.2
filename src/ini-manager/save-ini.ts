@@ -2,11 +2,29 @@
 // Кнопка "Сохранить изменения": хирургическая правка токенов значений
 // в исходном тексте INI + запись в файл в кодировке windows-1251.
 
-import { showIdModal } from '../ui/ui.js';
+import { showIdModal, populateDeviceForm } from '../ui/ui.js';
 import { showConfirmDialog } from '../ui/confirm-dialog.js';
-import { getCurrentIniFileHandle } from './file-loader.js';
+import { getCurrentIniFileHandle, getFileStore } from './file-loader.js';
+import { updateDeviceInRegistry } from './tree-core.js';
+import type { RawIniConfig } from './tree-core.js';
+import { IniParser, IniConfig } from '../core/ini/index.js';
 import type { AppState } from '../core/app-state.js';
 import { clearAllDirty } from './dirty-tracker.js';
+
+// ─────────────────────────────────────────────
+// Строгая типизация для File System Access API (без any)
+// ─────────────────────────────────────────────
+
+type FileHandleType = NonNullable<ReturnType<typeof getCurrentIniFileHandle>>;
+
+interface WindowWithFileSystem extends Window {
+  showSaveFilePicker(options?: {
+    suggestedName?: string;
+    types?: { description?: string; accept?: Record<string, string[]> }[];
+  }): Promise<FileHandleType>;
+}
+
+type AppStateWithHandle = AppState & { currentIniFileHandle?: FileHandleType };
 
 // ─────────────────────────────────────────────
 // Кодировка windows-1251 для записи
@@ -50,14 +68,43 @@ function encodeWindows1251(text: string): Uint8Array<ArrayBuffer> {
 
 export async function saveIniChanges(appState: AppState): Promise<boolean> {
   const original = appState.currentIniContent;
-  const fileHandle = getCurrentIniFileHandle();
+  let fileHandle = getCurrentIniFileHandle();
 
-  if (!original || !fileHandle) {
-    showIdModal('Нет открытого файла для сохранения');
+  if (!original) {
+    showIdModal('Нет данных для сохранения');
     return false;
   }
 
-  // Собираем изменения из таблицы: key → весь массив parts
+  if (!fileHandle) {
+    try {
+      // Исправление TS2352: безопасное приведение типа через unknown
+      const win = window as unknown as WindowWithFileSystem;
+      fileHandle = await win.showSaveFilePicker({
+        suggestedName: 'config.ini',
+        types: [
+          {
+            description: 'INI Files',
+            accept: { 'text/plain': ['.ini'] },
+          },
+        ],
+      });
+      
+      // Безопасное сохранение хендла в appState
+      (appState as AppStateWithHandle).currentIniFileHandle = fileHandle;
+      
+    } catch (err) {
+      // Пользователь нажал "Отмена" в диалоге сохранения
+      return false;
+    }
+  }
+
+  // Явная проверка для компилятора, что fileHandle не является null
+  if (!fileHandle) {
+    showIdModal('Ошибка: не удалось получить дескриптор файла');
+    return false;
+  }
+
+  // 1. Собираем изменения из таблицы: key → весь массив parts
   const rows = Array.from(
     document.querySelectorAll<HTMLTableRowElement>('#grid-data-rows tr'),
   );
@@ -83,7 +130,6 @@ export async function saveIniChanges(appState: AppState): Promise<boolean> {
     let hexValue = (parts[hexIndex] || '').trim();
 
     if (dataType === 'TPRMLIST') {
-      // Текст опции → hex через список опций из data-parts
       hexValue = '';
       for (const p of parts) {
         const part = (p || '').trim();
@@ -99,20 +145,31 @@ export async function saveIniChanges(appState: AppState): Promise<boolean> {
     changes.push({ key, hexValue, hexIndex, multiplier });
   }
 
-  if (changes.length === 0) {
+  // 2. Собираем изменения из баннеров (Механизм, Место установки, Дата)
+  const mechanismInput = document.querySelector<HTMLInputElement>('.mechanism-input');
+  const locationInput = document.querySelector<HTMLInputElement>('.location-input');
+  const dateInput = document.querySelector<HTMLInputElement>('.date-input');
+
+  const bannerUpdates = [
+    { key: 'Description', value: mechanismInput?.value.trim() ?? '' },
+    { key: 'Location', value: locationInput?.value.trim() ?? '' },
+    { key: 'Date', value: dateInput?.value.trim() ?? '' }
+  ];
+
+  if (changes.length === 0 && bannerUpdates.every(u => u.value === '')) {
     showIdModal('Нет изменений для сохранения');
     return false;
   }
 
   console.log('[SAVE] Собранные изменения:', JSON.stringify(changes.slice(0, 10)));
 
-  // Хирургическая правка: обновляем все изменённые токены в строке key=...
+  // 3. Хирургическая правка: обновляем строки в содержимом INI
   const sep = original.includes('\r\n') ? '\r\n' : '\n';
   const lines = original.split(/\r?\n/);
   let applied = 0;
 
+  // 3.1. Применяем изменения из таблицы
   for (const change of changes) {
-    // Ключ может отделяться от '=' пробелами ("p10000=..." и "p10000 = ...")
     const keyRe = new RegExp(
       '^' + change.key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*=',
     );
@@ -125,10 +182,9 @@ export async function saveIniChanges(appState: AppState): Promise<boolean> {
       const rawValue = line.substring(eq + 1);
       const tokens = rawValue.split('/');
       let idx = tokens.length - 1;
-      if (tokens[idx] === '') idx--; // пропускаем пустой хвостовой токен
+      if (tokens[idx] === '') idx--; 
       if (idx < 0) break;
 
-      // Обновляем ТОЛЬКО токен значения и множитель зависимости (токен 9)
       const targetIdx = change.hexIndex < tokens.length ? change.hexIndex : idx;
       tokens[targetIdx] = change.hexValue;
       if (change.multiplier !== '' && tokens.length > 9) {
@@ -138,6 +194,32 @@ export async function saveIniChanges(appState: AppState): Promise<boolean> {
       lines[i] = line.substring(0, eq + 1) + tokens.join('/');
       applied++;
       break;
+    }
+  }
+
+  // 3.2. Применяем изменения из баннеров
+  for (const update of bannerUpdates) {
+    const keyRe = new RegExp(
+      '^' + update.key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*=',
+    );
+    
+    let foundInFile = false;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+      if (keyRe.test(trimmed)) {
+        const eq = line.indexOf('=');
+        lines[i] = line.substring(0, eq + 1) + update.value;
+        foundInFile = true;
+        applied++;
+        break;
+      }
+    }
+
+    // Если ключа не было в файле, но пользователь ввел значение, добавляем его в конец
+    if (!foundInFile && update.value !== '') {
+      lines.push(`${update.key}=${update.value}`);
+      applied++;
     }
   }
 
@@ -155,6 +237,39 @@ export async function saveIniChanges(appState: AppState): Promise<boolean> {
 
     appState.currentIniContent = newContent;
     clearAllDirty();
+    
+    // 4. КРИТИЧЕСКИ ВАЖНО: Обновляем внутренний реестр (deviceRegistry / fileStore), 
+    // чтобы UI при перерисовке брал актуальные данные, а не старый кэш.
+    const store = getFileStore();
+    let matchingEntry = null;
+    for (const entry of store.values()) {
+      if (entry.handle === fileHandle) {
+        matchingEntry = entry;
+        break;
+      }
+    }
+
+    if (matchingEntry) {
+      // Парсим новый контент официальным парсером приложения
+      const parser = new IniParser();
+      const parseResult = parser.parse(newContent);
+      const newIniConfig = new IniConfig(parseResult);
+      const newConfig = parseResult.rawSections as RawIniConfig;
+
+      // Обновляем кэш содержимого в хранилище
+      matchingEntry.content = newContent;
+      matchingEntry.lastModified = Date.now();
+
+      // Обновляем реестр устройств (это предотвратит перезапись баннеров старыми данными)
+      updateDeviceInRegistry(matchingEntry.location, matchingEntry.id, newIniConfig, newConfig);
+      
+      // Дополнительно обновляем баннеры в DOM прямо сейчас для мгновенного отклика
+      const deviceConfig = newConfig['DEVICE'] as Record<string, string> | undefined;
+      if (deviceConfig) {
+        populateDeviceForm(deviceConfig);
+      }
+    }
+
     showIdModal(`Сохранено: ${applied} параметров`);
     console.log(`[SAVE] Файл сохранён (windows-1251), обновлено: ${applied}`);
     return true;

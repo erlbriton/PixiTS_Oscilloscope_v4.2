@@ -442,7 +442,21 @@ export async function editDeviceIniFile(deviceId: string): Promise<void> {
         return;
     }
 
-    const newContent = await openIniEditor(entry.content, `Редактирование: ${entry.file.name}`);
+    // Гарантированно получаем самое свежее содержимое с диска перед открытием редактора,
+    // чтобы избежать показа устаревших данных из кэша entry.content
+    let contentToEdit = entry.content;
+    try {
+        const freshFile = await entry.handle.getFile();
+        contentToEdit = await readFileAsText(freshFile);
+        // Синхронизируем кэш, чтобы последующие операции имели актуальные данные
+        entry.file = freshFile;
+        entry.content = contentToEdit;
+        entry.lastModified = Date.now();
+    } catch (err) {
+        console.warn('[file-loader] Не удалось прочитать свежий файл перед редактированием, используем кэш:', err);
+    }
+
+    const newContent = await openIniEditor(contentToEdit, `Редактирование: ${entry.file.name}`);
     if (newContent === null) return; // Отмена / Escape
 
     try {
@@ -453,9 +467,9 @@ export async function editDeviceIniFile(deviceId: string): Promise<void> {
         await writable.close();
 
         // Перечитываем (чтобы гарантированно взять то, что на диске)
-        const freshFile = await entry.handle.getFile();
-        const freshContent = await readFileAsText(freshFile);
-        entry.file = freshFile;
+        const freshFileAfterSave = await entry.handle.getFile();
+        const freshContent = await readFileAsText(freshFileAfterSave);
+        entry.file = freshFileAfterSave;
         entry.content = freshContent;
         entry.lastModified = Date.now();
 
@@ -477,7 +491,6 @@ export async function editDeviceIniFile(deviceId: string): Promise<void> {
         console.error('[file-loader] editDeviceIniFile error:', err);
     }
 }
-
 function syncFilesToOscilloscope(): void {
   const osc = window.osc;
   if (!osc || typeof osc.setIniFiles !== 'function') return;
