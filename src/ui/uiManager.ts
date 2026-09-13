@@ -475,9 +475,9 @@ export function initUI(deps: UiManagerDeps): void {
           showCompactError('Изменений в INI-файлах не обнаружено.');
         } else {
           const parts: string[] = [];
-          if (results.updated > 0) parts.push(`обновлено: ${results.updated}`);
+          if (results.updated > 0) parts.push(`Изменений в файлах: ${results.updated}`);
           if (results.removed > 0) parts.push(`удалено из списка: ${results.removed}`);
-          showCompactError(`Список устройств обновлён. ${parts.join(', ')}.`);
+          showCompactError(`Содержимое  ini файлов обновлено. ${parts.join(', ')}.`);
         }
         if (results.errors.length > 0) {
           console.warn('[UI] reloadIniFilesFromDisk — ошибки:', results.errors);
