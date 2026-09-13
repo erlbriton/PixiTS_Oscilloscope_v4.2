@@ -1,3 +1,5 @@
+# help-src/build-help.sh
+
 #!/bin/bash
 # Сборка справки из Markdown-исходников: help-src/*.md -> public/help/*.html
 set -e
