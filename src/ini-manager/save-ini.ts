@@ -63,6 +63,44 @@ function encodeWindows1251(text: string): Uint8Array<ArrayBuffer> {
 }
 
 // ─────────────────────────────────────────────
+// Вспомогательные функции для проверки реальных изменений
+// ─────────────────────────────────────────────
+
+/** Получает оригинальное значение токена из исходного текста INI */
+function getOriginalToken(originalText: string, key: string, hexIndex: number): string | null {
+  const keyRe = new RegExp('^' + key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*=');
+  const lines = originalText.split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (keyRe.test(trimmed)) {
+      const eq = line.indexOf('=');
+      if (eq === -1) return null;
+      const rawValue = line.substring(eq + 1);
+      const tokens = rawValue.split('/');
+      let idx = tokens.length - 1;
+      if (tokens[idx] === '') idx--; // пропускаем пустой хвостовой токен
+      if (hexIndex >= 0 && hexIndex <= idx) {
+        return tokens[hexIndex].trim();
+      }
+      return null;
+    }
+  }
+  return null;
+}
+
+/** Проверяет, существует ли ключ баннера в исходном тексте INI */
+function hasBannerKeyInOriginal(originalText: string, key: string): boolean {
+  const keyRe = new RegExp('^' + key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*=');
+  const lines = originalText.split(/\r?\n/);
+  for (const line of lines) {
+    if (keyRe.test(line.trim())) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// ─────────────────────────────────────────────
 // Сохранение
 // ─────────────────────────────────────────────
 
@@ -141,6 +179,13 @@ export async function saveIniChanges(appState: AppState): Promise<boolean> {
     }
 
     if (!hexValue) continue;
+
+    // КРИТИЧЕСКИ ВАЖНО: Проверяем, действительно ли значение изменилось
+    const originalHexValue = getOriginalToken(original, key, hexIndex);
+    if (originalHexValue === hexValue) {
+      continue; // Значение не изменилось, не трогаем эту строку!
+    }
+
     const multiplier = parts.length > 9 ? (parts[9] ?? '').trim() : '';
     changes.push({ key, hexValue, hexIndex, multiplier });
   }
@@ -154,9 +199,27 @@ export async function saveIniChanges(appState: AppState): Promise<boolean> {
     { key: 'Description', value: mechanismInput?.value.trim() ?? '' },
     { key: 'Location', value: locationInput?.value.trim() ?? '' },
     { key: 'Date', value: dateInput?.value.trim() ?? '' }
-  ];
+  ].filter(update => {
+    // ИСПРАВЛЕНИЕ: Обновляем баннер ТОЛЬКО если этот ключ УЖЕ существует в исходном файле.
+    // Это предотвратит появление "Date=..." в конце файла, если его там не было.
+    if (!hasBannerKeyInOriginal(original, update.key)) {
+      return false; 
+    }
+    
+    // И проверяем, что значение действительно отличается от оригинала
+    const keyRe = new RegExp('^' + update.key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*=');
+    const lines = original.split(/\r?\n/);
+    for (const line of lines) {
+      if (keyRe.test(line.trim())) {
+        const eq = line.indexOf('=');
+        const originalVal = line.substring(eq + 1).trim();
+        return update.value !== originalVal;
+      }
+    }
+    return false;
+  });
 
-  if (changes.length === 0 && bannerUpdates.every(u => u.value === '')) {
+  if (changes.length === 0 && bannerUpdates.length === 0) {
     showIdModal('Нет изменений для сохранения');
     return false;
   }
@@ -191,6 +254,7 @@ export async function saveIniChanges(appState: AppState): Promise<boolean> {
         tokens[9] = change.multiplier;
       }
 
+      // Сохраняем оригинальное форматирование ДО знака '=', меняем только значение
       lines[i] = line.substring(0, eq + 1) + tokens.join('/');
       applied++;
       break;
@@ -203,24 +267,19 @@ export async function saveIniChanges(appState: AppState): Promise<boolean> {
       '^' + update.key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*=',
     );
     
-    let foundInFile = false;
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       const trimmed = line.trim();
       if (keyRe.test(trimmed)) {
         const eq = line.indexOf('=');
+        // Сохраняем оригинальные пробелы ДО знака '=', меняем только то, что ПОСЛЕ
         lines[i] = line.substring(0, eq + 1) + update.value;
-        foundInFile = true;
         applied++;
         break;
       }
     }
-
-    // Если ключа не было в файле, но пользователь ввел значение, добавляем его в конец
-    if (!foundInFile && update.value !== '') {
-      lines.push(`${update.key}=${update.value}`);
-      applied++;
-    }
+    // Обратите внимание: блок lines.push() здесь полностью удален. 
+    // Мы больше никогда не добавляем ключи баннеров в конец файла.
   }
 
   if (applied === 0) {
@@ -238,8 +297,7 @@ export async function saveIniChanges(appState: AppState): Promise<boolean> {
     appState.currentIniContent = newContent;
     clearAllDirty();
     
-    // 4. КРИТИЧЕСКИ ВАЖНО: Обновляем внутренний реестр (deviceRegistry / fileStore), 
-    // чтобы UI при перерисовке брал актуальные данные, а не старый кэш.
+    // 4. КРИТИЧЕСКИ ВАЖНО: Обновляем внутренний реестр (deviceRegistry / fileStore)
     const store = getFileStore();
     let matchingEntry = null;
     for (const entry of store.values()) {
@@ -250,20 +308,16 @@ export async function saveIniChanges(appState: AppState): Promise<boolean> {
     }
 
     if (matchingEntry) {
-      // Парсим новый контент официальным парсером приложения
       const parser = new IniParser();
       const parseResult = parser.parse(newContent);
       const newIniConfig = new IniConfig(parseResult);
       const newConfig = parseResult.rawSections as RawIniConfig;
 
-      // Обновляем кэш содержимого в хранилище
       matchingEntry.content = newContent;
       matchingEntry.lastModified = Date.now();
 
-      // Обновляем реестр устройств (это предотвратит перезапись баннеров старыми данными)
       updateDeviceInRegistry(matchingEntry.location, matchingEntry.id, newIniConfig, newConfig);
       
-      // Дополнительно обновляем баннеры в DOM прямо сейчас для мгновенного отклика
       const deviceConfig = newConfig['DEVICE'] as Record<string, string> | undefined;
       if (deviceConfig) {
         populateDeviceForm(deviceConfig);

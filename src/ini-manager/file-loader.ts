@@ -563,7 +563,7 @@ function serializeConfig(config: RawIniConfig): string {
     if (data && typeof data === 'object') {
       for (const key in data) {
         const val = data[key];
-        out += `${key} = ${Array.isArray(val) ? val.join('/') : val}\n`;
+        out += `${key}=${Array.isArray(val) ? val.join('/') : val}\n`;
       }
     }
     out += '\n';

@@ -118,7 +118,7 @@ export class IniConfig {
    * Сериализация обратно в INI-текст.
    * Только для сохранения файлов, НЕ для передачи между модулями.
    */
-  public serialize(): string {
+   public serialize(): string {
     const out: string[] = [];
     const raw = this.parseResult.rawSections;
 
@@ -127,7 +127,7 @@ export class IniConfig {
       const entries = raw[section];
       if (entries) {
         for (const [key, val] of Object.entries(entries)) {
-          out.push(`${key} = ${Array.isArray(val) ? val.join('/') : val}`);
+          out.push(`${key}=${Array.isArray(val) ? val.join('/') : val}`);
         }
       }
       out.push('');
@@ -136,14 +136,14 @@ export class IniConfig {
     if (raw['DEVICE']) {
       out.push('[DEVICE]');
       for (const [k, v] of Object.entries(raw['DEVICE'])) {
-        out.push(`${k} = ${Array.isArray(v) ? v.join('/') : v}`);
+        out.push(`${k}=${Array.isArray(v) ? v.join('/') : v}`);
       }
       out.push('');
     }
     if (raw['VARS']) {
       out.push('[VARS]');
       for (const [k, v] of Object.entries(raw['VARS'])) {
-        out.push(`${k} = ${Array.isArray(v) ? v.join('/') : v}`);
+        out.push(`${k}=${Array.isArray(v) ? v.join('/') : v}`);
       }
       out.push('');
     }
