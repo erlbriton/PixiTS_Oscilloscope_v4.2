@@ -246,7 +246,7 @@ export async function handleAddToBaseGeneric(src: AddToBaseSource): Promise<void
     const serial = parseDeviceIdString(idText).serial;
     const fileName = src.moveExistingToBackup && src.oldFileName
         ? src.oldFileName
-        : `${templateName}_${serial}.ini`;
+        : `${serial}.ini`;
     // Пишем в Windows-1251 — как вся база и как старый аджастер:
     // новый файл неотличим от старых.
     const bytes = encodeToWindows1251(content);
