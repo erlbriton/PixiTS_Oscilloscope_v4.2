@@ -377,8 +377,14 @@ export async function handleAddToBaseGeneric(src: AddToBaseSource): Promise<void
     }
 
     if (!savedToDb) {
-        downloadFallback(fileName, bytes);
-        console.log(`[new-device] Файл ${fileName} скачан в "Загрузки".`);
+        const fallbackHandle = await downloadFallback(fileName, bytes);
+        if (fallbackHandle) {
+            fileHandle = fallbackHandle;
+            savedToDb = true;
+            console.log(`[new-device] Файл ${fileName} сохранён через showSaveFilePicker (handle получен).`);
+        } else {
+            console.log(`[new-device] Файл ${fileName} скачан в "Загрузки" без handle — редактирование будет недоступно.`);
+        }
     }
 
     // Режим обновления: старое устройство (его файл уехал в BackUp) помечаем

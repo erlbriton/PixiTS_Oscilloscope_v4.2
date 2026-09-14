@@ -240,16 +240,38 @@ export async function saveFileToDbFolder(
 }
 
 /** Fallback: скачать файл в "Загрузки". */
-export function downloadFallback(name: string, content: Uint8Array<ArrayBuffer>): void {
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = name;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
+export async function downloadFallback(name: string, content: Uint8Array<ArrayBuffer>): Promise<FileSystemFileHandle | null> {
+    const w = window as unknown as {
+        showSaveFilePicker?: (opts: { suggestedName?: string; types?: Array<{ description?: string; accept?: Record<string, string[]> }> }) => Promise<FileSystemFileHandle | undefined>;
+    };
+    if (typeof w.showSaveFilePicker !== 'function') {
+        // Браузер не поддерживает File System Access API — скачиваем старым способом (без handle)
+        const blob = new Blob([content], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        return null;
+    }
+    try {
+        const handle = await w.showSaveFilePicker({
+            suggestedName: name,
+            types: [{ description: 'INI Files', accept: { 'text/plain': ['.ini'] } }],
+        });
+        if (!handle) return null; // пользователь отменил
+        // Записываем содержимое через handle
+        const writable = await handle.createWritable();
+        await writable.write(content);
+        await writable.close();
+        return handle;
+    } catch (err) {
+        console.warn('[downloadFallback] Сохранение через showSaveFilePicker не удалось:', err);
+        return null;
+    }
 }
 
 /**
