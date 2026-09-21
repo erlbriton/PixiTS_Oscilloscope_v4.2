@@ -1,6 +1,8 @@
 // src/main.ts
 
 import { SerialConnection } from './serial/serial.js';
+import { WebSocketConnection } from './serial/ws-transport.js';
+import type { ISerialPort } from './serial/ISerialPort.js';
 import { initUI } from './ui/uiManager.js';
 import { ModbusParser } from './serial/modbus.js';
 import { Oscilloscope } from './oscilloscope';
@@ -45,7 +47,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.osc = osc;
         await osc.initialize(oscContainer ?? undefined);
 
-        const serial = new SerialConnection();
+        let serial: ISerialPort = new SerialConnection();
         const parser = new ModbusParser();
 
         // Связываем кнопку Стоп/Пуск осциллографа с глобальным состоянием опроса
@@ -77,14 +79,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
 
         initUI({
-            serial, appState, parser, view: osc, buffers,
-            setupFileHandling,
-            updateComInterfaceName,
-            executeDeviceIdentification,
-            readLoop,
-            showIdModal,
-            updateDeviceRegisters
-        });
+    serial, appState, parser, view: osc, buffers,
+    setupFileHandling,
+    updateComInterfaceName,
+    executeDeviceIdentification,
+    readLoop,
+    showIdModal,
+    updateDeviceRegisters,
+    setSerial: (newSerial: ISerialPort) => { serial = newSerial; }
+});
 
         // Инициализация drag-and-drop для INI-файлов
         initDropZone(appState);

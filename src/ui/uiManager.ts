@@ -31,6 +31,7 @@ import { initHelpUI , showHelpWindow } from './help-ui.js';
 import { hasAnyDirty } from '../ini-manager/dirty-tracker.js';
 import { forcePickParentFolder } from '../ini-manager/db-folder.js';
 import { showConfirmDialog } from './confirm-dialog.js';
+import { WebSocketConnection } from '../serial/ws-transport.js';
 
 /** Буфер данных канала (типизирован явно, без any) */
 export interface ChannelBuffer {
@@ -70,6 +71,7 @@ export interface UiManagerDeps {
     slaveAddr: number,
     state: AppState
   ) => Promise<boolean>;
+  setSerial?: (newSerial: ISerialPort) => void;
 }
 
 export function initUI(deps: UiManagerDeps): void {
@@ -82,10 +84,12 @@ export function initUI(deps: UiManagerDeps): void {
         if (ok) await forcePickParentFolder();
     })();
   const {
-    serial, appState, parser, view, buffers,
+    appState, parser, view, buffers,
     setupFileHandling, setupFolderHandling, updateComInterfaceName,
-    executeDeviceIdentification, readLoop, showIdModal, updateDeviceRegisters
-  } = deps;
+    executeDeviceIdentification, readLoop, showIdModal, updateDeviceRegisters,
+    setSerial
+} = deps;
+let serial: ISerialPort = deps.serial;
   let isManualDisconnect = false;
   const filePicker = document.getElementById('filePicker') as HTMLInputElement | null;
   const folderPicker = document.getElementById('folderPicker') as HTMLInputElement | null;
@@ -150,13 +154,20 @@ export function initUI(deps: UiManagerDeps): void {
 
     if (connectBtn) {
     connectBtn.addEventListener("click", async () => {
-      // Кнопка "Подключить":
-      //  - если порт уже открыт (кнопкой ID или предыдущим "Подключить") —
-      //    просто читаем ID из баннера, не посылая 0x11 повторно;
-      //  - если порт закрыт — открываем его и читаем ID через
-      //    executeDeviceIdentification (она сама откроет, отправит 0x11,
-      //    запишет в баннер и корректно обработает отмену выбора порта).
-      // Этап поиска "родного" INI — следующий шаг.
+      const busSelect = document.getElementById('busSelect') as HTMLSelectElement | null;
+      const isTcp = busSelect?.value === 'TCP';
+
+      if (isTcp && !serial.isConnected) {
+        const tcpIpInput = document.getElementById('tcpIpInput') as HTMLInputElement | null;
+        const ip = tcpIpInput?.value.trim() || '192.168.1.234';
+        console.log('[UI] Создаю WebSocket соединение с IP:', ip);
+        serial = new WebSocketConnection(ip);
+await serial.connect();  // ← ДОБАВЛЕНО: физически открываем WebSocket
+console.log('[UI] WebSocket создан, isConnected:', serial.isConnected);
+if (setSerial) setSerial(serial);
+      }
+      
+      console.log('[UI] Тип активного порта:', serial.constructor.name);
 
       let idText: string;
 
@@ -165,7 +176,7 @@ export function initUI(deps: UiManagerDeps): void {
         idText = (banner?.textContent ?? '').trim();
       } else {
         try {
-          await executeDeviceIdentification(serial, comSelect, appState, baudSelect);
+          await executeDeviceIdentification(serial, isTcp ? null : comSelect, appState, isTcp ? null : baudSelect);
         } catch (err: unknown) {
           // Отмена выбора порта уже обработана внутри executeDeviceIdentification
           // (через PortCancelledError), но для надёжности перехватываем и здесь.
