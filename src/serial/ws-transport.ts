@@ -14,11 +14,11 @@ export class WebSocketConnection implements ISerialPort {
   private readQueue: Uint8Array[] = [];
   private readResolvers: ((chunk: Uint8Array | null) => void)[] = [];
   
-  // Настройки переподключения
+  // Настройки переподключения (бесконечные попытки с exponential backoff)
   private intentionalClose: boolean = false;
   private reconnectAttempts: number = 0;
-  private readonly MAX_RECONNECT_ATTEMPTS: number = 5;
-  private readonly RECONNECT_DELAY: number = 2000; // 2 секунды
+  private readonly MAX_RECONNECT_DELAY: number = 30000; // Максимум 30 секунд
+  private readonly BASE_RECONNECT_DELAY: number = 2000; // База 2 секунды
   private reconnectTimer: any = null;
 
   constructor(private ip: string = '127.0.0.1') {}
@@ -89,13 +89,11 @@ export class WebSocketConnection implements ISerialPort {
 
     private tryReconnect(): void {
     console.log('[WebSocket] tryReconnect вызван. Попытки:', this.reconnectAttempts);
-    if (this.reconnectAttempts >= this.MAX_RECONNECT_ATTEMPTS) {
-      console.error(`[WebSocket] Достигнут лимит попыток переподключения (${this.MAX_RECONNECT_ATTEMPTS}). Требуется повторное нажатие Connect.`);
-      return;
-    }
 
     this.reconnectAttempts++;
-    console.log(`[WebSocket] Попытка переподключения ${this.reconnectAttempts}/${this.MAX_RECONNECT_ATTEMPTS} через ${this.RECONNECT_DELAY}мс...`);
+    // Экспоненциальная задержка: 2с, 4с, 8с, 16с, 30с, 30с, ...
+    const delay = Math.min(this.BASE_RECONNECT_DELAY * Math.pow(2, this.reconnectAttempts - 1), this.MAX_RECONNECT_DELAY);
+    console.log(`[WebSocket] Попытка переподключения ${this.reconnectAttempts} через ${delay}мс...`);
 
     this.reconnectTimer = setTimeout(async () => {
       try {
@@ -105,8 +103,9 @@ export class WebSocketConnection implements ISerialPort {
         window.dispatchEvent(new CustomEvent('ws:reconnected'));
       } catch (err) {
         console.error('[WebSocket] Ошибка переподключения:', err);
+        // При ошибке onclose вызовется снова и запустит следующую попытку с большей задержкой
       }
-    }, this.RECONNECT_DELAY);
+    }, delay);
   }
 
   public async readChunk(): Promise<Uint8Array | null> {
