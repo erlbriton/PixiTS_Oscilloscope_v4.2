@@ -78,6 +78,29 @@ document.addEventListener('DOMContentLoaded', async () => {
             };
         });
 
+                       // Слушаем событие успешного переподключения WebSocket и перезапускаем readLoop
+        window.addEventListener('ws:reconnected', () => {
+            console.log('[Main] WebSocket переподключён. Перезапуск readLoop и осциллографа...');
+            appState.isLoopRunning = false; // Сбрасываем флаг
+            appState.isPolling = true; // Убеждаемся, что опрос включён
+            
+            // Размораживаем осциллограф (после controller-not-responding)
+            if (osc && typeof osc.resumeFromFrozen === 'function') {
+                osc.resumeFromFrozen();
+                console.log('[Main] Осциллограф разморожен.');
+            }
+            
+            // Возобновляем цикл отрисовки осциллографа
+            if (osc && typeof osc.setConnectionStatus === 'function') {
+                osc.setConnectionStatus(true);
+                console.log('[Main] Цикл отрисовки осциллографа возобновлён.');
+            }
+            
+            readLoop(serial, parser, osc, buffers, appState).catch(err =>
+                console.error("Ошибка перезапуска readLoop после переподключения:", err)
+            );
+        });
+
         initUI({
     serial, appState, parser, view: osc, buffers,
     setupFileHandling,

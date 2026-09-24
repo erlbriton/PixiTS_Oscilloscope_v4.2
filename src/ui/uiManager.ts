@@ -159,7 +159,7 @@ let serial: ISerialPort = deps.serial;
 
       if (isTcp && !serial.isConnected) {
         const tcpIpInput = document.getElementById('tcpIpInput') as HTMLInputElement | null;
-        const ip = tcpIpInput?.value.trim() || '192.168.1.234';
+        const ip = tcpIpInput?.value.trim() || '127.0.0.1';
         console.log('[UI] Создаю WebSocket соединение с IP:', ip);
         serial = new WebSocketConnection(ip);
 await serial.connect();  // ← ДОБАВЛЕНО: физически открываем WebSocket
