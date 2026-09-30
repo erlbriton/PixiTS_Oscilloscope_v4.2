@@ -42,7 +42,7 @@ export class WebSocketConnection implements ISerialPort {
 
         this.ws.onmessage = (event: MessageEvent) => {
           const data = new Uint8Array(event.data as ArrayBuffer);
-          // console.log('[WebSocket] RX:', Array.from(data).map(b => b.toString(16).padStart(2, '0')).join(' '));
+          console.log('[WebSocket] RX:', Array.from(data).map(b => b.toString(16).padStart(2, '0')).join(' '));
           if (this.readResolvers.length > 0) {
             const resolver = this.readResolvers.shift()!;
             resolver(data);
@@ -124,7 +124,7 @@ export class WebSocketConnection implements ISerialPort {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       throw new Error('WebSocket is not connected');
     }
-    // console.log('[WebSocket] TX:', Array.from(data).map(b => b.toString(16).padStart(2, '0')).join(' '));
+    console.log('[WebSocket] TX:', Array.from(data).map(b => b.toString(16).padStart(2, '0')).join(' '));
     // Копия поверх чистого ArrayBuffer: WebSocket.send не принимает SharedArrayBuffer
     const buf = new ArrayBuffer(data.byteLength);
     new Uint8Array(buf).set(data);
