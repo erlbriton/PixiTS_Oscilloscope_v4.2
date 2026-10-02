@@ -30,11 +30,12 @@ import type { WebSerialPort } from "../serial/web-serial-types.js";
 import { BrowserFileSaver } from "../core/platform/browser-fs.js";
 import { buildWriteMultipleRegistersRequest } from "../serial/modbus.js";
 import { handleCommandSubmit, handleMultiplyCommand, type CommandContext } from "./scope/OscilloscopeCommands";
-import { 
-  renderVisibleChannels, updateIntervalDisplay, 
-  measureChannelAtTime, formatIntervalDuration, 
+import {
+  renderVisibleChannels, updateIntervalDisplay,
+  measureChannelAtTime, formatIntervalDuration,
   syncViewPositions, bindSharedCanvasEvents,
-  type RenderingContext } from "./scope/OscilloscopeRenderer";
+  type RenderingContext
+} from "./scope/OscilloscopeRenderer";
 import { bindEvents, bindTimeZoomWheel, updateTimeScaleReadout, type BindingsContext } from "./scope/OscilloscopeBindings";
 import {
   getGraphColumnMetrics as canvasMetrics,
@@ -61,6 +62,8 @@ import {
   applyChannelConfigs as channelsApplyConfigs,
   loadIniContent as channelsLoadIniContent,
   setActiveIni as channelsSetActiveIni,
+  setSectionMode as channelsSetSectionMode,
+  getSectionChannels as channelsGetSectionChannels,
 } from "./scope/OscilloscopeChannels";
 import {
   setConnectionStatus as lifecycleSetConnectionStatus,
@@ -115,11 +118,18 @@ export class Oscilloscope {
   private externalSerial: { write(data: Uint8Array): Promise<void> } | null = null;
   private onPollingStateChangeCallback?: (isPolling: boolean) => void;
   public currentIniConfig: IniConfig | null = null;
+  /**
+   * Текущий режим отображения параметров: какая секция INI используется
+   * для каналов осциллографа. Переключается кнопками RAM/XRAM в окне
+   * «Свойства просмотра параметров». Значение читают loadIniContent
+   * (при загрузке файла) и file-loader (при применении INI из контекста).
+   */
+  public currentSectionMode: 'RAM' | 'XRAM' = 'RAM';
   private appState: AppState | null = null;
   public pixiApp: Application | null = null;
   private graphColumnOffset: number = 0;
   public canvasOverlay: HTMLDivElement | null = null;
-  
+
   // ========================================================================
   // СОВМЕЩЁННАЯ СТРОКА (Composite Channel Row)
   // ========================================================================
@@ -128,39 +138,39 @@ export class Oscilloscope {
   // одновременно (согласно требованиям заказчика).
   // Если пользователь создаст новую совмещённую группу, старая будет
   // автоматически удалена (или можно добавить проверку в будущем).
-  
+
   // Экземпляр текущей совмещённой строки. null означает, что сейчас
   // совмещённой строки нет. Хранится здесь, чтобы метод renderVisibleGraphs
   // мог отрисовать её наравне с обычными каналами.
   private compositeRow: CompositeChannelRow | null = null;
-  
+
   // PixiView для отрисовки графиков в совмещённой строке.
   // Хранится отдельно от основной карты pixiViews, чтобы не смешивать
   // обычные каналы и совмещённую группу. Это также упрощает удаление
   // совмещённой строки при её разгруппировке.
   private compositePixiView: PixiView | null = null;
-  
+
   // Массив каналов, которые входят в текущую совмещённую группу.
   // Нужен для отрисовки всех этих каналов в один PixiView в методе
   // renderVisibleGraphs. Если compositeRow === null, массив пустой.
   private compositeChannels: Channel[] = [];
 
-    constructor(options?: { skipSerial?: boolean; skipRecorder?: boolean; viewerMode?: boolean }) {
+  constructor(options?: { skipSerial?: boolean; skipRecorder?: boolean; viewerMode?: boolean }) {
     this.settings = new Settings();
     this.archive = new Archive();
-    this.viewerMode = options?.viewerMode ?? false;    
+    this.viewerMode = options?.viewerMode ?? false;
     if (options?.skipSerial) {
       this.serial = null;
     } else {
       this.serial = new Serial(this.archive);
     }
-    
+
     if (options?.skipRecorder) {
       this.recorder = null;
     } else {
       this.recorder = new Recorder(this.archive, new BrowserFileSaver());
     }
-    
+
     this.renderer = new Renderer(this.settings, this.archive);
   }
 
@@ -177,7 +187,7 @@ export class Oscilloscope {
   public setOnPollingStateChange(cb: (isPolling: boolean) => void): void {
     this.onPollingStateChangeCallback = cb;
   }
-public setAppState(state: AppState): void {
+  public setAppState(state: AppState): void {
     this.appState = state;
   }
 
@@ -193,7 +203,7 @@ public setAppState(state: AppState): void {
   ): Promise<void> {
     return lifecycleInitialize(this, targetContainer);
   }
-  
+
   /**
    * Строит контекст для канвас-функций (scope/OscilloscopeCanvas).
    * Состояние не копируется — передаются живые ссылки и сеттер.
@@ -282,6 +292,14 @@ public setAppState(state: AppState): void {
     return channelsLoadIniContent(this, iniContent);
   }
 
+  public async setSectionMode(mode: 'RAM' | 'XRAM'): Promise<void> {
+    return channelsSetSectionMode(this, mode);
+  }
+
+  public getSectionChannels(mode: 'RAM' | 'XRAM'): Channel[] {
+    return channelsGetSectionChannels(this, mode);
+  }
+
   public async applyChannelConfigs(configs: ChannelConfig[]): Promise<void> {
     return channelsApplyConfigs(this, configs);
   }
@@ -328,7 +346,7 @@ public setAppState(state: AppState): void {
     };
   }
 
-    public getBindingsContext(): BindingsContext {
+  public getBindingsContext(): BindingsContext {
     return {
       settings: this.settings,
       getChannels: () => this.allChannels,
@@ -384,7 +402,7 @@ public setAppState(state: AppState): void {
         const newVal = ch.scaledValue === 0 ? 1 : 0;
         void handleCommandSubmit(this.getCommandContext(), `${ch.name} = ${newVal}`);
       },
-      
+
       // Реализация callback'а создания совмещённой строки.
       // Делегирует вызов методу createCompositeRow() этого класса, который
       // управляет всем жизненным циклом совмещённой строки: создание,
@@ -393,7 +411,7 @@ public setAppState(state: AppState): void {
       onCreateComposite: (channels) => {
         this.createCompositeRow(channels);
       },
-      
+
       // Реализация выбора канала или совмещённой строки по координате Y.
       // Сначала пытаемся найти обычный канал. Если не нашли — проверяем,
       // не попал ли клик в область совмещённой строки.
@@ -403,11 +421,11 @@ public setAppState(state: AppState): void {
         const scrollTop = this.rowsContainer.scrollTop;
         const y = clientY - rowsRect.top + scrollTop;
         let acc = 0;
-        
+
         for (const ch of this.visibleChannels) {
           const row = this.table.getRow(ch.id);
           if (!row || !row.getIsVisible()) continue;
-          
+
           acc += ch.rowHeight;
           if (y < acc) {
             // Нашли обычный канал — кликаем по его строке
@@ -415,7 +433,7 @@ public setAppState(state: AppState): void {
             return;
           }
         }
-        
+
         // Если обычный канал не найден, проверяем совмещённую строку
         if (this.compositeRow && this.compositeRow.getIsVisible()) {
           const compositeRect = this.compositeRow.getElement().getBoundingClientRect();

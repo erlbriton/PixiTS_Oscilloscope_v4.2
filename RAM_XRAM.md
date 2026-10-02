@@ -19,8 +19,8 @@ const PARAM_SECTIONS: ReadonlySet<string> = new Set(['RAM', 'CD', 'FLASH']);
 // XRAM — исторически отдельная секция для диагностики; формат идентичен RAM.
 const PARAM_SECTIONS: ReadonlySet<string> = new Set(['RAM', 'XRAM', 'CD', 'FLASH']);
 
-Зачем: без этого парсер не видит секцию [XRAM], и getSection('XRAM')
-возвращает пустой массив.
+//Зачем: без этого парсер не видит секцию [XRAM], и getSection('XRAM')
+//возвращает пустой массив.
 
 ================================================================================
 ШАГ 2. ДОБАВИТЬ ПОЛЕ И МЕТОДЫ В КЛАСС OSCILLOSCOPE

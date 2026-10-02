@@ -21,6 +21,15 @@ export class PropertiesModal {
     private onApplyCallback?: (newVisibleChannels: Channel[]) => void;
     private onSettingsApplyCallback?: (settings: { pollDelayMs: number }) => void;
 
+    /**
+     * Текущий активный режим отображения параметров: RAM или XRAM.
+     * Влияет на подсветку кнопок RAM/XRAM в футере и на то, какая секция
+     * используется для заполнения списков. Состояние живёт в памяти:
+     * переживает открытие/закрытие окна, но сбрасывается при перезапуске
+     * приложения на значение по умолчанию (RAM).
+     */
+    private currentMode: 'RAM' | 'XRAM' = 'RAM';
+
     constructor() {
         this.overlay = document.createElement('div');
         this.overlay.className = 'modal-overlay properties-modal-overlay';
@@ -33,8 +42,14 @@ export class PropertiesModal {
         document.body.appendChild(this.overlay);
 
         this.renderSkeleton();
-        this.bindEvents();
-    }
+this.bindEvents();
+
+// Применяем текущее состояние (RAM по умолчанию) к уже отрисованным
+// кнопкам. Разметка в renderSkeleton всегда создаёт RAM с классом primary,
+// а currentMode может быть переключён (в том числе при будущей загрузке
+// из настроек).
+this.setMode(this.currentMode);
+}
 
     public onApply(cb: (newVisibleChannels: Channel[]) => void): void {
         this.onApplyCallback = cb;
@@ -63,8 +78,59 @@ export class PropertiesModal {
         this.lastClickedLeftIndex = null;
         this.lastClickedRightIndex = null;
 
+        // Синхронизируем подсветку кнопок RAM/XRAM с текущим режимом
+        // осциллографа (единственный источник истины). Так при повторном
+        // открытии окна подсветка соответствует реальному состоянию.
+        const osc = (window as unknown as { osc?: { currentSectionMode?: 'RAM' | 'XRAM' } }).osc;
+        if (osc?.currentSectionMode) {
+            this.setMode(osc.currentSectionMode);
+        }
+
         this.updateLists();
         this.overlay.style.display = 'flex';
+    }
+
+    /**
+     * Устанавливает текущий режим (RAM/XRAM): переключает подсветку кнопок.
+     * Если rebuildLists = true и режим реально изменился — пересобирает
+     * списки параметров из соответствующей секции.
+     */
+    private setMode(mode: 'RAM' | 'XRAM', rebuildLists: boolean = false): void {
+        const modeChanged = this.currentMode !== mode;
+        this.currentMode = mode;
+        const ramBtn = this.modal.querySelector('#prop-mode-ram') as HTMLButtonElement | null;
+        const xramBtn = this.modal.querySelector('#prop-mode-xram') as HTMLButtonElement | null;
+        if (ramBtn) {
+            ramBtn.classList.toggle('primary', mode === 'RAM');
+        }
+        if (xramBtn) {
+            xramBtn.classList.toggle('primary', mode === 'XRAM');
+        }
+        if (rebuildLists && modeChanged) {
+            this.rebuildListsForMode(mode);
+        }
+    }
+
+    /**
+     * Пересобирает списки «Все параметры» / «Просмотр» из указанной секции
+     * текущего INI-конфига осциллографа. Осциллограф НЕ трогает — это
+     * предварительный показ, фактическое переключение происходит по «Применить».
+     */
+    private rebuildListsForMode(mode: 'RAM' | 'XRAM'): void {
+        const osc = (window as unknown as {
+            osc?: { getSectionChannels?: (m: 'RAM' | 'XRAM') => Channel[] };
+        }).osc;
+        if (!osc?.getSectionChannels) return;
+
+        const channels = osc.getSectionChannels(mode);
+        this.allChannels = channels;
+        this.currentRight = [...channels];
+        this.currentLeft = [];
+        this.selectedLeftIds.clear();
+        this.selectedRightIds.clear();
+        this.lastClickedLeftIndex = null;
+        this.lastClickedRightIndex = null;
+        this.updateLists();
     }
 
     public close(): void {
@@ -112,8 +178,14 @@ export class PropertiesModal {
                     <label class="prop-settings-label" for="prop-poll-delay">Пауза (мс):</label>
                     <input class="prop-settings-input" type="number" id="prop-poll-delay" min="1" max="200" value="20" />
                 </div>
-                <button class="toolbar-btn primary" id="prop-apply-btn">Применить</button>
-                <button class="toolbar-btn" id="prop-cancel-btn">Отмена</button>
+                <div class="prop-mode-group">
+                    <button class="toolbar-btn prop-mode-btn primary" id="prop-mode-ram" type="button">RAM</button>
+                    <button class="toolbar-btn prop-mode-btn" id="prop-mode-xram" type="button">XRAM</button>
+                </div>
+                <div class="prop-footer-actions">
+                    <button class="toolbar-btn primary" id="prop-apply-btn">Применить</button>
+                    <button class="toolbar-btn" id="prop-cancel-btn">Отмена</button>
+                </div>
             </div>
         `;
 
@@ -125,7 +197,14 @@ export class PropertiesModal {
         this.modal.querySelector('#prop-close-x')?.addEventListener('click', () => this.close());
         this.modal.querySelector('#prop-cancel-btn')?.addEventListener('click', () => this.close());
 
-        this.modal.querySelector('#prop-apply-btn')?.addEventListener('click', () => {
+        // Кнопки выбора режима RAM/XRAM: переключают подсветку и пересобирают
+        // списки параметров из соответствующей секции (для предварительного
+        // выбора). Осциллограф пока не трогаем — фактическое переключение
+        // секции и закрытие окна происходят по кнопке «Применить».
+        this.modal.querySelector('#prop-mode-ram')?.addEventListener('click', () => this.setMode('RAM', true));
+        this.modal.querySelector('#prop-mode-xram')?.addEventListener('click', () => this.setMode('XRAM', true));
+
+        this.modal.querySelector('#prop-apply-btn')?.addEventListener('click', async () => {
             const pollDelayInput = this.modal.querySelector('#prop-poll-delay') as HTMLInputElement;
             let pollDelayMs = 20;
             if (pollDelayInput) {
@@ -135,6 +214,20 @@ export class PropertiesModal {
                 }
             }
 
+            // Если режим изменился — сначала переключаем секцию осциллографа:
+            // это пересоберёт полный список каналов из новой секции и по
+            // умолчанию покажет все. После этого применяем пользовательский
+            // выбор видимых каналов (по id из новой секции).
+            const osc = (window as unknown as {
+                osc?: {
+                    currentSectionMode?: 'RAM' | 'XRAM';
+                    setSectionMode?: (m: 'RAM' | 'XRAM') => Promise<void>;
+                };
+            }).osc;
+            const modeChanged = osc?.currentSectionMode !== this.currentMode;
+            if (modeChanged) {
+                await osc?.setSectionMode?.(this.currentMode);
+            }
             if (this.onApplyCallback) {
                 this.onApplyCallback(this.currentRight);
             }
