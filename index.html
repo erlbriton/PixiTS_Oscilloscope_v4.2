@@ -374,11 +374,13 @@
               <option value="ASCII">ASCII</option>
               <option value="ASCII_FILTER">ASCII Filter</option>
             </select>
+            <button id="cmdlineClearHistoryBtn" class="cmdline-history-btn" type="button" title="Удалить историю команд">Удалить историю</button>
             <button id="cmdlineClearBtn" class="cmdline-clear-btn" type="button">Clear</button>
           </div>
           <div id="cmdlineOutput" class="cmdline-output"></div>
           <div class="cmdline-input-row">
-            <input id="cmdlineInput" class="cmdline-input" type="text" spellcheck="false"/>
+            <input id="cmdlineInput" class="cmdline-input" type="text" spellcheck="false" autocomplete="off" list="cmdlineHistory"/>
+            <datalist id="cmdlineHistory"></datalist>
           </div>
         </div>
       </div>

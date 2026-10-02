@@ -22,6 +22,21 @@ import { IniDataType, type IniParameter } from '../core/ini/index.js';
 let currentLoopId = 0;
 type ChunkHandler = (chunk: Uint8Array) => void;
 export type CheckCompleteFn = (buffer: Uint8Array) => boolean;
+
+/**
+ * Структурированный результат транзакции. Используется там, где нужно
+ * различать ситуации «устройство молчит» и «устройство ответило мусором»
+ * (например, в окне «Командная строка»). Обычные потребители (readLoop,
+ * device_updater) продолжают пользоваться старым executeTransaction,
+ * которая возвращает только валидный ответ или пустой массив.
+ */
+export type TransactionResult =
+    | { kind: 'ok'; bytes: Uint8Array }
+    | { kind: 'bad_crc'; bytes: Uint8Array; expected: number; actual: number }
+    | { kind: 'too_short'; bytes: Uint8Array }
+    | { kind: 'timeout' }
+    | { kind: 'error'; message: string };
+
 export interface RegisterBatch {
     start: number;
     count: number;
@@ -112,6 +127,60 @@ class SerialManager {
         } finally {
             release();
         }
+    }
+
+    /**
+     * Транзакция с диагностикой. Отличается от обычной executeTransaction
+     * тем, что НЕ бросает исключение при ошибке транспорта, а возвращает
+     * структурированный результат. Используется в окне «Командная строка»,
+     * где пользователю важно видеть, что именно ответило устройство —
+     * даже если CRC битый.
+     *
+     * Логика:
+     *  1. Делаем транзакцию (пишем пакет + читаем до таймаута).
+     *  2. Анализируем полученные байты:
+     *     - 0 байт    → timeout;
+     *     - < 4 байт  → too_short;
+     *     - CRC не сходится → bad_crc;
+     *     - иначе     → ok.
+     *  3. При исключении транспорта возвращаем { kind: 'error' }.
+     */
+    public async executeTransactionVerbose(
+        packet: Uint8Array,
+        timeoutMs: number = 1000
+    ): Promise<TransactionResult> {
+        let bytes: Uint8Array;
+        try {
+            // Используем обычную транзакцию с очень мягким чекером:
+            // ждём до конца таймаута, накапливая всё, что придёт.
+            // Это даёт нам максимально полный ответ для диагностики.
+            const neverComplete: CheckCompleteFn = () => false;
+            bytes = await this.executeTransaction(packet, neverComplete, timeoutMs);
+        } catch (err) {
+            return { kind: 'error', message: err instanceof Error ? err.message : String(err) };
+        }
+
+        // 0 байт — устройство молчало всё время таймаута.
+        if (bytes.length === 0) {
+            return { kind: 'timeout' };
+        }
+
+        // Modbus RTU: минимальный валидный ответ — 4 байта (slave + FC + CRC×2).
+        // Короче — это не ответ, а обрывок.
+        if (bytes.length < 4) {
+            return { kind: 'too_short', bytes };
+        }
+
+        // CRC в Modbus RTU: два последних байта, младший первым.
+        const payload = bytes.slice(0, bytes.length - 2);
+        const expected = calculateCRC(payload);
+        const actual = bytes[bytes.length - 2] | (bytes[bytes.length - 1] << 8);
+
+        if (expected !== actual) {
+            return { kind: 'bad_crc', bytes, expected, actual };
+        }
+
+        return { kind: 'ok', bytes };
     }
 }
 export const serialManager = new SerialManager();
