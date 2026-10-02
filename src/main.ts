@@ -1,6 +1,8 @@
 // src/main.ts
 
 import { SerialConnection } from './serial/serial.js';
+import { WebSocketConnection } from './serial/ws-transport.js';
+import type { ISerialPort } from './serial/ISerialPort.js';
 import { initUI } from './ui/uiManager.js';
 import { ModbusParser } from './serial/modbus.js';
 import { Oscilloscope } from './oscilloscope';
@@ -45,7 +47,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.osc = osc;
         await osc.initialize(oscContainer ?? undefined);
 
-        const serial = new SerialConnection();
+        let serial: ISerialPort = new SerialConnection();
         const parser = new ModbusParser();
 
         // Связываем кнопку Стоп/Пуск осциллографа с глобальным состоянием опроса
@@ -76,15 +78,39 @@ document.addEventListener('DOMContentLoaded', async () => {
             };
         });
 
-        initUI({
-            serial, appState, parser, view: osc, buffers,
-            setupFileHandling,
-            updateComInterfaceName,
-            executeDeviceIdentification,
-            readLoop,
-            showIdModal,
-            updateDeviceRegisters
+                       // Слушаем событие успешного переподключения WebSocket и перезапускаем readLoop
+        window.addEventListener('ws:reconnected', () => {
+            console.log('[Main] WebSocket переподключён. Перезапуск readLoop и осциллографа...');
+            appState.isLoopRunning = false; // Сбрасываем флаг
+            appState.isPolling = true; // Убеждаемся, что опрос включён
+            
+            // Размораживаем осциллограф (после controller-not-responding)
+            if (osc && typeof osc.resumeFromFrozen === 'function') {
+                osc.resumeFromFrozen();
+                console.log('[Main] Осциллограф разморожен.');
+            }
+            
+            // Возобновляем цикл отрисовки осциллографа
+            if (osc && typeof osc.setConnectionStatus === 'function') {
+                osc.setConnectionStatus(true);
+                console.log('[Main] Цикл отрисовки осциллографа возобновлён.');
+            }
+            
+            readLoop(serial, parser, osc, buffers, appState).catch(err =>
+                console.error("Ошибка перезапуска readLoop после переподключения:", err)
+            );
         });
+
+        initUI({
+    serial, appState, parser, view: osc, buffers,
+    setupFileHandling,
+    updateComInterfaceName,
+    executeDeviceIdentification,
+    readLoop,
+    showIdModal,
+    updateDeviceRegisters,
+    setSerial: (newSerial: ISerialPort) => { serial = newSerial; }
+});
 
         // Инициализация drag-and-drop для INI-файлов
         initDropZone(appState);
