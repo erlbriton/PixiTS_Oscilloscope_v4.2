@@ -586,25 +586,65 @@ export function initUI(deps: UiManagerDeps): void {
           keys.find((k) => k.toLowerCase().startsWith(queryLower)) ??
           keys.find((k) => k.toLowerCase().includes(queryLower));
 
-      if (!matchedKey) {
-          if (treeSearchStatus) treeSearchStatus.textContent = `Не найдено: ${query}`;
+      if (matchedKey) {
+          // --- Стратегия 1: нашли по названию места установки (location) ---
+          // Переключаем группировку, раскрываем группу, выделяем первый файл.
+          setTreeGroupMode('location');
+          renderDeviceTree();
+
+          const detailsList = document.querySelectorAll('details.tree-location');
+          for (const details of detailsList) {
+              const summary = details.querySelector('summary');
+              if ((summary?.textContent ?? '').trim() !== matchedKey) continue;
+              (details as HTMLDetailsElement).open = true;
+              const firstLeaf = details.querySelector<HTMLLIElement>('.tree-id-item.is-leaf');
+              if (firstLeaf) firstLeaf.click();
+              break;
+          }
+          hideTreeSearch();
           return;
       }
 
-      setTreeGroupMode('location');
-      renderDeviceTree();
+      // --- Стратегия 2: поиск по ID устройства (серийному номеру из [DEVICE]) ---
+      // Если по location не нашли — ищем устройство напрямую по его ID.
+      // Сначала точное совпадение, затем начало строки, затем вхождение
+      // (регистронезависимо). Это позволяет искать контроллер, например,
+      // по номеру "00000056" или по его части.
+      const matchedDevice =
+          all.find((d) => d.id.toLowerCase() === queryLower) ??
+          all.find((d) => d.id.toLowerCase().startsWith(queryLower)) ??
+          all.find((d) => d.id.toLowerCase().includes(queryLower));
 
-      // Раскрываем найденную группу и выделяем первый файл в ней.
-      const detailsList = document.querySelectorAll('details.tree-location');
-      for (const details of detailsList) {
-          const summary = details.querySelector('summary');
-          if ((summary?.textContent ?? '').trim() !== matchedKey) continue;
-          (details as HTMLDetailsElement).open = true;
-          const firstLeaf = details.querySelector<HTMLLIElement>('.tree-id-item.is-leaf');
-          if (firstLeaf) firstLeaf.click();
-          break;
+      if (matchedDevice) {
+          // Нашли устройство по ID — переключаем группировку на location,
+          // раскрываем группу, в которой оно находится, и выделяем именно
+          // этот файл (по data-device-id, а не первый в группе).
+          setTreeGroupMode('location');
+          renderDeviceTree();
+
+          const deviceLocation = getDeviceGroupKey(matchedDevice, 'location');
+
+          const detailsList = document.querySelectorAll('details.tree-location');
+          for (const details of detailsList) {
+              const summary = details.querySelector('summary');
+              if ((summary?.textContent ?? '').trim() !== deviceLocation) continue;
+              (details as HTMLDetailsElement).open = true;
+
+              const leaf = details.querySelector<HTMLLIElement>(
+                  `.tree-id-item.is-leaf[data-device-id="${CSS.escape(matchedDevice.id)}"]`
+              );
+              if (leaf) {
+                  leaf.click();
+                  leaf.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }
+              break;
+          }
+          hideTreeSearch();
+          return;
       }
-      hideTreeSearch();
+
+      // --- Ничего не нашли ни по location, ни по ID ---
+      if (treeSearchStatus) treeSearchStatus.textContent = `Не найдено: ${query}`;
   };
 
   const treeSearchSplit = document.getElementById('treeSearchSplit');
