@@ -26,9 +26,13 @@ export interface StoredFileEntry {
     content: string;
     lastModified: number;
     /**
-     * Абсолютный путь к файлу на диске.
-     * В браузерной версии не заполняется — оставлено для совместимости
-     * с Tauri-версией file-loader.ts.
+     * Абсолютный путь к файлу на диске (только Tauri).
+     *
+     * В браузерной версии НЕ заполняется и НЕ читается — используется
+     * только editDeviceIniFile в Tauri-версии для открытия файла
+     * во внешнем редакторе через invoke('open_in_default_editor').
+     * Оставлено для 100% совместимости структуры StoredFileEntry
+     * между двумя проектами.
      */
     path?: string;
 }
