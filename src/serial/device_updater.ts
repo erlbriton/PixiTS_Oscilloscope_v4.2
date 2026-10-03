@@ -4,7 +4,7 @@ import { hexToFloat32, float32ToHex } from "../ini-manager/tree-core.js";
 import { serialManager } from "./serial-actions.js";
 import { buildReadHoldingRegistersPacket } from "./modbus-crc.js";
 import type { ISerialPort } from "./ISerialPort.js";
-import type { AppState } from "../core/app-state.js";          // FIX 1: вместо DeviceUpdaterState
+import type { AppState } from "../core/app-state.js";
 import type { IniConfig } from "../core/ini/index.js";
 
 declare global {
@@ -18,13 +18,14 @@ let isUpdating = false;
 export async function updateDeviceRegisters(
   serial: ISerialPort,
   slaveAddress: number = 0x01,
-  appState: AppState | null = null,                            // FIX 1: AppState
+  appState: AppState | null = null,
 ): Promise<boolean> {
   if (isUpdating) return false;
   isUpdating = true;
   document.body.classList.add("loading-state");
 
-  // FIX 2: гарантируем инициализацию менеджера порта
+  // Гарантируем, что SerialManager привязан к этому порту: при первом
+  // вызове он запустит центральный ридер; повторный вызов безопасен.
   serialManager.init(serial);
 
   // Флаг успеха: true — все батчи прочитаны, false — хотя бы один не ответил
@@ -55,7 +56,8 @@ export async function updateDeviceRegisters(
       }
       registerMap.get(addr)?.push(tr);
 
-      // FIX 3: нормализуем регистр
+      // data-type в DOM пишется в разном регистре (TByte / TBYTE / tbyte).
+      // Нормализуем к верхнему, чтобы сравнения ниже работали одинаково.
       const dataType = (tr.getAttribute("data-type") || "").toUpperCase();
 
       if (
@@ -146,10 +148,9 @@ export async function updateDeviceRegisters(
                   try {
                     let parts: string[] = JSON.parse(tr.dataset.parts || "[]");
 
-                    // FIX 4: защита от пустого parts
+                    // parts пустой — строка-заглушка без данных, пропускаем.
                     if (parts.length === 0) continue;
 
-                    // FIX 3: нормализуем регистр
                     const dataType = (tr.getAttribute("data-type") || "").toUpperCase();
                     const sub = tr.getAttribute("data-sub") || "";
                     const hIdx = parseInt(
@@ -186,7 +187,7 @@ export async function updateDeviceRegisters(
 
                     let hexValue = "";
 
-                    // FIX 3: все сравнения в верхнем регистре
+                    // dataType уже в верхнем регистре (нормализован выше).
                     if (dataType === "TBYTE" || dataType === "TPRMLIST") {
                       if (sub === "H") {
                         const byteVal = (word >> 8) & 0xff;
