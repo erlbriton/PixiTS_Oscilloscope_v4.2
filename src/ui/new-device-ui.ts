@@ -174,11 +174,6 @@ export interface AddToBaseSource {
     oldFileName?: string;
 }
 
-/** Убирает недопустимые символы из имени файла для File System Access API (Windows не разрешает !:*?"<>| и т.п.). */
-function sanitizeFileName(name: string): string {
-    return name.replace(/[\\/:*?"<>|!]/g, '_');
-}
-
 /** Общая логика кнопки "Добавить устройство в базу" для обоих окон. */
 export async function handleAddToBaseGeneric(src: AddToBaseSource): Promise<void> {
     const select = document.getElementById(src.templateSelectId) as HTMLSelectElement | null;
