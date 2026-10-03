@@ -2,183 +2,42 @@
 
 import { showIdModal, populateDeviceForm, showCompactError, openIniEditor } from '../ui/ui.js';
 import { encodeToWindows1251 } from '../core/encoding.js';
-import { saveDbFolderHandle } from './db-folder.js';
-import { addDeviceToRegistry, deviceRegistry, setCurrentIniConfig, updateDeviceInRegistry, removeDeviceFromRegistry } from './tree-core.js';
+import {
+    addDeviceToRegistry, deviceRegistry, setCurrentIniConfig,
+    updateDeviceInRegistry, removeDeviceFromRegistry,
+} from './tree-core.js';
 import type { RawIniConfig, DeviceRegistryItem } from './tree-core.js';
 import { renderDeviceTree } from './tree-ui.js';
 import { renderModbusTable } from '../ui/tree.js';
 import { IniParser as CoreIniParser, IniConfig, iniParamsToChannelConfigs } from '../core/ini/index.js';
 import type { AppState } from '../core/app-state.js';
-/** Геттер хранилища файлов (используется генератором отчётов) */
-export function getFileStore(): Map<string, StoredFileEntry> {
-    return fileStore;
-}
 
-/**
- * Открывает INI-файл через File System Access API.
- * Сохраняет хэндл файла в appState для последующей записи.
- */
-/** Хэндлы открытых INI-файлов (имя файла → хэндл) для записи обратно */
-const iniFileHandles = new Map<string, FileSystemFileHandle>();
-let currentIniFileName: string | null = null;
+// ─── Хранилище файлов вынесено в отдельный модуль (file-store.ts) ──────────
+// Импортируем нужные символы и реэкспортируем их, чтобы внешние модули
+// (device-management.ts, uiManager.ts, save-ini.ts, backup-ui.ts,
+// new-device-add.ts) могли продолжать импортировать их из './file-loader.js'
+// без изменений в их коде.
+import {
+    fileStore,
+    getFileStore,
+    getCurrentIniFileHandle,
+    setCurrentIniFileName,
+    setIniFileHandle,
+} from './file-store.js';
+import type { StoredFileEntry } from './file-store.js';
 
-/**
- * Хранилище File-объектов для перечитывания INI-файлов с диска.
- * Ключ: `${location}::${id}` — совпадает с уникальностью в deviceRegistry.
- * Браузер не следит за файлами сам, но пока жива ссылка на File,
- * file.text() возвращает актуальное содержимое с диска.
- */
-export interface StoredFileEntry {
-    file: File;
-    handle?: FileSystemFileHandle;
-    /** Родительская папка файла (если известна при загрузке — например, при открытии папки) */
-    parentHandle?: FileSystemDirectoryHandle;
-    location: string;
-    id: string;
-    content: string;
-    lastModified: number;
-}
-const fileStore: Map<string, StoredFileEntry> = new Map();
+// Чтение текста вынесено в textFileReader.ts.
+import { readTextFile } from './textFileReader.js';
 
-/** Возвращает хэндл файла, с которым сейчас работает аджастер */
-export function getCurrentIniFileHandle(): FileSystemFileHandle | null {
-  if (!currentIniFileName) return null;
-  return iniFileHandles.get(currentIniFileName) ?? null;
-}
+// Открытие файла/папки через File System Access API вынесено в file-loader-browser.ts.
+import { openIniFile, openIniFolder } from './file-loader-browser.js';
 
-export async function openIniFile(appState: AppState): Promise<void> {
-  try {
-    const handles = await (window as any).showOpenFilePicker({
-      types: [
-        {
-          description: 'INI Files',
-          accept: { 'text/plain': ['.ini', '.txt'] },
-        },
-      ],
-      multiple: true,
-    });
+// Реэкспорт публичного API для обратной совместимости импортов.
+export { getFileStore, getCurrentIniFileHandle };
+export type { StoredFileEntry };
+export { readTextFile, readTextFile as readFileAsText };
+export { openIniFile, openIniFolder };
 
-    for (const fileHandle of handles) {
-      const file = await fileHandle.getFile();
-      const content = await readFileAsText(file);
-      iniFileHandles.set(file.name, fileHandle);
-      await processSingleFileContent(content, file.name, appState, file, fileHandle);
-    }
-
-    // Если до открытия ни один файл не был выбран — автоматически выбираем первый
-    setTimeout(() => {
-      const selected = document.querySelector('.tree-id-item.is-selected');
-      if (!selected) {
-        const firstLi = document.querySelector<HTMLLIElement>('.tree-id-item.is-leaf');
-        if (firstLi) {
-          const details = firstLi.closest('details');
-          if (details && !(details as HTMLDetailsElement).open) {
-            (details as HTMLDetailsElement).open = true;
-          }
-          firstLi.click();
-          firstLi.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }
-      }
-    }, 100);
-  } catch (err: unknown) {
-    if (err instanceof Error && err.name === 'AbortError') {
-      // Пользователь отменил выбор файла
-      return;
-    }
-    const msg = err instanceof Error ? err.message : String(err);
-    showIdModal('Ошибка открытия файла: ' + msg);
-    console.error('[file-loader] openIniFile error:', err);
-  }
-}
-
-/**
- * Открывает папку и загружает все INI-файлы из неё (и вложенных папок).
- * Доступно только в Linux через showDirectoryPicker API.
- * Работает через тот же конвейер, что и openIniFile: processSingleFileContent.
- */
-/** Хэндл директории с методом обхода (File System Access API) */
-/** Часть window-API для выбора папки */
-interface DirectoryPickerWindow {
-    showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>;
-}
-
-/** Интерфейс только для метода обхода (без наследования от FileSystemDirectoryHandle) */
-interface DirectoryIterator {
-    values(): AsyncIterableIterator<FileSystemHandle>;
-}
-
-/**
- * Открывает папку и загружает все INI-файлы из неё (и вложенных папок).
- * Доступно только в Linux через showDirectoryPicker API.
- * Работает через тот же конвейер, что и openIniFile: processSingleFileContent.
- */
-export async function openIniFolder(appState: AppState): Promise<void> {
-    const picker = (window as DirectoryPickerWindow).showDirectoryPicker;
-    if (!picker) {
-        showIdModal('Выбор папки не поддерживается в этом браузере.');
-        return;
-    }
-
-    try {
-        const dirHandle = await picker();
-
-        // Запоминаем открытую папку как общую папку базы:
-        // новые файлы будут писаться в неё же (на Linux).
-        await saveDbFolderHandle(dirHandle);
-
-        // Рекурсивный обход всех вложенных папок
-        const stack: FileSystemDirectoryHandle[] = [dirHandle];
-
-        while (stack.length > 0) {
-            const currentDir = stack.pop()!;
-
-            for await (const entry of (currentDir as unknown as DirectoryIterator).values()) {
-                if (entry.kind === 'directory') {
-                    stack.push(entry as FileSystemDirectoryHandle);
-                } else if (entry.kind === 'file') {
-                    // Фильтр по расширению
-                    const name = entry.name.toLowerCase();
-                    if (name.endsWith('.ini') || name.endsWith('.txt')) {
-                        const fileHandle = entry as FileSystemFileHandle;
-                        try {
-                            const file = await fileHandle.getFile();
-                            const content = await readFileAsText(file);
-                            iniFileHandles.set(file.name, fileHandle);
-                            await processSingleFileContent(content, file.name, appState, file, fileHandle, currentDir);
-                        } catch (fileErr) {
-                            // Ошибка чтения одного файла не прерывает всю папку
-                            console.warn(`[file-loader] Пропуск файла ${entry.name}:`, fileErr);
-                        }
-                    }
-                }
-                    }
-    }
-
-    // Если до открытия ни один файл не был выбран — автоматически выбираем первый
-    setTimeout(() => {
-      const selected = document.querySelector('.tree-id-item.is-selected');
-      if (!selected) {
-        const firstLi = document.querySelector<HTMLLIElement>('.tree-id-item.is-leaf');
-        if (firstLi) {
-          const details = firstLi.closest('details');
-          if (details && !(details as HTMLDetailsElement).open) {
-            (details as HTMLDetailsElement).open = true;
-          }
-          firstLi.click();
-          firstLi.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }
-      }
-    }, 100);
-  } catch (err: unknown) {
-    if (err instanceof Error && err.name === 'AbortError') {
-      // Пользователь отменил выбор папки
-      return;
-    }
-        const msg = err instanceof Error ? err.message : String(err);
-        showIdModal('Ошибка открытия папки: ' + msg);
-        console.error('[file-loader] openIniFolder error:', err);
-    }
-}
 
 /** Элемент списка INI-файлов для синхронизации с осциллографом */
 interface OscIniFile {
@@ -194,12 +53,12 @@ interface OscIniFile {
 export async function processSingleFileContent(
     content: string,
     fileName: string,
-    appState: AppState,
+    stateObj: AppState,
     sourceFile?: File,
     sourceHandle?: FileSystemFileHandle,
     parentHandle?: FileSystemDirectoryHandle,
 ): Promise<void> {
-  currentIniFileName = fileName;
+  setCurrentIniFileName(fileName);
   try {
     if (!content) {
       throw new Error('Файл пуст');
@@ -222,20 +81,21 @@ export async function processSingleFileContent(
       throw new Error('Неверный формат INI файла (отсутствуют стандартные секции)');
     }
 
-   // appState.currentDeviceConfig = config;
-    appState.currentIniContent = content;
-    appState.currentIniConfig = iniConfig;
+    // Сохраняем текущий INI-файл и его распарсенную конфигурацию
+    // в глобальное состояние приложения (через параметр stateObj).
+    stateObj.currentIniContent = content;
+    stateObj.currentIniConfig = iniConfig;
 
     const isAdded = addDeviceToRegistry(iniConfig);
     setCurrentIniConfig(iniConfig);
 
-        // Сохраняем File-объект, чтобы позже перечитать файл с диска
+    // Сохраняем File-объект, чтобы позже перечитать файл с диска
     console.log('[file-loader] save check:', { isAdded, hasFile: !!sourceFile, hasDevice: !!iniConfig.device });
     if (sourceFile && iniConfig.device) {
         const loc = iniConfig.device.location || 'Неизвестное место';
         const id = iniConfig.device.id || 'Без ID';
         const key = `${loc}::${id}`;
-        
+
         // Если устройство уже есть в реестре (isAdded=false), но у нас есть handle —
         // обновляем запись в fileStore, чтобы редактирование работало.
         // Это нужно при обновлении ПО: старое устройство помечено как backup,
@@ -263,7 +123,6 @@ export async function processSingleFileContent(
     const osc = window.osc;
     if (osc && typeof osc.applyChannelConfigs === 'function') {
       try {
-        // Осциллограф: используем уже распарсенный iniConfig.
         // Секция берётся из текущего режима (RAM/XRAM), переключаемого
         // кнопками в окне «Свойства просмотра параметров».
         const sectionParams = iniConfig.getSection(osc.currentSectionMode);
@@ -306,24 +165,6 @@ export async function processSingleFileContent(
   }
 }
 
-function readFileAsText(file: File): Promise<string> {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e: ProgressEvent<FileReader>) => {
-      const result = e.target?.result;
-      if (typeof result === 'string') {
-        resolve(result);
-      } else {
-        reject(new Error('Не удалось прочитать файл как текст'));
-      }
-    };
-    reader.onerror = () => {
-      reject(new Error('Ошибка чтения файла'));
-    };
-    reader.readAsText(file, 'windows-1251');
-  });
-}
-
 /**
  * Перечитывает все загруженные INI-файлы с диска.
  * - Файл изменён: обновляет запись в реестре и памяти.
@@ -351,7 +192,7 @@ export async function reloadIniFilesFromDisk(): Promise<{
         try {
             // Если есть хэндл — берём свежий File с диска, иначе старый снимок
             const fileToRead = entry.handle ? await entry.handle.getFile() : entry.file;
-            const newContent = await readFileAsText(fileToRead);
+            const newContent = await readTextFile(fileToRead);
 
             if (newContent === entry.content) {
                 results.unchanged++;
@@ -453,7 +294,7 @@ export async function editDeviceIniFile(deviceId: string): Promise<void> {
     let contentToEdit = entry.content;
     try {
         const freshFile = await entry.handle.getFile();
-        contentToEdit = await readFileAsText(freshFile);
+        contentToEdit = await readTextFile(freshFile);
         // Синхронизируем кэш, чтобы последующие операции имели актуальные данные
         entry.file = freshFile;
         entry.content = contentToEdit;
@@ -474,7 +315,7 @@ export async function editDeviceIniFile(deviceId: string): Promise<void> {
 
         // Перечитываем (чтобы гарантированно взять то, что на диске)
         const freshFileAfterSave = await entry.handle.getFile();
-        const freshContent = await readFileAsText(freshFileAfterSave);
+        const freshContent = await readTextFile(freshFileAfterSave);
         entry.file = freshFileAfterSave;
         entry.content = freshContent;
         entry.lastModified = Date.now();
@@ -497,7 +338,8 @@ export async function editDeviceIniFile(deviceId: string): Promise<void> {
         console.error('[file-loader] editDeviceIniFile error:', err);
     }
 }
-function syncFilesToOscilloscope(): void {
+
+export function syncFilesToOscilloscope(): void {
   const osc = window.osc;
   if (!osc || typeof osc.setIniFiles !== 'function') return;
 
@@ -576,6 +418,7 @@ function serializeConfig(config: RawIniConfig): string {
   }
   return out;
 }
+
 /**
  * Старый способ открытия файла через <input type="file">.
  * Временно оставляем для совместимости, пока не переключимся на openIniFile.
@@ -592,7 +435,7 @@ export function setupFileHandling(fileInput: HTMLInputElement, appState: AppStat
     files.forEach((file: File) => {
       processingQueue = processingQueue
         .then(async () => {
-          const content = await readFileAsText(file);
+          const content = await readTextFile(file);
           await processSingleFileContent(content, file.name, appState, file);
         })
         .catch((err: unknown) => {
