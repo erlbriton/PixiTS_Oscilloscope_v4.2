@@ -66,3 +66,37 @@ export function getOptimizedBatches(
     });
     return batches;
 }
+
+/**
+ * Собирает Modbus-пакет FC03 (Read Holding Registers).
+ *
+ * Возвращает 8-байтовый Uint8Array:
+ *   [slave, 0x03, addrHi, addrLo, cntHi, cntLo, crcLo, crcHi]
+ *
+ * Используется и в read-loop.ts (живой опрос), и в device_updater.ts
+ * (обновление таблицы по кнопке) — чтобы сборка пакета была в одном месте.
+ *
+ * @param slaveAddr Адрес устройства Modbus (1–247).
+ * @param startReg  Начальный адрес регистра.
+ * @param count     Количество регистров для чтения (1–125).
+ */
+export function buildReadHoldingRegistersPacket(
+    slaveAddr: number,
+    startReg: number,
+    count: number,
+): Uint8Array {
+    const body = new Uint8Array([
+        slaveAddr & 0xFF,
+        0x03,
+        (startReg >> 8) & 0xFF,
+        startReg & 0xFF,
+        (count >> 8) & 0xFF,
+        count & 0xFF,
+    ]);
+    const crc = calculateCRC(body);
+    const packet = new Uint8Array(8);
+    packet.set(body, 0);
+    packet[6] = crc & 0xFF;
+    packet[7] = (crc >> 8) & 0xFF;
+    return packet;
+}

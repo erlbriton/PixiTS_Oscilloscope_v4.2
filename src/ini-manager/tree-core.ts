@@ -1,8 +1,7 @@
 // src/ini-manager/tree-core.ts
 
 import type { IniConfig } from '../core/ini/index.js';
-import { parseIpToRegisters } from '../serial/ip-utils.js';
-
+import { parseIpToRegisters, registersToIp } from '../serial/ip-utils.js';
 /** Тип сырого INI-конфига (совместим с AppState.currentDeviceConfig) */
 export type RawIniConfig = Record<string, Record<string, string | string[]>>;
 
@@ -459,12 +458,4 @@ export function planControllerWrite(
         newHex: 'x' + word.toString(16).toUpperCase().padStart(4, '0'),
         newPhys: String(valNum),
     };
-}
-
-/**
- * Преобразует два 16-битных регистра (в порядке LE: [lowWord, highWord]) в точечный IP-адрес.
- */
-function registersToIp(lowWord: number, highWord: number): string {
-  const value = ((highWord << 16) | lowWord) >>> 0;
-  return `${(value >>> 24) & 0xFF}.${(value >>> 16) & 0xFF}.${(value >>> 8) & 0xFF}.${value & 0xFF}`;
 }

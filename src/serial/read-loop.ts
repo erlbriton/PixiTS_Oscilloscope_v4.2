@@ -7,7 +7,7 @@ import { IniConfig, type IniParameter } from '../core/ini/index.js';
 import { parseRegisterAddress, hexToFloat32, float32ToHex } from '../ini-manager/tree-core.js';
 import { updateRowValues } from '../ini-manager/tree-ui.js';
 import { serialManager, type CheckCompleteFn } from './serial-manager.js';
-import { calculateCRC, getOptimizedBatches } from './modbus-crc.js';
+import { buildReadHoldingRegistersPacket, getOptimizedBatches } from './modbus-crc.js';
 import { decode32BitValue, decode16BitValue } from './modbus-functions.js';
 
 /** Буфер данных канала для передачи в осциллограф. */
@@ -69,19 +69,11 @@ export async function readLoop(
                     break;
                 }
                 const { start: startAddr, count: regCount } = batch;
-                const body = new Uint8Array([
+                const finalPacket = buildReadHoldingRegistersPacket(
                     stateObj.slaveAddress || 0x01,
-                    0x03,
-                    (startAddr >> 8) & 0xFF,
-                    startAddr & 0xFF,
-                    (regCount >> 8) & 0xFF,
-                    regCount & 0xFF,
-                ]);
-                const crc = calculateCRC(body);
-                const finalPacket = new Uint8Array(8);
-                finalPacket.set(body, 0);
-                finalPacket[6] = crc & 0xFF;
-                finalPacket[7] = (crc >> 8) & 0xFF;
+                    startAddr,
+                    regCount,
+                );
 
                 const checkComplete: CheckCompleteFn = (buf: Uint8Array) =>
                     buf.length >= 3 + (regCount * 2) + 2;

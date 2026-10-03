@@ -1,7 +1,8 @@
 // src/serial/device_updater.ts
 import { updateRowValues } from "../ini-manager/tree-ui.js";
 import { hexToFloat32, float32ToHex } from "../ini-manager/tree-core.js";
-import { calculateCRC, serialManager } from "./serial-actions.js";
+import { serialManager } from "./serial-actions.js";
+import { buildReadHoldingRegistersPacket } from "./modbus-crc.js";
 import type { ISerialPort } from "./ISerialPort.js";
 import type { AppState } from "../core/app-state.js";          // FIX 1: вместо DeviceUpdaterState
 import type { IniConfig } from "../core/ini/index.js";
@@ -104,20 +105,11 @@ export async function updateDeviceRegisters(
 
     for (const batch of batches) {
       const count = batch.end - batch.start + 1;
-      const body = new Uint8Array([
+      const finalPacket = buildReadHoldingRegistersPacket(
         slaveAddress,
-        0x03,
-        (batch.start >> 8) & 0xff,
-        batch.start & 0xff,
-        (count >> 8) & 0xff,
-        count & 0xff,
-      ]);
-
-      const crc = calculateCRC(body);
-      const finalPacket = new Uint8Array(8);
-      finalPacket.set(body, 0);
-      finalPacket[6] = crc & 0xff;
-      finalPacket[7] = (crc >> 8) & 0xff;
+        batch.start,
+        count,
+      );
 
       try {
         const checkComplete = (buf: Uint8Array): boolean => {
