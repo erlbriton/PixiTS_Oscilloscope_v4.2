@@ -187,6 +187,7 @@ export function showParamPropertiesModal(param: ParamInfo, allSiblings: ParamInf
     const scaleSelect = document.getElementById('paramPropsScaleSelect') as HTMLSelectElement | null;
     const scaleValue = document.getElementById('paramPropsScaleValue') as HTMLInputElement | null;
     const dependsView = document.getElementById('paramPropsDependsSelect') as HTMLElement | null;
+    const dependsSideInput = document.getElementById('paramPropsDependsSide') as HTMLInputElement | null;
     const coefficient = document.getElementById('paramPropsCoefficient') as HTMLInputElement | null;
 
     if (nameInput) nameInput.value = param.name ?? '';
@@ -219,6 +220,41 @@ export function showParamPropertiesModal(param: ParamInfo, allSiblings: ParamInf
     // Пользователь не может изменить — зависимость задаётся только в INI.
     if (dependsView) {
         dependsView.textContent = dependsOn || '—';
+    }
+
+    // Справа от «Зависит от» — значение по умолчанию родителя в формате
+    // "x<HEX> = <PHYS> <UNIT>", например "x189C = 6300 B".
+    // Физическое значение = raw-значение (parts[10]) × scale родителя.
+    if (dependsSideInput) {
+        dependsSideInput.value = '';
+        if (hasDep) {
+            const parentRow = document.querySelector<HTMLTableRowElement>(
+                `#grid-data-rows tr[data-name="${CSS.escape(dependsOn)}"]`
+            );
+            if (parentRow) {
+                const parentParts = JSON.parse(parentRow.dataset.parts || '[]');
+                const rawHex = (parentParts[10] ?? '').trim();       // "x189C"
+                const unit = (parentParts[5] ?? '').trim();          // "B"
+                if (rawHex) {
+                    const hexClean = rawHex.replace(/^x/i, '');
+                    const rawDec = parseInt(hexClean, 16);
+                    if (!isNaN(rawDec)) {
+                        // Scale родителя — уже разрешённое число из allSiblings.
+                        const parentParam = allSiblings.find((p) => p.name === dependsOn);
+                        const parentScale =
+                            parentParam && typeof parentParam.scale === 'number'
+                            && isFinite(parentParam.scale) && parentParam.scale > 0
+                                ? parentParam.scale
+                                : 1;
+                        const physical = rawDec * parentScale;
+                        const physicalStr = physical.toString().replace('.', ',');
+                        dependsSideInput.value = `${rawHex} = ${physicalStr} ${unit}`.trim();
+                    }
+                }
+            } else {
+                console.warn(`[PARAM-PROPS] parent ${dependsOn} не найден в таблице`);
+            }
+        }
     }
 
     // Коэффициент: при наличии зависимости — множитель (parts[9]), иначе — шкала (parts[6])
