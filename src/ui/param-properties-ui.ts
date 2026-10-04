@@ -2,8 +2,7 @@
 /**
  * Окно "Свойства параметра": открывается по двойному клику на строке таблицы
  * параметров. Заполняет поля данными параметра, даёт редактировать шкалу и
- * зависимость. "Применить" пока просто закрывает окно — логика сохранения
- * будет добавлена следующим шагом.
+ * зависимость. 
  */
 import { markDirty } from '../ini-manager/dirty-tracker.js';
 import { float32ToHex, hexToFloat32 } from '../ini-manager/tree-core.js';
@@ -187,7 +186,7 @@ export function showParamPropertiesModal(param: ParamInfo, allSiblings: ParamInf
     const unitInput = document.getElementById('paramPropsUnit') as HTMLInputElement | null;
     const scaleSelect = document.getElementById('paramPropsScaleSelect') as HTMLSelectElement | null;
     const scaleValue = document.getElementById('paramPropsScaleValue') as HTMLInputElement | null;
-    const dependsSelect = document.getElementById('paramPropsDependsSelect') as HTMLSelectElement | null;
+    const dependsView = document.getElementById('paramPropsDependsSelect') as HTMLElement | null;
     const coefficient = document.getElementById('paramPropsCoefficient') as HTMLInputElement | null;
 
     if (nameInput) nameInput.value = param.name ?? '';
@@ -216,17 +215,10 @@ export function showParamPropertiesModal(param: ParamInfo, allSiblings: ParamInf
     console.log(`[PARAM-PROPS] scale из param.scale =`, param.scale);
     console.log(`[PARAM-PROPS] parts[8]=${parts[8]}, parts[9]=${parts[9]}`);
 
-    // "Зависит от": выпадающий список с одним элементом, заблокированный
-    // (пользователь не может изменить — зависимость задаётся только в INI)
-    if (dependsSelect) {
-        dependsSelect.innerHTML = '';
-        const opt = document.createElement('option');
-        opt.value = dependsOn;
-        opt.textContent = dependsOn || '—';
-        dependsSelect.appendChild(opt);
-        dependsSelect.value = dependsOn;
-        dependsSelect.disabled = true;
-        dependsSelect.style.backgroundColor = '#f0f0f0';
+    // "Зависит от": только отображение имени параметра-родителя.
+    // Пользователь не может изменить — зависимость задаётся только в INI.
+    if (dependsView) {
+        dependsView.textContent = dependsOn || '—';
     }
 
     // Коэффициент: при наличии зависимости — множитель (parts[9]), иначе — шкала (parts[6])
