@@ -257,10 +257,10 @@ export function showParamPropertiesModal(param: ParamInfo, allSiblings: ParamInf
         }
     }
 
-    // Коэффициент: при наличии зависимости — множитель (parts[9]), иначе — шкала (parts[6])
+    // Коэффициент: при наличии зависимости — множитель (parts[9]);
+    // при отсутствии — прочерк (шкала уже отображается в поле «Шкала» выше).
     if (coefficient) {
-        const coefStr = hasDep ? multiplier : (parts[6] ?? '').trim() || '1';
-        coefficient.value = coefStr.replace('.', ',');
+        coefficient.value = hasDep ? multiplier.replace('.', ',') : '—';
     }
 
     // Вид параметра: нередактируемое поле, значение — тип из строки таблицы (TWORD, TPrmList…)
