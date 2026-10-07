@@ -195,8 +195,8 @@ export class Toolbar {
     this.statusBadge.style.padding = "0 8px";
     this.statusBadge.style.fontSize = "13px";
     this.statusBadge.style.fontWeight = "bold";
-    this.statusBadge.style.color = "#0f110b";
-    this.statusBadge.style.textShadow = "0 1px 2px rgba(0, 0, 0, 0.5)";
+    this.statusBadge.style.color = "#71922d";
+    this.statusBadge.style.textShadow = "0 1px 2px rgba(226, 74, 74, 0.5)";
     this.statusBadge.style.userSelect = "none";
     this.statusBadge.style.borderRadius = "4px";
 
