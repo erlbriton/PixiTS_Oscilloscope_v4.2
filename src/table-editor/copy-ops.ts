@@ -62,6 +62,9 @@ export function copyControllerToBase(): number {
 //   Окна и модалки не показываются ни при успехе, ни при ошибке.
 //           Если что-то не записалось — строка подсветится автоматически
 //           классом row-mismatch (механизм уже есть в updateMismatchClass).
+//           Дополнительно: если незаписавшихся ≥ 2, в столбце "hex контроллера"
+//           у левого края появляется стрелка ▼ — во всех строках, кроме самой
+//           нижней. Это подсказывает пользователю, что ниже есть ещё проблемы.
 //
 // Скорость: на 180 параметров раньше было 5–6 минут (read+паузы после каждой
 // записи), теперь — один проход записи + 1–3 пакета чтения в конце.
@@ -79,6 +82,57 @@ interface WrittenTarget {
     byteValue: number;
     bytePos: 'L' | 'H';
     bitValue: number;
+}
+
+/**
+ * Снимает все стрелки ▼, поставленные markFailedRows.
+ * Вызывается в начале copyBaseToController перед новой попыткой копирования —
+ * чтобы не накапливались от предыдущего раза.
+ */
+function clearFailedArrows(): void {
+    document
+        .querySelectorAll('#grid-data-rows .copy-down-arrow')
+        .forEach((el) => el.remove());
+}
+
+/**
+ * Помечает незаписавшиеся строки стрелками ▼ в ячейке "hex" группы "Контроллер".
+ *
+ * Логика:
+ *   - Если незаписавшихся 0 или 1 — стрелки НЕ ставятся (пользователь увидит
+ *     единственную красную строку сам).
+ *   - Если ≥ 2 — ставим ▼ в КАЖДУЮ незаписавшуюся строку, кроме САМОЙ НИЖНЕЙ.
+ *     Так пользователь, находясь в любом месте таблицы, всегда видит: ниже
+ *     есть ещё проблемы. Самая нижняя незаписавшаяся строка — без стрелки,
+ *     это сигнал «дошли до конца».
+ *
+ * Стрелки появляются в td[6] (столбец hex контроллера), у левого края ячейки,
+ * чтобы не мешать чтению значения справа.
+ */
+function markFailedRows(failedRows: HTMLTableRowElement[]): void {
+    if (failedRows.length <= 1) return;
+
+    for (let i = 0; i < failedRows.length - 1; i++) {
+        const tr = failedRows[i];
+        const hexCell = tr.querySelectorAll('td')[6] as HTMLTableCellElement | undefined;
+        if (!hexCell) continue;
+
+        // Защита от дублирования: если стрелка уже стоит — не добавляем.
+        if (hexCell.querySelector('.copy-down-arrow')) continue;
+
+        // Ячейка должна быть контекстом позиционирования для absolute-стрелки.
+        // Иначе стрелка «прилипнет» к ближайшему позиционированному предку
+        // (обычно это <table> или <body>) и окажется не в ячейке.
+        hexCell.style.position = 'relative';
+
+        const arrow = document.createElement('span');
+        arrow.className = 'copy-down-arrow';
+        arrow.textContent = '▼';
+        // appendChild вместо prepend: при position:absolute место в DOM
+        // не влияет на визуальное положение — стрелка и так ляжет поверх
+        // содержимого слева, не сдвигая hex-значение.
+        hexCell.appendChild(arrow);
+    }
 }
 
 /** Считает батчи адресов (как getOptimizedBatches, но для массива адресов). */
@@ -221,12 +275,15 @@ async function writeOneTarget(
  * Фаза 2: сгруппированное чтение всех затронутых регистров и обновление ячеек.
  * Обновляем ячейки только там, где прочитанное совпало с записанным.
  * Для несовпавших строк — ничего не трогаем, они подсветятся row-mismatch.
+ *
+ * Возвращает массив неуспешных строк в порядке появления в таблице
+ * (сверху вниз). Внешний код использует его для стрелок ▼ и прокрутки.
  */
 async function readBackAndUpdateUI(
     written: WrittenTarget[],
     slaveAddr: number,
-): Promise<void> {
-    if (written.length === 0) return;
+): Promise<HTMLTableRowElement[]> {
+    if (written.length === 0) return [];
 
     // Собираем все адреса, которые нужно прочитать (с учётом 32-битных слов).
     const allAddrs = new Set<number>();
@@ -254,6 +311,7 @@ async function readBackAndUpdateUI(
     }
 
     let updated = 0;
+    const failedRows: HTMLTableRowElement[] = [];
     for (const w of written) {
         // Проверяем, что все записанные слова прочитались обратно без изменений.
         let allMatch = true;
@@ -263,7 +321,13 @@ async function readBackAndUpdateUI(
                 break;
             }
         }
-        if (!allMatch) continue;
+        if (!allMatch) {
+            // Запоминаем все неуспешные строки в порядке их появления в таблице.
+            // Порядок важен: самая нижняя получит признак «последняя», и
+            // стрелка ▼ в неё не ставится (см. markFailedRows).
+            failedRows.push(w.tr);
+            continue;
+        }
 
         const tds = w.tr.querySelectorAll('td');
         if (tds[6] && tds[4]) tds[6].innerHTML = tds[4].innerHTML;
@@ -291,8 +355,10 @@ async function readBackAndUpdateUI(
     }
 
     console.log(
-        `[BASE→CONTROLLER] Подтверждено чтением: ${updated} из ${written.length}`,
+        `[BASE→CONTROLLER] Подтверждено чтением: ${updated} из ${written.length}` +
+        (failedRows.length > 0 ? `, не подтверждено: ${failedRows.length}` : ''),
     );
+    return failedRows;
 }
 
 /**
@@ -334,6 +400,9 @@ export async function copyBaseToController(): Promise<void> {
     const written: WrittenTarget[] = [];
 
     try {
+        // Снимаем стрелки ▼ от предыдущего копирования — чтобы не накапливались.
+        clearFailedArrows();
+
         // ─── ФАЗА 1: запись всех параметров (без чтения после каждой) ────────
         const t0 = Date.now();
         for (const tr of targets) {
@@ -346,8 +415,19 @@ export async function copyBaseToController(): Promise<void> {
 
         // ─── ФАЗА 2: групповое чтение всех записанных регистров ──────────────
         const t1 = Date.now();
-        await readBackAndUpdateUI(written, slaveAddr);
+        const failedRows = await readBackAndUpdateUI(written, slaveAddr);
         console.log(`[BASE→CONTROLLER] Фаза 2 (чтение + UI): ${Date.now() - t1} мс`);
+
+        // Ставим стрелки ▼ в незаписавшихся строках, кроме самой нижней.
+        // Если незаписавшихся 0 или 1 — стрелки не появятся (см. markFailedRows).
+        markFailedRows(failedRows);
+
+        // Если что-то не записалось — прокручиваем таблицу к самой верхней
+        // неуспешной строке, чтобы пользователь сразу её увидел. Дальше
+        // ориентируется по стрелкам: ▼ = ниже есть ещё.
+        if (failedRows.length > 0) {
+            failedRows[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
     } finally {
         if (wasPolling && stateObj) {
             stateObj.isPolling = true;
