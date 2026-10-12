@@ -88,6 +88,10 @@ export function initUI(deps: UiManagerDeps): void {
 
   // DOM-ссылки, нужные для передачи в модули
   const idBtn = document.getElementById('idBtn') as HTMLButtonElement | null;
+  const idArrowBtn = document.getElementById('idArrowBtn') as HTMLButtonElement | null;
+  const idDropdown = document.getElementById('idDropdown') as HTMLElement | null;
+  const dexsBtn = document.getElementById('dexs') as HTMLElement | null;
+  const icmBtn = document.getElementById('icm') as HTMLElement | null;
   const connectBtn = document.getElementById('connectBtn') as HTMLButtonElement | null;
   const comSelect = document.getElementById('comSelect') as HTMLSelectElement | null;
   const baudSelect = document.getElementById('baudSelect') as HTMLSelectElement | null;
@@ -162,6 +166,10 @@ export function initUI(deps: UiManagerDeps): void {
     comSelect,
     baudSelect,
     idBtn,
+    idArrowBtn,
+    idDropdown,
+    dexsBtn,
+    icmBtn,
     executeDeviceIdentification,
     readLoop,
   });

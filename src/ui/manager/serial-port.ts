@@ -8,12 +8,12 @@
  * - serial может быть переназначен (WebSocket) — поэтому используем SerialRef.
  */
 
-import type { ISerialPort } from '../../serial/ISerialPort.js';
-import type { AppState } from '../../core/app-state.js';
-import type { IOscilloscopeApi } from '../../core/osc-api.js';
-import type { ModbusParser } from '../../serial/modbus.js';
-import type { ChannelBuffer } from '../uiManager.js';
-import { updateIdBanner } from '../ui.js';
+import type { ISerialPort } from "../../serial/ISerialPort.js";
+import type { AppState } from "../../core/app-state.js";
+import type { IOscilloscopeApi } from "../../core/osc-api.js";
+import type { ModbusParser } from "../../serial/modbus.js";
+import type { ChannelBuffer } from "../uiManager.js";
+import { updateIdBanner } from "../ui.js";
 
 /** Мутабельный контейнер порта — расшарен между модулями. */
 export interface SerialRef {
@@ -29,11 +29,16 @@ export interface SerialPortUIDeps {
   comSelect: HTMLSelectElement | null;
   baudSelect: HTMLSelectElement | null;
   idBtn: HTMLButtonElement | null;
+  idArrowBtn: HTMLButtonElement | null;
+  idDropdown: HTMLElement | null;
+  dexsBtn: HTMLElement | null;
+  icmBtn: HTMLElement | null;
   executeDeviceIdentification: (
     serial: ISerialPort,
     select: HTMLSelectElement | null,
     state: AppState,
     baudSelect?: HTMLSelectElement | null,
+     commandByte?: number,
   ) => Promise<void>;
   readLoop: (
     serial: ISerialPort,
@@ -46,9 +51,20 @@ export interface SerialPortUIDeps {
 
 export function initSerialPortUI(deps: SerialPortUIDeps): void {
   const {
-    serialRef, appState, parser, view, buffers,
-    comSelect, baudSelect, idBtn,
-    executeDeviceIdentification, readLoop,
+    serialRef,
+    appState,
+    parser,
+    view,
+    buffers,
+    comSelect,
+    baudSelect,
+    idBtn,
+    idArrowBtn,
+    idDropdown,
+    dexsBtn,
+    icmBtn,
+    executeDeviceIdentification,
+    readLoop,
   } = deps;
 
   // Флаг ручного отключения: подавляет предупреждение при release()
@@ -59,15 +75,16 @@ export function initSerialPortUI(deps: SerialPortUIDeps): void {
     const serial = serialRef.current;
     if (!serial.isConnected) return;
     const osc = window.osc;
-    if (osc && typeof osc.setConnectionStatus === 'function') {
+    if (osc && typeof osc.setConnectionStatus === "function") {
       osc.setConnectionStatus(true);
     }
-    const oscContainerEl = document.getElementById('osc-container');
-    const isOscVisible = oscContainerEl
-      && !oscContainerEl.classList.contains('hidden')
-      && oscContainerEl.style.display !== 'none';
+    const oscContainerEl = document.getElementById("osc-container");
+    const isOscVisible =
+      oscContainerEl &&
+      !oscContainerEl.classList.contains("hidden") &&
+      oscContainerEl.style.display !== "none";
     if (isOscVisible) {
-      console.log('[UI] Перезапускаем readLoop после восстановления связи');
+      console.log("[UI] Перезапускаем readLoop после восстановления связи");
       appState.isLoopRunning = false;
       appState.isPolling = true;
       readLoop(serial, parser, view, buffers, appState);
@@ -78,33 +95,35 @@ export function initSerialPortUI(deps: SerialPortUIDeps): void {
   const updateIdButtonState = (connected: boolean): void => {
     if (!idBtn) return;
     if (connected) {
-      idBtn.textContent = 'Off';
-      idBtn.title = 'Отключить com порт';
+      idBtn.textContent = "Off";
+      idBtn.title = "Отключить com порт";
     } else {
-      idBtn.textContent = 'ID';
-      idBtn.title = 'Подключить com порт';
+      idBtn.textContent = "ID";
+      idBtn.title = "Подключить com порт";
     }
   };
   updateIdButtonState(false);
 
   // onDisconnect навешиваем на исходный serial из deps (сохраняем текущее поведение).
   const initialSerial = serialRef.current;
-  if (initialSerial && typeof initialSerial.onDisconnect === 'function') {
+  if (initialSerial && typeof initialSerial.onDisconnect === "function") {
     initialSerial.onDisconnect(() => {
       const osc = window.osc;
       if (isManualDisconnect) {
-        console.log('[UI] Порт отключён вручную пользователем (без предупреждения).');
-        if (osc && typeof osc.setConnectionStatus === 'function') {
-          osc.setConnectionStatus(false, '');
+        console.log(
+          "[UI] Порт отключён вручную пользователем (без предупреждения).",
+        );
+        if (osc && typeof osc.setConnectionStatus === "function") {
+          osc.setConnectionStatus(false, "");
         }
       } else {
-        console.log('[UI] Обрыв связи обнаружен (физический обрыв USB).');
-        if (osc && typeof osc.setConnectionStatus === 'function') {
-          osc.setConnectionStatus(false, 'Связь с устройством потеряна.');
+        console.log("[UI] Обрыв связи обнаружен (физический обрыв USB).");
+        if (osc && typeof osc.setConnectionStatus === "function") {
+          osc.setConnectionStatus(false, "Связь с устройством потеряна.");
         }
       }
       appState.isPolling = false;
-      updateIdBanner('');
+      updateIdBanner("");
       updateIdButtonState(false);
     });
   }
@@ -113,25 +132,30 @@ export function initSerialPortUI(deps: SerialPortUIDeps): void {
     try {
       isManualDisconnect = true;
       serialRef.current.release();
-      console.log('[UI] Порт отключён вручную через serial.release().');
+      console.log("[UI] Порт отключён вручную через serial.release().");
     } catch (err) {
-      console.error('[UI] Ошибка при отключении порта:', err);
+      console.error("[UI] Ошибка при отключении порта:", err);
     } finally {
       isManualDisconnect = false;
     }
   };
 
   if (idBtn) {
-    idBtn.addEventListener('click', async () => {
+    idBtn.addEventListener("click", async () => {
       const serial = serialRef.current;
       if (serial.isConnected) {
         await disconnectPort();
         updateIdButtonState(serial.isConnected);
         return;
       }
-      await executeDeviceIdentification(serial, comSelect, appState, baudSelect);
+      await executeDeviceIdentification(
+        serial,
+        comSelect,
+        appState,
+        baudSelect,
+      );
       const osc = window.osc;
-      if (osc && typeof osc.setSerialPort === 'function') {
+      if (osc && typeof osc.setSerialPort === "function") {
         osc.setSerialPort(serial);
       }
       restoreConnection();
@@ -139,5 +163,39 @@ export function initSerialPortUI(deps: SerialPortUIDeps): void {
     });
   }
 
-  console.log('[SerialPortUI] Инициализирован.');
+  // Стрелочка и выпадающее меню с двумя пунктами ("DExS" и  "iCM"
+  if (idArrowBtn)
+    idArrowBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      idDropdown?.classList.toggle("show");
+    });
+  document.addEventListener("click", () => {
+    idDropdown?.classList.remove("show");
+  });
+  // Пункт меню DExS
+  if (dexsBtn) {
+    dexsBtn.addEventListener("click", async () => {
+      await executeDeviceIdentification(
+        serialRef.current,
+        comSelect,
+        appState,
+        baudSelect,
+      );
+      idDropdown?.classList.remove("show");
+    });
+  // Пункт меню iCM
+  if (icmBtn) {
+    icmBtn.addEventListener("click", async () => {
+      await executeDeviceIdentification(
+        serialRef.current,
+        comSelect,
+        appState,
+        baudSelect,
+        0x12,
+      );
+      idDropdown?.classList.remove("show");
+    });
+  }
+  console.log("[SerialPortUI] Инициализирован.");
+}
 }

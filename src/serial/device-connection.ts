@@ -7,6 +7,7 @@ import type { AppState } from '../core/app-state.js';
 import { serialManager, type CheckCompleteFn } from './serial-manager.js';
 import { calculateCRC } from './modbus-crc.js';
 
+
 export function updateComInterfaceName(
     serial: ISerialPort,
     comSelect: HTMLSelectElement | null
