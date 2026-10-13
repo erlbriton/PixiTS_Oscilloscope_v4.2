@@ -24,7 +24,8 @@ export async function executeDeviceIdentification(
     serial: ISerialPort,
     comSelect: HTMLSelectElement | null,
     stateObj: AppState,
-    baudSelect: HTMLSelectElement | null = null
+    baudSelect: HTMLSelectElement | null = null,
+    commandByte: number = 0x11
 ): Promise<void> {
     try {
         stateObj.isIdentifying = true;
@@ -41,7 +42,7 @@ export async function executeDeviceIdentification(
 
         showIdModal('Запрос ID устройства...');
 
-        const body = new Uint8Array([stateObj.slaveAddress & 0xFF, 0x11]);
+        const body = new Uint8Array([stateObj.slaveAddress & 0xFF, commandByte]);
         const crc = calculateCRC(body);
         const packet = new Uint8Array([body[0], body[1], crc & 0xFF, (crc >> 8) & 0xFF]);
 
