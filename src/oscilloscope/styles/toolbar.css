@@ -123,19 +123,19 @@
 .toolbar-btn.active {
     background-color: #00d2ff;
     border-color: #00d2ff;
-    color: #000000;
+    color: #f71212f5;
     font-weight: 700;
 }
 /* Выключенная кнопка "Развертка" */
 .toolbar-btn[title="Развертка"]:not(.active) {
     background-color: #8292a1;   /* ← ваш цвет фона */
-    color: #f04539;              /* ← ваш цвет текста */
+    color: #48f039;              /* ← ваш цвет текста */
 }
 
 .toolbar-select {
     height: 32px;
-    background-color: #1a1a1c;
-    border: 1px solid #2a2a2c;
+    background-color: #1c1a1a;
+    border: 1px solid #2c2a2b;
     border-radius: 4px;
     color: #e0e0e0;
     font-size: 11px;
