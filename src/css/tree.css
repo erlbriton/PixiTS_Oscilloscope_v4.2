@@ -174,12 +174,20 @@
 /* Модальное окно изменения ПО */
 /* ── Модальное окно "Обновление программы устройства" ── */
 #fwUpdateOverlay {
-  position: fixed; inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  display: flex; align-items: center; justify-content: center;
-  z-index: 1000;
+  position: fixed !important;
+  inset: 0 !important;
+  background: transparent !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  z-index: 11800 !important;
+  pointer-events: none !important;
 }
-#fwUpdateOverlay.hidden { display: none; }
+#fwUpdateOverlay.hidden { display: none !important; }
+
+.fw-update-modal {
+  pointer-events: auto !important;
+}
 
 .fw-update-modal {
   width: 660px; max-width: 95vw; max-height: 90vh; overflow: auto;

@@ -31,11 +31,60 @@ export function setNewDeviceAddToLoaded(fn: AddToLoadedFn): void {
     addToLoadedFn = fn;
 }
 
+// ─── Состояние перетаскивания окна "Новое устройство" ──────────
+let newDeviceDragOffsetX = 0;
+let newDeviceDragOffsetY = 0;
+let newDeviceIsDragging = false;
+let newDeviceDragStartX = 0;
+let newDeviceDragStartY = 0;
+
+/** Применяет текущее смещение к окну через transform. */
+function applyNewDeviceDragTransform(): void {
+    const win = document.querySelector<HTMLElement>('.new-device-window');
+    if (!win) return;
+    if (newDeviceDragOffsetX === 0 && newDeviceDragOffsetY === 0) {
+        win.style.transform = '';
+    } else {
+        win.style.transform = `translate(${newDeviceDragOffsetX}px, ${newDeviceDragOffsetY}px)`;
+    }
+}
+
+/** Инициализирует перетаскивание окна за заголовок. */
+function setupNewDeviceDragging(): void {
+    const header = document.querySelector<HTMLElement>('#newDeviceOverlay .new-device-header');
+    const win = document.querySelector<HTMLElement>('.new-device-window');
+    if (!header || !win) return;
+
+    header.addEventListener('mousedown', (e: MouseEvent) => {
+        const target = e.target as HTMLElement;
+        if (target.closest('button, input, select, a, textarea')) return;
+
+        newDeviceIsDragging = true;
+        newDeviceDragStartX = e.clientX - newDeviceDragOffsetX;
+        newDeviceDragStartY = e.clientY - newDeviceDragOffsetY;
+        document.body.style.userSelect = 'none';
+    });
+
+    document.addEventListener('mousemove', (e: MouseEvent) => {
+        if (!newDeviceIsDragging) return;
+        newDeviceDragOffsetX = e.clientX - newDeviceDragStartX;
+        newDeviceDragOffsetY = e.clientY - newDeviceDragStartY;
+        applyNewDeviceDragTransform();
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (!newDeviceIsDragging) return;
+        newDeviceIsDragging = false;
+        document.body.style.userSelect = '';
+    });
+}
+
 export function getTemplateFile(name: string): File | null {
     return templateFiles.get(name) ?? null;
 }
 
 export function initNewDeviceUI(): void {
+    setupNewDeviceDragging();
     document.getElementById('newDeviceCloseBtn')?.addEventListener('click', () => {
         hideNewDeviceModal();
     });
@@ -127,6 +176,10 @@ export function refreshTemplateSelects(): void {
 export function showNewDeviceModal(idText: string): void {
     const overlay = document.getElementById('newDeviceOverlay');
     if (!overlay) return;
+     // Сбрасываем позицию окна — при каждом открытии оно по центру.
+    newDeviceDragOffsetX = 0;
+    newDeviceDragOffsetY = 0;
+    applyNewDeviceDragTransform();
 
     const idInput = document.getElementById('newDeviceIdInput') as HTMLInputElement | null;
     const typeInput = document.getElementById('newDeviceTypeInput') as HTMLInputElement | null;

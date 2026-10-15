@@ -3,14 +3,19 @@
     position: fixed !important;
     inset: 0 !important;
     z-index: 11900 !important;
-    background: rgba(0, 0, 0, 0.45) !important;
+    background: transparent !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
+    pointer-events: none !important;
 }
 
 .backup-overlay.hidden {
     display: none !important;
+}
+
+.backup-window {
+    pointer-events: auto !important;
 }
 
 .backup-window {
