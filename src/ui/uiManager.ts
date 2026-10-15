@@ -70,11 +70,11 @@ export interface UiManagerDeps {
 
 export function initUI(deps: UiManagerDeps): void {
   // Стартовый диалог: доступ к родительской папке (Devices и BackUp)
-  void (async () => {
-    console.log('[startup] спрашиваю родительскую папку');
-    const ok = await showConfirmDialog('Выберите папку с *.ini файлами');
-    if (ok) await forcePickParentFolder();
-  })();
+  // void (async () => {
+  //   console.log('[startup] спрашиваю родительскую папку');
+  //   const ok = await showConfirmDialog('Выберите папку с *.ini файлами');
+  //   if (ok) await forcePickParentFolder();
+  // })();
 
   const {
     appState, parser, view, buffers,
