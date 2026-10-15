@@ -114,33 +114,43 @@
    ИНДИКАТОР СВЯЗИ С КОНТРОЛЛЕРОМ (LED)
    ========================================= */
 .toolbar-group .status-badge {
-    display: inline-block;
-    width: 64px;                      /* Габариты равны кнопке "Свойства" */
-    height: 32px;                     /* Габариты равны кнопке "Свойства" */
-    box-sizing: border-box;
-    align-self: center;
-    margin-left: 4px;                 /* Минимальный отступ вплотную к кнопке */
-    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 110px !important;
+    height: 32px !important;
+    box-sizing: border-box !important;
+    align-self: center !important;
+    margin-left: 4px !important;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease !important;
+
+    /* НАСТРОЙКА ШРИФТА С !important */
+    font-size: 16px !important;                
+    font-family: Arial, sans-serif !important;
 }
 
 /* Связь есть (Зеленый цвет со свечением) */
 .toolbar-group .status-badge.connected {
-    background-color: #00e676;
-    border-top: 2px solid #69f0ae;
-    border-left: 2px solid #69f0ae;
-    border-bottom: 2px solid #00a152;
-    border-right: 2px solid #00a152;
-    box-shadow: 0 0 6px rgba(0, 230, 118, 0.7);
+    background-color: #00e676 !important;
+    border-top: 2px solid #69f0ae !important;
+    border-left: 2px solid #69f0ae !important;
+    border-bottom: 2px solid #00a152 !important;
+    border-right: 2px solid #00a152 !important;
+    box-shadow: 0 0 6px rgba(0, 230, 118, 0.7) !important;
+    
+    color: #1745b3 !important;                   /* <--- Цвет текста "Подключено" */
 }
 
 /* Связи нет (Красный цвет) */
 .toolbar-group .status-badge.disconnected {
-    background-color: #ff3333;
-    border-top: 2px solid #ff6666;
-    border-left: 2px solid #ff6666;
-    border-bottom: 2px solid #b2102f;
-    border-right: 2px solid #b2102f;
-    box-shadow: 0 0 4px rgba(255, 51, 51, 0.5);
+    background-color: #ff3333 !important;
+    border-top: 2px solid #ff6666 !important;
+    border-left: 2px solid #ff6666 !important;
+    border-bottom: 2px solid #b2102f !important;
+    border-right: 2px solid #b2102f !important;
+    box-shadow: 0 0 4px rgba(255, 51, 51, 0.5) !important;
+    
+    color: #ffffff !important;                   /* <--- Цвет текста "Нет связи" */
 }
 
 /* =========================================

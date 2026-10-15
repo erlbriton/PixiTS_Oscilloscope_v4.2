@@ -162,7 +162,7 @@
 .status-badge.connected {
     background-color: rgba(16, 185, 129, 0.15);
     color: #34d399;
-    border: 1px solid rgba(16, 185, 129, 0.3);
+    border: 1px solid rgba(206, 24, 45, 0.3);
 }
 
 .status-badge.simulating {
