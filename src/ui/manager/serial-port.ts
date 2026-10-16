@@ -94,6 +94,16 @@ export function initSerialPortUI(deps: SerialPortUIDeps): void {
   // Синхронизирует текст и тултип кнопки ID с состоянием порта.
   const updateIdButtonState = (connected: boolean): void => {
     if (!idBtn) return;
+    const busSelect = document.getElementById("busSelect") as HTMLSelectElement | null;
+    const isTcp = busSelect && busSelect.value === "TCP";
+
+    // В режиме TCP кнопка ID не управляет подключением, поэтому её текст всегда "ID"
+    if (isTcp) {
+      idBtn.textContent = "ID";
+      idBtn.title = "Запросить ID устройства";
+      return;
+    }
+
     if (connected) {
       idBtn.textContent = "Off";
       idBtn.title = "Отключить com порт";
@@ -140,14 +150,26 @@ export function initSerialPortUI(deps: SerialPortUIDeps): void {
     }
   };
 
-  if (idBtn) {
+ if (idBtn) {
     idBtn.addEventListener("click", async () => {
       const serial = serialRef.current;
+      const busSelect = document.getElementById("busSelect") as HTMLSelectElement | null;
+      const isTcp = busSelect && busSelect.value === "TCP";
+
+      // Если соединение уже установлено:
       if (serial.isConnected) {
-        await disconnectPort();
-        updateIdButtonState(serial.isConnected);
-        return;
+        // Если выбран режим TCP, кнопка ID не отключает связь, но идет дальше к запросу ID
+        if (isTcp) {
+          console.log("[UI] В режиме TCP кнопка ID не отключает соединение, выполняем запрос ID.");
+        } else {
+          // Для RTU оставляем стандартное ручное отключение портов
+          await disconnectPort();
+          updateIdButtonState(serial.isConnected);
+          return;
+        }
       }
+
+      // Выполнение идентификации работает на обеих шинах
       await executeDeviceIdentification(
         serial,
         comSelect,
