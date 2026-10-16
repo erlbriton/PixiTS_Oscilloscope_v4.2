@@ -26,6 +26,7 @@ import { WebSocketConnection } from '../../serial/ws-transport.js';
 
 export interface CommunicationSettingsUIDeps {
   serialRef: SerialRef;
+  defaultRtuPort: ISerialPort;
   appState: AppState;
   parser: ModbusParser;
   view: IOscilloscopeApi;
@@ -48,9 +49,8 @@ export interface CommunicationSettingsUIDeps {
 }
 
 export function initCommunicationSettingsUI(deps: CommunicationSettingsUIDeps): void {
-  // Корректно достаем все элементы управления из deps, включая tcpConnectBtn и tcpIpInput
   const {
-    serialRef, appState, parser, view, buffers,
+    serialRef, defaultRtuPort, appState, parser, view, buffers,
     baudSelect, busSelect, rtuControls, tcpControls,
     tcpConnectBtn, tcpIpInput, addrBtn,
     setSerial, readLoop,
@@ -84,6 +84,21 @@ export function initCommunicationSettingsUI(deps: CommunicationSettingsUIDeps): 
     if (isTcp && tcpConnectBtn) {
       const isConnected = serialRef.current?.isConnected ?? false;
       tcpConnectBtn.textContent = isConnected ? '1' : '0';
+    } else if (!isTcp) {
+      if (serialRef.current instanceof WebSocketConnection) {
+        if (serialRef.current.isConnected) {
+          try {
+            serialRef.current.release();
+          } catch (err) {
+            console.error('[UI] Ошибка закрытия WebSocket при смене шины на RTU:', err);
+          }
+        }
+        serialRef.current = defaultRtuPort;
+        if (typeof setSerial === 'function') {
+          setSerial(defaultRtuPort);
+        }
+        console.log('[UI] Порт успешно переключен обратно на RTU (WebSerial)');
+      }
     }
 
     console.log(`[UI] Режим связи: ${isTcp ? 'MODBUS TCP/IP' : 'MODBUS RTU'}`);

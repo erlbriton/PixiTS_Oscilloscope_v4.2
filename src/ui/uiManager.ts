@@ -69,13 +69,6 @@ export interface UiManagerDeps {
 }
 
 export function initUI(deps: UiManagerDeps): void {
-  // Стартовый диалог: доступ к родительской папке (Devices и BackUp)
-  // void (async () => {
-  //   console.log('[startup] спрашиваю родительскую папку');
-  //   const ok = await showConfirmDialog('Выберите папку с *.ini файлами');
-  //   if (ok) await forcePickParentFolder();
-  // })();
-
   const {
     appState, parser, view, buffers,
     setupFolderHandling,
@@ -85,6 +78,7 @@ export function initUI(deps: UiManagerDeps): void {
 
   // Мутабельный контейнер порта: WebSocket-ветка перезапишет .current
   const serialRef: SerialRef = { current: deps.serial };
+  const defaultRtuPort = deps.serial; // Сохраняем исходный RTU-порт для возврата при смене шины
 
   // DOM-ссылки, нужные для передачи в модули
   const idBtn = document.getElementById('idBtn') as HTMLButtonElement | null;
@@ -209,7 +203,7 @@ export function initUI(deps: UiManagerDeps): void {
     todayBtn: todayBtnEl,
   });
 
-  // Командная строка (остаётся здесь — одна строка)
+  // Командная строка
   initCmdlineUI();
 
   // ── Отчёты ────────────────────────────────────────────────────────────
@@ -342,7 +336,6 @@ export function initUI(deps: UiManagerDeps): void {
     });
   }
 
-  // Windows: открытие папки недоступно — прячем стрелочку и пункт меню.
   if (!isLinux()) {
     if (menuOpenFolder) menuOpenFolder.style.display = 'none';
     if (folderArrowBtn) {
@@ -361,7 +354,6 @@ export function initUI(deps: UiManagerDeps): void {
     });
   }
 
-  // Закрытие обоих выпадающих меню по клику вне (сохраняем поведение браузерной версии)
   document.addEventListener('click', () => {
     folderDropdown?.classList.remove('show');
     toggleOscDropdown?.classList.remove('show');
@@ -373,6 +365,7 @@ export function initUI(deps: UiManagerDeps): void {
 
   initCommunicationSettingsUI({
     serialRef,
+    defaultRtuPort, // Передаем исходный RTU-порт для корректного переключения обратно
     appState,
     parser,
     view,
@@ -384,6 +377,7 @@ export function initUI(deps: UiManagerDeps): void {
     tcpConnectBtn,
     tcpIpInput,
     addrBtn,
+    setSerial,
     readLoop,
   });
 
