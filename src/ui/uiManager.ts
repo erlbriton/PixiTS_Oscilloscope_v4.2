@@ -368,6 +368,9 @@ export function initUI(deps: UiManagerDeps): void {
   });
 
   // ── Настройки связи и глобальные события ──────────────────────────────
+  const tcpConnectBtn = document.getElementById('tcpConnectBtn') as HTMLButtonElement | null;
+  const tcpIpInput = document.getElementById('tcpIpInput') as HTMLInputElement | null;
+
   initCommunicationSettingsUI({
     serialRef,
     appState,
@@ -378,6 +381,8 @@ export function initUI(deps: UiManagerDeps): void {
     busSelect: busSelectEl,
     rtuControls: rtuControlsEl,
     tcpControls: tcpControlsEl,
+    tcpConnectBtn,
+    tcpIpInput,
     addrBtn,
     readLoop,
   });

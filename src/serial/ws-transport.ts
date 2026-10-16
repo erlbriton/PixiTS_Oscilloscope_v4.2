@@ -21,16 +21,27 @@ export class WebSocketConnection implements ISerialPort {
   private readonly BASE_RECONNECT_DELAY: number = 2000; // База 2 секунды
   private reconnectTimer: any = null;
 
-  constructor(private ip: string = '127.0.0.1') {}
+  constructor(
+    private ip: string = '127.0.0.1',
+    private port: number | string = 502
+  ) {}
+
+  /** Установка целевого IP и порта перед подключением */
+  public setTarget(ip: string, port: number | string): void {
+    this.ip = ip;
+    this.port = port;
+  }
 
   public async connect(baudRate?: number): Promise<void> {
     this.intentionalClose = false;
     
     return new Promise((resolve, reject) => {
       try {
-        const deviceHost = '192.168.1.234';
-        const devicePort = 502;
-        this.ws = new WebSocket(`ws://${this.ip}:8080/proxy?host=${deviceHost}&port=${devicePort}`);
+        const proxyHost = '127.0.0.1'; // Прокси работает локально на вашем ПК
+        const proxyPort = 8080;
+        
+        // WebSocket подключается к локальному прокси, а в query-параметрах передается адрес прибора
+        this.ws = new WebSocket(`ws://${proxyHost}:${proxyPort}/proxy?host=${this.ip}&port=${this.port}`);
         this.ws.binaryType = 'arraybuffer';
 
         this.ws.onopen = () => {
@@ -87,7 +98,7 @@ export class WebSocketConnection implements ISerialPort {
     });
   }
 
-    private tryReconnect(): void {
+  private tryReconnect(): void {
     console.log('[WebSocket] tryReconnect вызван. Попытки:', this.reconnectAttempts);
 
     this.reconnectAttempts++;

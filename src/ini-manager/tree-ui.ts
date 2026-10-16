@@ -396,7 +396,7 @@ export function updateRowValues(
         bHex = bitStr;
     } else {
         let rHex = '';
-                console.log(`[updateRowValues] data-type=${rowDataType}, upper=${dataTypeUpper}, hex=${rHex || '—'}`);
+               // console.log(`[updateRowValues] data-type=${rowDataType}, upper=${dataTypeUpper}, hex=${rHex || '—'}`);
         if (rowHexIndex !== -1) {
             rHex = rowParts[rowHexIndex];
         }
