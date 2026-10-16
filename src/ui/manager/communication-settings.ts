@@ -23,6 +23,7 @@ import type { SerialRef } from './serial-port.js';
 import { showCompactError } from '../ui.js';
 import { showAddressDialog } from '../confirm-dialog.js';
 import { hasAnyDirty } from '../../ini-manager/dirty-tracker.js';
+import { resetConnectionErrorFlag } from '../../ui/ui.js';
 
 export interface CommunicationSettingsUIDeps {
   serialRef: SerialRef;
@@ -102,35 +103,40 @@ export function initCommunicationSettingsUI(deps: CommunicationSettingsUIDeps): 
 
   // ── Глобальные события ────────────────────────────────────────────────
 
-  window.addEventListener('app:controller-not-responding', (e: Event) => {
-    const detail = (e as CustomEvent).detail as { consecutiveTimeouts?: number } | undefined;
-    const count = detail?.consecutiveTimeouts ?? 0;
-    console.log(`[UI] Получено событие "контроллер не отвечает" (подряд ошибок: ${count})`);
+window.addEventListener('app:controller-not-responding', (e: Event) => {
+  const detail = (e as CustomEvent).detail as { consecutiveTimeouts?: number } | undefined;
+  const count = detail?.consecutiveTimeouts ?? 0;
+  console.log(`[UI] Получено событие "контроллер не отвечает" (подряд ошибок: ${count})`);
 
-    showCompactError('Контроллер не отвечает. Проверьте адрес и подключение.');
+  showCompactError('Контроллер не отвечает. Проверьте адрес и подключение.');
 
-    const osc = window.osc;
-    if (osc && typeof (osc as unknown as { showFrozenState?: (s: string) => void }).showFrozenState === 'function') {
-      (osc as unknown as { showFrozenState: (s: string) => void }).showFrozenState('');
-    }
-  });
+  const osc = window.osc;
+  if (osc && typeof (osc as unknown as { showFrozenState?: (s: string) => void }).showFrozenState === 'function') {
+    (osc as unknown as { showFrozenState: (s: string) => void }).showFrozenState('');
+  }
+});
 
-  window.addEventListener('app:controller-responding', () => {
-    console.log('[UI] Получено событие "контроллер отвечает"');
-    const osc = window.osc;
-    if (osc && typeof (osc as unknown as { resumeFromFrozen?: () => void }).resumeFromFrozen === 'function') {
-      (osc as unknown as { resumeFromFrozen: () => void }).resumeFromFrozen();
-    }
-  });
+window.addEventListener('app:controller-responding', () => {
+  console.log('[UI] Получено событие "контроллер отвечает"');
+  
+  // Сбрасываем флаг блокировки, чтобы при следующем обрыве связи 
+  // модальное окно ошибки снова могло открыться ровно 1 раз
+  resetConnectionErrorFlag();
 
-  window.addEventListener('app:request-polling-restart', () => {
-    const port = serialRef.current;
-    if (port && port.isConnected && appState.isPolling && !appState.isLoopRunning) {
-      console.log('[UI] Перезапуск readLoop по запросу после записи...');
-      appState.isLoopRunning = false;
-      void readLoop(port, parser, view, buffers, appState);
-    }
-  });
+  const osc = window.osc;
+  if (osc && typeof (osc as unknown as { resumeFromFrozen?: () => void }).resumeFromFrozen === 'function') {
+    (osc as unknown as { resumeFromFrozen: () => void }).resumeFromFrozen();
+  }
+});
+
+window.addEventListener('app:request-polling-restart', () => {
+  const port = serialRef.current;
+  if (port && port.isConnected && appState.isPolling && !appState.isLoopRunning) {
+    console.log('[UI] Перезапуск readLoop по запросу после записи...');
+    appState.isLoopRunning = false;
+    void readLoop(port, parser, view, buffers, appState);
+  }
+});
 
   window.addEventListener('beforeunload', (e: BeforeUnloadEvent) => {
     if (hasAnyDirty()) {

@@ -35,13 +35,25 @@ export function showIdModal(text: string): void {
     });
 }
 
+// Глобальный флаг: было ли окно ошибки закрыто пользователем при текущем сбое связи
+let errorModalDismissed = false;
+
+/**
+ * Сбрасывает флаг ошибки (вызывать при успешном восстановлении связи с контроллером)
+ */
+export function resetConnectionErrorFlag(): void {
+    errorModalDismissed = false;
+}
+
 /**
  * Компактное окно ошибки в цветах таблицы.
  * Показывается при проблемах связи независимо от осциллографа.
  */
 export function showCompactError(text: string): void {
-    const existing = document.querySelector('.compact-error-overlay');
-    if (existing) existing.remove();
+    // Если окно уже открыто ИЛИ пользователь уже закрыл его при текущем сбое — не показываем повторно
+    if (document.querySelector('.compact-error-overlay') || errorModalDismissed) {
+        return;
+    }
 
     const overlay = document.createElement('div');
     overlay.className = 'compact-error-overlay';
@@ -105,11 +117,29 @@ export function showCompactError(text: string): void {
     btn.style.border = '1px solid #999';
     btn.style.borderRadius = '3px';
 
-    const close = (): void => overlay.remove();
+    let keyHandler: ((e: KeyboardEvent) => void) | null = null;
+    const close = (): void => {
+        if (keyHandler) {
+            document.removeEventListener('keydown', keyHandler);
+            keyHandler = null;
+        }
+        errorModalDismissed = true; // Помечаем, что при текущем сбое окно закрыли, больше не спамим
+        overlay.remove();
+    };
+
     btn.addEventListener('click', close);
     overlay.addEventListener('click', (e: MouseEvent) => {
         if (e.target === overlay) close();
     });
+
+    // Закрытие по нажатию клавиши Enter
+    keyHandler = (e: KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            close();
+        }
+    };
+    document.addEventListener('keydown', keyHandler);
 
     content.appendChild(msg);
     content.appendChild(btn);
