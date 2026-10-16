@@ -71,12 +71,11 @@ export function initOscilloscopeUI(deps: OscilloscopeUIDeps): void {
             await osc.loadIniContent(appState.currentIniContent);
           }
 
-          if (typeof osc.setConnectionStatus === 'function') {
-            osc.setConnectionStatus(
-              serialRef.current.isConnected,
-              serialRef.current.isConnected ? undefined : 'Нет связи с устройством.',
-            );
-          }
+         // Вызываем setConnectionStatus только если связь уже есть.
+              // Если связи нет, не вызываем метод при инициализации, чтобы не открывалось окно "Нет связи".
+              if (typeof osc.setConnectionStatus === 'function' && serialRef.current.isConnected) {
+                osc.setConnectionStatus(true);
+              }
 
           readLoop(serialRef.current, parser, osc, buffers, appState);
         } catch (err) {
