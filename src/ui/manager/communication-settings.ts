@@ -1,5 +1,3 @@
-// src/ui/manager/communication-settings.ts
-
 /**
  * Модуль настроек связи и глобальных событий (браузерная версия).
  * Отвечает за:
@@ -23,6 +21,7 @@ import { showAddressDialog } from '../confirm-dialog.js';
 import { hasAnyDirty } from '../../ini-manager/dirty-tracker.js';
 import { resetConnectionErrorFlag } from '../../ui/ui.js';
 import { WebSocketConnection } from '../../serial/ws-transport.js';
+import { serialManager } from '../../serial/serial-manager.js';
 
 export interface CommunicationSettingsUIDeps {
   serialRef: SerialRef;
@@ -137,26 +136,21 @@ export function initCommunicationSettingsUI(deps: CommunicationSettingsUIDeps): 
 
     const ip = tcpIpInput?.value.trim() || '127.0.0.1';
 
-    if (!(port instanceof WebSocketConnection)) {
-      port = new WebSocketConnection(ip);
-      serialRef.current = port;
-      if (typeof setSerial === 'function') {
-        setSerial(port);
-      }
-    } else {
-      port = new WebSocketConnection(ip);
-      serialRef.current = port;
-      if (typeof setSerial === 'function') {
-        setSerial(port);
-      }
+    port = new WebSocketConnection(ip);
+    serialRef.current = port;
+    if (typeof setSerial === 'function') {
+      setSerial(port);
     }
 
     tcpConnectBtn.disabled = true;
+    tcpConnectBtn.innerHTML = '<span class="spinner"></span>';
 
     try {
       console.log('[UI] Подключение к TCP IP:', ip);
       await port.connect();
       
+      serialManager.init(port);
+
       tcpConnectBtn.textContent = '1';
       console.log('[UI] TCP-соединение успешно установлено');
 
