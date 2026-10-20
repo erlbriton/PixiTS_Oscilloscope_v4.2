@@ -80,10 +80,12 @@ export function initCommunicationSettingsUI(deps: CommunicationSettingsUIDeps): 
     if (rtuControls) rtuControls.style.display = isTcp ? 'none' : '';
     if (tcpControls) tcpControls.style.display = isTcp ? '' : 'none';
 
-    if (isTcp && tcpConnectBtn) {
-      const isConnected = serialRef.current?.isConnected ?? false;
-      tcpConnectBtn.textContent = isConnected ? '1' : '0';
-    } else if (!isTcp) {
+    if (isTcp) {
+      if (tcpConnectBtn) {
+        const isTcpConnected = serialRef.current instanceof WebSocketConnection && serialRef.current.isConnected;
+        tcpConnectBtn.textContent = isTcpConnected ? '1' : '0';
+      }
+    } else {
       if (serialRef.current instanceof WebSocketConnection) {
         if (serialRef.current.isConnected) {
           try {
@@ -92,12 +94,15 @@ export function initCommunicationSettingsUI(deps: CommunicationSettingsUIDeps): 
             console.error('[UI] Ошибка закрытия WebSocket при смене шины на RTU:', err);
           }
         }
-        serialRef.current = defaultRtuPort;
-        if (typeof setSerial === 'function') {
-          setSerial(defaultRtuPort);
-        }
-        console.log('[UI] Порт успешно переключен обратно на RTU (WebSerial)');
       }
+      serialRef.current = defaultRtuPort;
+      if (typeof setSerial === 'function') {
+        setSerial(defaultRtuPort);
+      }
+      if (tcpConnectBtn) {
+        tcpConnectBtn.textContent = '0';
+      }
+      console.log('[UI] Порт успешно переключен обратно на RTU (WebSerial)');
     }
 
     console.log(`[UI] Режим связи: ${isTcp ? 'MODBUS TCP/IP' : 'MODBUS RTU'}`);
@@ -149,6 +154,9 @@ export function initCommunicationSettingsUI(deps: CommunicationSettingsUIDeps): 
       console.log('[UI] Подключение к TCP IP:', ip);
       await port.connect();
       
+      // Небольшая пауза (300 мс) для завершения установки TCP-соединения прокси с прибором
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
       serialManager.init(port);
 
       tcpConnectBtn.textContent = '1';
@@ -159,13 +167,14 @@ export function initCommunicationSettingsUI(deps: CommunicationSettingsUIDeps): 
         (osc as unknown as { resumeFromFrozen: () => void }).resumeFromFrozen();
       }
 
+      appState.isPolling = true;
+
       const oscContainerEl = document.getElementById('osc-container');
       const isOscVisible = oscContainerEl &&
         !oscContainerEl.classList.contains('hidden') &&
         oscContainerEl.style.display !== 'none';
-      if (isOscVisible) {
+      if (isOscVisible && !appState.isLoopRunning) {
         appState.isLoopRunning = false;
-        appState.isPolling = true;
         void readLoop(port, parser, view, buffers, appState);
       }
     } catch (err) {
