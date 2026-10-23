@@ -28,6 +28,7 @@ export type UpdateRowValuesFn = (
 export interface TableEditorState {
     slaveAddress?: number;
     isPolling?: boolean;
+    isLoopRunning?: boolean;
     currentIniConfig?: IniConfig | null;
 }
 

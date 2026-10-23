@@ -83,7 +83,7 @@ export async function writeRegistersFC16(
     };
 
     try {
-        const reply = await serialManager.executeTransaction(packet, checkComplete, 300);
+        const reply = await serialManager.executeTransaction(packet, checkComplete, 500);
         if (!reply) return false;
 
         if (reply.length >= 8 && reply[1] === 0x10) {
@@ -141,7 +141,7 @@ export async function readHoldingRegistersFC03(
     };
 
     try {
-        const reply = await serialManager.executeTransaction(packet, checkComplete, 300);
+        const reply = await serialManager.executeTransaction(packet, checkComplete, 1000);
         if (!reply) return null;
 
         if (reply.length >= 3 && reply[1] === 0x03) {
