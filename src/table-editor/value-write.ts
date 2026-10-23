@@ -106,7 +106,7 @@ export async function processValueWrite(
 
         if (dataType.includes('FLOAT')) {
             const unscaledVal = valNum / scale;
-            const hexStr = float32ToHex(unscaledVal);
+            const hexStr = float32ToHex(unscaledVal).replace(/^x/i, '');
             newHexValue = 'x' + hexStr.toUpperCase();
             parts[hexIndexInParts] = newHexValue;
         } else if (dataType === 'TBIT') {
@@ -210,7 +210,7 @@ export async function processValueWrite(
         let newDepHex: string;
         if (depDataType.includes('FLOAT')) {
             const unscaledVal = newDepValue / depScale;
-            const hexStr = float32ToHex(unscaledVal);
+            const hexStr = float32ToHex(unscaledVal).replace(/^x/i, '');
             newDepHex = 'x' + hexStr.toUpperCase();
         } else {
             const rawVal = Math.round(newDepValue / depScale);
