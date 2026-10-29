@@ -145,7 +145,19 @@ export async function processControllerWrite(
 
         const wasPolling = stateObj.isPolling === true;
         if (wasPolling) {
+            console.log('[CONTROLLER] Фоновый опрос активен — приостанавливаю на время транзакций...');        const wasPolling = stateObj.isPolling === true;
+        if (wasPolling) {
             console.log('[CONTROLLER] Фоновый опрос активен — приостанавливаю на время транзакций...');
+            stateObj.isPolling = false;
+            console.log('[CONTROLLER] ДО ожидания: isLoopRunning =', stateObj.isLoopRunning);
+            
+            const deadline = Date.now() + 2000;
+            while (stateObj.isLoopRunning && Date.now() < deadline) {
+                await new Promise((r) => setTimeout(r, 20));
+            }
+            
+            console.log('[CONTROLLER] ПОСЛЕ ожидания: isLoopRunning =', stateObj.isLoopRunning);
+        }
             stateObj.isPolling = false;
             const deadline = Date.now() + 2000;
             while (stateObj.isLoopRunning && Date.now() < deadline) {

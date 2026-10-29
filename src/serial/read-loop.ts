@@ -20,6 +20,19 @@ export interface ChannelBuffer {
     toArray(): number[];
 }
 
+// Флаг: пользователь сейчас взаимодействует с таблицей (кликает или редактирует).
+// Пока он true, readLoop не трогает DOM таблицы, чтобы не сбить двойной клик.
+let isTableInteracting = false;
+document.addEventListener('mousedown', (e) => {
+    if ((e.target as HTMLElement).closest('#grid-data-rows')) {
+        isTableInteracting = true;
+    }
+});
+document.addEventListener('mouseup', () => {
+    // Небольшая задержка, чтобы браузер успел обработать dblclick
+    setTimeout(() => { isTableInteracting = false; }, 200);
+});
+
 export async function readLoop(
     serial: ISerialPort,
     _parser: unknown,
@@ -144,8 +157,13 @@ export async function readLoop(
 
                 // --- 4. СИНХРОНИЗАЦИЯ С ТАБЛИЦЕЙ MODBUS ---
                 const tableRows = document.querySelectorAll<HTMLTableRowElement>('#grid-data-rows tr');
-                if (tableRows.length > 0) {
+                
+                // Если пользователь кликает или вводит текст — пропускаем обновление всей таблицы
+                if (tableRows.length > 0 && !isTableInteracting) {
                     tableRows.forEach((tr) => {
+                        // Дополнительная защита: если в строке уже есть поле ввода — пропускаем
+                        if (tr.querySelector('input, select')) return;
+
                         const addrStr = tr.getAttribute('data-reg');
                         if (!addrStr) return;
                         const { reg } = parseRegisterAddress(addrStr);

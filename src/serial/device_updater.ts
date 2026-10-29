@@ -145,6 +145,9 @@ export async function updateDeviceRegisters(
                 if (!trList) continue;
 
                 for (const tr of trList) {
+                  // Если пользователь редактирует эту строку — пропускаем её
+                  if (tr.querySelector('input, select')) continue;
+
                   try {
                     let parts: string[] = JSON.parse(tr.dataset.parts || "[]");
 
