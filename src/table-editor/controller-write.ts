@@ -82,7 +82,7 @@ export async function processControllerWrite(
     colIndex: number
 ): Promise<boolean> {
     const dataType = (tr.getAttribute('data-type') || '').toUpperCase();
-    const sub = tr.getAttribute('data-sub') || '';
+    const sub = (tr.getAttribute('data-sub') || '').replace('.', '').toUpperCase();
 
     let parts: string[] = [];
     try {
@@ -147,7 +147,10 @@ export async function processControllerWrite(
         if (wasPolling) {
             console.log('[CONTROLLER] Фоновый опрос активен — приостанавливаю на время транзакций...');
             stateObj.isPolling = false;
-            await new Promise((resolve) => setTimeout(resolve, 50));
+            const deadline = Date.now() + 2000;
+            while (stateObj.isLoopRunning && Date.now() < deadline) {
+                await new Promise((r) => setTimeout(r, 20));
+            }
         }
 
         let writeOk = false;
@@ -228,7 +231,10 @@ export async function processControllerWrite(
         if (wasPolling) {
             console.log('[CONTROLLER] TBYTE: Фоновый опрос активен — приостанавливаю...');
             stateObj.isPolling = false;
-            await new Promise((resolve) => setTimeout(resolve, 50));
+            const deadline = Date.now() + 2000;
+            while (stateObj.isLoopRunning && Date.now() < deadline) {
+                await new Promise((r) => setTimeout(r, 20));
+            }
         }
 
         let currentWords: number[] | null = null;
@@ -300,7 +306,21 @@ export async function processControllerWrite(
         const tds = tr.querySelectorAll('td');
         const hexIndex = parseInt(tr.getAttribute('data-hex-index') || '-1', 10);
         const byteHex = 'x' + plan.byteValue.toString(16).toUpperCase().padStart(2, '0');
-        if (hexIndex >= 0 && hexIndex < parts.length) parts[hexIndex] = byteHex;
+        
+        // Обновляем parts, сохраняя второй байт неизменным
+        if (hexIndex >= 0 && hexIndex < parts.length) {
+            const currentWordHex = (parts[hexIndex] || 'x0000').replace(/^x/i, '');
+            const currentWord = parseInt(currentWordHex, 16) || 0;
+            let newWord = currentWord;
+            
+            if (plan.bytePos === 'H') {
+                newWord = (currentWord & 0x00FF) | (plan.byteValue << 8);
+            } else {
+                newWord = (currentWord & 0xFF00) | plan.byteValue;
+            }
+            
+            parts[hexIndex] = 'x' + newWord.toString(16).toUpperCase().padStart(4, '0');
+        }
         tr.dataset.parts = JSON.stringify(parts);
 
         if (dataType === 'TPRMLIST') {
@@ -337,7 +357,10 @@ export async function processControllerWrite(
     if (wasPolling) {
         console.log('[CONTROLLER] TBIT: Фоновый опрос активен — приостанавливаю...');
         stateObj.isPolling = false;
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        const deadline = Date.now() + 2000;
+        while (stateObj.isLoopRunning && Date.now() < deadline) {
+            await new Promise((r) => setTimeout(r, 20));
+        }
     }
 
     let currentWords: number[] | null = null;

@@ -71,10 +71,26 @@ export async function processValueWrite(
         let parsedVal = parseInt(cleanHex, 16);
         if (isNaN(parsedVal)) return false;
 
-        newHexValue = 'x' + parsedVal.toString(16).toUpperCase().padStart(is32Bit ? 8 : 4, '0');
-        parts[hexIndexInParts] = newHexValue;
+        if (dataType === 'TBYTE') {
+            const subByte = (tr.getAttribute('data-sub') || '').replace('.', '').toUpperCase();
+            const currentWordHex = (parts[hexIndexInParts] || 'x0000').replace(/^x/i, '');
+            const currentWord = parseInt(currentWordHex, 16) || 0;
+            let newWord = currentWord;
+            
+            if (subByte === 'H') {
+                newWord = (currentWord & 0x00FF) | ((parsedVal & 0xFF) << 8);
+            } else {
+                newWord = (currentWord & 0xFF00) | (parsedVal & 0xFF);
+            }
+            
+            parts[hexIndexInParts] = 'x' + newWord.toString(16).toUpperCase().padStart(4, '0');
+            newHexValue = 'x' + (parsedVal & 0xFF).toString(16).toUpperCase().padStart(2, '0');
+            newPhysValue = (parsedVal * scale).toString();
+        } else {
+            newHexValue = 'x' + parsedVal.toString(16).toUpperCase().padStart(is32Bit ? 8 : 4, '0');
+            parts[hexIndexInParts] = newHexValue;
 
-        if (dataType.includes('FLOAT')) {
+            if (dataType.includes('FLOAT')) {
             const buf = new ArrayBuffer(4);
             const dv = new DataView(buf);
             if (is32Bit) {
@@ -96,6 +112,7 @@ export async function processValueWrite(
             if (is32Bit && parsedVal > 2147483647) signedVal = parsedVal - 4294967296;
             newPhysValue = (signedVal * scale).toString();
         }
+    }
     } else {
         const valNum = parseFloat(newValueStr.replace(',', '.'));
         if (isNaN(valNum)) {
@@ -124,13 +141,31 @@ export async function processValueWrite(
             parts[hexIndexInParts] = newHexValue;
         } else {
             const rawVal = Math.round(valNum / scale);
-            if (is32Bit) {
+            
+            if (dataType === 'TBYTE') {
+                const subByte = (tr.getAttribute('data-sub') || '').replace('.', '').toUpperCase();
+                const byteVal = rawVal & 0xFF;
+                const currentWordHex = (parts[hexIndexInParts] || 'x0000').replace(/^x/i, '');
+                const currentWord = parseInt(currentWordHex, 16) || 0;
+                
+                let newWord = currentWord;
+                if (subByte === 'H') {
+                    newWord = (currentWord & 0x00FF) | (byteVal << 8);
+                } else {
+                    newWord = (currentWord & 0xFF00) | byteVal;
+                }
+                
+                parts[hexIndexInParts] = 'x' + newWord.toString(16).toUpperCase().padStart(4, '0');
+                newHexValue = 'x' + byteVal.toString(16).toUpperCase().padStart(2, '0');
+                newPhysValue = byteVal.toString();
+            } else if (is32Bit) {
                 newHexValue = 'x' + rawVal.toString(16).toUpperCase().padStart(8, '0');
+                parts[hexIndexInParts] = newHexValue;
             } else {
                 const word = rawVal & 0xFFFF;
                 newHexValue = 'x' + word.toString(16).toUpperCase().padStart(4, '0');
+                parts[hexIndexInParts] = newHexValue;
             }
-            parts[hexIndexInParts] = newHexValue;
         }
     }
 

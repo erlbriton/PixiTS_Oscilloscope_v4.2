@@ -455,16 +455,33 @@ export function updateRowValues(
                 }
             } else {
                 let decValue = parseInt(rHex.slice(1), 16);
-                                   // Знаковое преобразование для целых типов
-                    if (!isNaN(decValue)) {
-                        if (dataTypeUpper === 'TSHORT' || dataTypeUpper === 'TINT16' || dataTypeUpper === 'TINTEGER') {
-                            // 16-битное знаковое: если > 32767, вычесть 65536
-                            if (decValue > 32767) decValue -= 65536;
-                        } else if (dataTypeUpper === 'TLONG' || dataTypeUpper === 'TINT32') {
-                            // 32-битное знаковое: если > 2147483647, вычесть 4294967296
-                            if (decValue > 2147483647) decValue -= 4294967296;
-                        }
+                let isByte = false;
+                
+                // Для TBYTE отрезаем нужный байт из 16-битного слова
+                if (dataTypeUpper === 'TBYTE' && !isNaN(decValue)) {
+                    const sub = (rowElement.getAttribute('data-sub') || '').replace('.', '').toUpperCase();
+                    if (sub === 'L') {
+                        decValue = decValue & 0xFF;
+                        isByte = true;
+                    } else if (sub === 'H') {
+                        decValue = (decValue >> 8) & 0xFF;
+                        isByte = true;
                     }
+                    if (isByte) {
+                        bHex = 'x' + decValue.toString(16).toUpperCase().padStart(2, '0');
+                    }
+                }
+
+                // Знаковое преобразование для целых типов
+                if (!isNaN(decValue)) {
+                    if (dataTypeUpper === 'TSHORT' || dataTypeUpper === 'TINT16' || dataTypeUpper === 'TINTEGER') {
+                        // 16-битное знаковое: если > 32767, вычесть 65536
+                        if (decValue > 32767) decValue -= 65536;
+                    } else if (dataTypeUpper === 'TLONG' || dataTypeUpper === 'TINT32') {
+                        // 32-битное знаковое: если > 2147483647, вычесть 4294967296
+                        if (decValue > 2147483647) decValue -= 4294967296;
+                    }
+                }
                 if (!isNaN(decValue) && !isNaN(rowScale)) {
                     bPhysical = `<div class="prm-val-display">${Number((decValue * rowScale).toFixed(4)).toString()}</div>`;
                 } else if (!isNaN(decValue)) {

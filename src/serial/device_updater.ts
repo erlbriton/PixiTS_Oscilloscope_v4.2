@@ -125,7 +125,7 @@ export async function updateDeviceRegisters(
           return false;
         };
 
-                const reply: Uint8Array | null = await serialManager.executeTransaction(
+        const reply: Uint8Array | null = await serialManager.executeTransaction(
           finalPacket,
           checkComplete,
           300,
@@ -152,7 +152,10 @@ export async function updateDeviceRegisters(
                     if (parts.length === 0) continue;
 
                     const dataType = (tr.getAttribute("data-type") || "").toUpperCase();
-                    const sub = tr.getAttribute("data-sub") || "";
+                    // Убираем точку (если есть) и приводим к верхнему регистру. 
+                    // Например, ".H" превратится в "H".
+                    const sub = (tr.getAttribute("data-sub") || "").replace('.', '').toUpperCase();
+                    
                     const hIdx = parseInt(
                       tr.getAttribute("data-hex-index") || "0",
                       10,
@@ -188,7 +191,8 @@ export async function updateDeviceRegisters(
                     let hexValue = "";
 
                     // dataType уже в верхнем регистре (нормализован выше).
-                    if (dataType === "TBYTE" || dataType === "TPRMLIST") {
+                    // TBYTE не режем здесь, он попадает в else и передается полным словом.
+                    if (dataType === "TPRMLIST") {
                       if (sub === "H") {
                         const byteVal = (word >> 8) & 0xff;
                         hexValue =
@@ -227,13 +231,14 @@ export async function updateDeviceRegisters(
                     }
 
                     if (hexValue && hIdx >= 0 && hIdx < parts.length) {
-                      parts[hIdx] = hexValue;
-                      if (parts.length > 6) {
-                        parts[6] = scaleStr;
-                      }
-                      tr.dataset.parts = JSON.stringify(parts);
+                      // Создаём временный массив, чтобы не перезаписывать Базу (parts)
+                      const tempParts = [...parts];
+                      tempParts[hIdx] = hexValue;
+                      
+                      // Передаём 6 (колонка Контроллера), чтобы обновить только её.
+                      // База в parts и tr.dataset.parts остается нетронутой.
                       updateRowValues(
-                        tr, parts, dataType, scale, hIdx,
+                        tr, tempParts, dataType, scale, hIdx,
                         originalHexLen, prmListOptions,
                         hexToFloat32, float32ToHex, 6,
                       );
