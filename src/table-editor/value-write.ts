@@ -71,26 +71,10 @@ export async function processValueWrite(
         let parsedVal = parseInt(cleanHex, 16);
         if (isNaN(parsedVal)) return false;
 
-        if (dataType === 'TBYTE') {
-            const subByte = (tr.getAttribute('data-sub') || '').replace('.', '').toUpperCase();
-            const currentWordHex = (parts[hexIndexInParts] || 'x0000').replace(/^x/i, '');
-            const currentWord = parseInt(currentWordHex, 16) || 0;
-            let newWord = currentWord;
-            
-            if (subByte === 'H') {
-                newWord = (currentWord & 0x00FF) | ((parsedVal & 0xFF) << 8);
-            } else {
-                newWord = (currentWord & 0xFF00) | (parsedVal & 0xFF);
-            }
-            
-            parts[hexIndexInParts] = 'x' + newWord.toString(16).toUpperCase().padStart(4, '0');
-            newHexValue = 'x' + (parsedVal & 0xFF).toString(16).toUpperCase().padStart(2, '0');
-            newPhysValue = (parsedVal * scale).toString();
-        } else {
-            newHexValue = 'x' + parsedVal.toString(16).toUpperCase().padStart(is32Bit ? 8 : 4, '0');
-            parts[hexIndexInParts] = newHexValue;
+        newHexValue = 'x' + parsedVal.toString(16).toUpperCase().padStart(is32Bit ? 8 : 4, '0');
+        parts[hexIndexInParts] = newHexValue;
 
-            if (dataType.includes('FLOAT')) {
+        if (dataType.includes('FLOAT')) {
             const buf = new ArrayBuffer(4);
             const dv = new DataView(buf);
             if (is32Bit) {
@@ -108,11 +92,11 @@ export async function processValueWrite(
             newPhysValue = bitVal.toString();
         } else {
             let signedVal = parsedVal;
-            if (!is32Bit && signedVal > 32767) signedVal -= 65536;
+            // Убеждаемся, что TWORD не обрабатывается как знаковое число при > 32767
+            if (!is32Bit && dataType !== 'TWORD' && signedVal > 32767) signedVal -= 65536;
             if (is32Bit && parsedVal > 2147483647) signedVal = parsedVal - 4294967296;
             newPhysValue = (signedVal * scale).toString();
         }
-    }
     } else {
         const valNum = parseFloat(newValueStr.replace(',', '.'));
         if (isNaN(valNum)) {
@@ -143,6 +127,7 @@ export async function processValueWrite(
             const rawVal = Math.round(valNum / scale);
             
             if (dataType === 'TBYTE') {
+                // Сохраняем второй байт неизменным
                 const subByte = (tr.getAttribute('data-sub') || '').replace('.', '').toUpperCase();
                 const byteVal = rawVal & 0xFF;
                 const currentWordHex = (parts[hexIndexInParts] || 'x0000').replace(/^x/i, '');
